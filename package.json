@@ -12,6 +12,7 @@
     "build": "tsc -p tsconfig.json",
     "build:binary": "bun build ./src/cli.ts --compile --outfile dist/squarewright",
     "dev": "bun run src/cli.ts",
+    "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
