@@ -46,18 +46,28 @@ bun run scripts/eval.ts --model qwen/qwen3-coder --stack rust
 
 Reports are written to `eval/reports/<model>-<stamp>.json` for side-by-side comparison.
 
-## Model shortlist to compare (grounded in trimwire's bench)
+## Models — ranking is DEFERRED until the setup is good
 
-Cheap models that ranked well for review, best-first. All OpenRouter ids unless noted:
+We do **not** rank models yet. A ranking now would just measure a half-built harness (one generic persona,
+diff-only, no repo grounding). Sequence: **make the setup good against these golden PRs first, then rank.**
 
-1. `deepseek/deepseek-v3.2` (reasoning off) — broad/fast generalist "thoroughness anchor".
-2. `qwen/qwen3-coder-30b-a3b-instruct` (reasoning off) — cheapest; strong when paired with a tight checklist.
-3. `openai/gpt-5-mini` (effort medium) — trimwire's security anchor; good calibration baseline.
-4. `deepseek/deepseek-v4-flash` — narrow single-persona only; avoid as a large-diff generalist (malforms JSON).
-5. `glm-5.2` — **z.ai-only** (provider `zai`, free sub); highest attested recall but no verified OpenRouter path.
+**Develop the setup with a strong model** so model quality isn't the confound. The genuinely good reviewers
+are the expensive **"5-family" frontier models** (e.g. `anthropic/claude-sonnet-5`, `openai/gpt-5`, Opus-class)
+— that's the quality ceiling. Use one of those while iterating the harness.
+
+**Cheap candidates to rank LATER** (the value question — how close do they get with our grounding + verifier).
+All OpenRouter; **no z.ai models via OpenRouter** (GLM only via z.ai directly, and it's effectively deprecated
+for sustained CI — trial/subscription only):
+
+- `deepseek/deepseek-v3.2` (thinking off / on) — broad/fast generalist.
+- `qwen/qwen3.5-flash-02-23` (thinking) — newer, ~$0.003/verified-review even with thinking on, 1M ctx.
+- `qwen/qwen3-coder-30b-a3b-instruct` — cheapest; no thinking mode.
+- `minimax/minimax-m2.5` — ~80% SWE-Bench Verified at pennies; biggest upside bet.
+- `openai/gpt-5-mini` (effort medium) / `openai/gpt-5-nano` (low) — 5-family, cheaper tiers.
+- `deepseek/deepseek-v4-flash` — narrow only; malforms JSON on large/aggregation inputs.
 
 Reality check from trimwire's 67-case bench: real ambiguous-PR recall ≈ **27% at ~19% noise** (synthetic
-planted-bug recall of 80–100% massively overstates it). Judge the corpus against that, not perfection.
+planted-bug recall of 80–100% massively overstates it). Judge against that, not perfection.
 
 ## Scoring notes (v1, deliberately simple)
 

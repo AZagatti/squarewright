@@ -15,7 +15,7 @@ import { parse as parseYaml } from "yaml";
 import { createPiWorker } from "../src/pi/worker.js";
 import { createVerifier } from "../src/pi/verifier.js";
 import { splitUnifiedDiff } from "../src/core/diff.js";
-import type { ReviewContext } from "../src/core/types.js";
+import type { ReviewContext, ThinkingLevel } from "../src/core/types.js";
 
 const PERSONA = `You are a careful senior code reviewer reviewing a single pull request.
 Review ONLY the changes in the diff. Flag correctness bugs, security issues, and clear regressions.
@@ -111,12 +111,13 @@ async function main() {
   }
 
   const model = arg("model") ?? process.env.SW_MODEL ?? "deepseek/deepseek-v3.2";
+  const thinking = (arg("thinking") ?? "off") as ThinkingLevel;
   const doVerify = flag("verify");
   const concurrency = Number(arg("concurrency") ?? 3);
   const key = readKey();
   const worker = createPiWorker({ apiKeys: { openrouter: key } });
   const verifier = doVerify ? createVerifier({ apiKeys: { openrouter: key } }) : undefined;
-  const lane = { id: "eval", provider: "openrouter", model };
+  const lane = { id: "eval", provider: "openrouter", model, thinking };
 
   const missing = cases.filter((c) => !existsSync(diffPath(c.id)));
   if (missing.length) {
@@ -124,7 +125,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`\n▸ eval  model=openrouter/${model}  verify=${doVerify}  cases=${cases.length}  concurrency=${concurrency}\n`);
+  console.log(`\n▸ eval  model=openrouter/${model}  thinking=${thinking}  verify=${doVerify}  cases=${cases.length}  concurrency=${concurrency}\n`);
 
   const results = await pool(cases, concurrency, async (c) => {
     const diff = readFileSync(diffPath(c.id), "utf8").slice(0, 60_000);

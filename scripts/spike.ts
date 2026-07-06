@@ -15,7 +15,9 @@ import { execFileSync } from "node:child_process";
 import { createPiWorker } from "../src/pi/worker.js";
 import { createVerifier } from "../src/pi/verifier.js";
 import { splitUnifiedDiff } from "../src/core/diff.js";
-import type { ReviewContext } from "../src/core/types.js";
+import type { ReviewContext, ThinkingLevel } from "../src/core/types.js";
+
+const THINKING = (process.env.SW_THINKING ?? "off") as ThinkingLevel;
 
 const PERSONA = `You are a careful senior code reviewer reviewing a single pull request.
 Review ONLY the changes in the diff. Flag correctness bugs, security issues, and clear regressions.
@@ -72,7 +74,7 @@ async function main() {
     context,
     systemPrompt: PERSONA,
     persona: "persona:general",
-    lane: { id: "default", provider: "openrouter", model },
+    lane: { id: "default", provider: "openrouter", model, thinking: THINKING },
   });
   const ms = Date.now() - t0;
 
@@ -94,7 +96,7 @@ async function main() {
     let confirmed = 0;
     let verifyCost = 0;
     for (const f of result.findings) {
-      const v = await verifier.verify(f, context, { id: "verify", provider: "openrouter", model: verifyModel });
+      const v = await verifier.verify(f, context, { id: "verify", provider: "openrouter", model: verifyModel, thinking: THINKING });
       verifyCost += v.usage?.costUsd ?? 0;
       if (v.verdict === "confirmed") confirmed += 1;
       const mark = v.verdict === "confirmed" ? "✓ CONFIRMED" : v.verdict === "refuted" ? "✗ REFUTED" : "? UNCERTAIN";

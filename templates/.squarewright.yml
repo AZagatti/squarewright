@@ -7,9 +7,9 @@
 lanes:
   - id: default
     provider: openrouter
-    model: anthropic/claude-sonnet-5
-    # provider-specific reasoning knob, passed through to Pi verbatim (shape varies per provider):
-    reasoning: { effort: medium }
+    model: deepseek/deepseek-v3.2
+    # thinking/reasoning level; Pi maps it to the provider's knob. off | minimal | low | medium | high | xhigh
+    thinking: off
 
 defaultLane: default
 

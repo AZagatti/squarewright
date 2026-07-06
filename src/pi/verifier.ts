@@ -91,6 +91,7 @@ export function createVerifier(options: VerifierOptions) {
 
       const { session } = await createAgentSession({
         model,
+        thinkingLevel: lane.thinking ?? "off",
         authStorage,
         modelRegistry,
         resourceLoader: loader,

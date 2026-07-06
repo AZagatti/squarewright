@@ -23,13 +23,15 @@ export interface Finding {
   source?: string;
 }
 
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
 /** A named (provider, model, reasoning) target a persona routes to. Mechanism is Pi's; policy is ours. */
 export interface ModelLane {
   id: string;
   provider: string;
   model: string;
-  /** provider-specific reasoning knob, passed through to Pi verbatim */
-  reasoning?: Record<string, unknown>;
+  /** reasoning/thinking level; Pi maps it to the provider's knob (e.g. OpenRouter reasoning effort) */
+  thinking?: ThinkingLevel;
 }
 
 /** A review lens the Worker applies. */

@@ -111,6 +111,7 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
 
       const { session } = await createAgentSession({
         model,
+        thinkingLevel: lane.thinking ?? "off",
         authStorage,
         modelRegistry,
         resourceLoader: loader,

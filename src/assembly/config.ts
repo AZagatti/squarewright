@@ -9,7 +9,7 @@ const modelLane = z.object({
   id: z.string(),
   provider: z.string(),
   model: z.string(),
-  reasoning: z.record(z.unknown()).optional(),
+  thinking: z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
 });
 
 const persona = z.object({
