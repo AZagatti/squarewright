@@ -1,0 +1,131 @@
+diff --git a/js/tests/visual/alert.html b/js/tests/visual/alert.html
+index 2ccf43e4106a..26c187f3fd98 100644
+--- a/js/tests/visual/alert.html
++++ b/js/tests/visual/alert.html
+@@ -10,36 +10,40 @@
+     <div class="container">
+       <h1>Alert <small>Bootstrap Visual Test</small></h1>
+ 
+-      <div class="alert theme-warning alert-dismissible fade show" role="alert">
+-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
++      <div class="alert theme-warning fade show" role="alert">
+         <p><strong>Holy guacamole!</strong> You should check in on some of those fields below.</p>
++        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
+       </div>
+ 
+-      <div class="alert theme-danger alert-dismissible fade show" role="alert">
+-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+-        <p>
+-          <strong>Oh snap!</strong> <a href="#" class="alert-link">Change a few things up</a> and try submitting again.
+-        </p>
+-        <p>
+-          <button type="button" class="btn-solid theme-danger">Danger</button>
+-          <button type="button" class="btn-solid theme-secondary">Secondary</button>
+-        </p>
++      <div class="alert theme-danger fade show" role="alert">
++        <div>
++          <p>
++            <strong>Oh snap!</strong> <a href="#" class="alert-link">Change a few things up</a> and try submitting again.
++          </p>
++          <p>
++            <button type="button" class="btn-solid theme-danger">Danger</button>
++            <button type="button" class="btn-solid theme-secondary">Secondary</button>
++          </p>
++        </div>
++        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
+       </div>
+ 
+-      <div class="alert theme-danger alert-dismissible fade show" role="alert">
+-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+-        <p>
+-          <strong>Oh snap!</strong> <a href="#" class="alert-link">Change a few things up</a> and try submitting again. Duis mollis, est non commodo luctus, nisi erat porttitor ligula, eget lacinia odio sem nec elit. Cras mattis consectetur purus sit amet fermentum.
+-        </p>
+-        <p>
+-          <button type="button" class="btn-solid theme-danger">Take this action</button>
+-          <button type="button" class="btn-solid theme-primary">Or do this</button>
+-        </p>
++      <div class="alert theme-danger fade show" role="alert">
++        <div>
++          <p>
++            <strong>Oh snap!</strong> <a href="#" class="alert-link">Change a few things up</a> and try submitting again. Duis mollis, est non commodo luctus, nisi erat porttitor ligula, eget lacinia odio sem nec elit. Cras mattis consectetur purus sit amet fermentum.
++          </p>
++          <p>
++            <button type="button" class="btn-solid theme-danger">Take this action</button>
++            <button type="button" class="btn-solid theme-primary">Or do this</button>
++          </p>
++        </div>
++        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
+       </div>
+ 
+-      <div class="alert theme-warning alert-dismissible fade show" role="alert" style="transition-duration: 5s;">
+-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
++      <div class="alert theme-warning fade show" role="alert" style="transition-duration: 5s;">
+         <p>This alert will take 5 seconds to fade out.</p>
++        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
+       </div>
+     </div>
+ 
+diff --git a/site/src/assets/examples/cheatsheet/index.astro b/site/src/assets/examples/cheatsheet/index.astro
+index 3135fab285cd..25e247553b27 100644
+--- a/site/src/assets/examples/cheatsheet/index.astro
++++ b/site/src/assets/examples/cheatsheet/index.astro
+@@ -644,9 +644,9 @@ export const body_class = 'bg-body-tertiary'
+ 
+       <div>
+         <Example showMarkup={false} code={getData('theme-colors').map((themeColor) => `
+-        <div class="alert theme-${themeColor.name} alert-dismissible fade show mb-3" role="alert">
++        <div class="alert theme-${themeColor.name} fade show mb-3" role="alert">
+           <p>A simple ${themeColor.name} alert with <a href="#" class="alert-link">an example link</a>. Give it a click if you like.</p>
+-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
++          <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
+         </div>
+         `)} />
+ 
+diff --git a/site/src/assets/partials/snippets.js b/site/src/assets/partials/snippets.js
+index 922c3767c355..9cce9af66830 100644
+--- a/site/src/assets/partials/snippets.js
++++ b/site/src/assets/partials/snippets.js
+@@ -99,9 +99,9 @@ export default () => {
+   const appendAlert = (message, type) => {
+     const wrapper = document.createElement('div')
+     wrapper.innerHTML = [
+-      `<div class="alert theme-${type} alert-dismissible" role="alert">`,
++      `<div class="alert theme-${type}" role="alert">`,
+       `   <p>${message}</p>`,
+-      '   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>',
++      '   <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>',
+       '</div>'
+     ].join('')
+ 
+diff --git a/site/src/content/docs/components/alert.mdx b/site/src/content/docs/components/alert.mdx
+index 90de7c24b800..399aa9dc4c34 100644
+--- a/site/src/content/docs/components/alert.mdx
++++ b/site/src/content/docs/components/alert.mdx
+@@ -76,13 +76,13 @@ Similarly, you can use [flexbox utilities]([[docsref:/utilities/flex]]) and [Boo
+ Using the alert JavaScript plugin, it’s possible to dismiss any alert inline. Here’s how:
+ 
+ - Be sure you’ve loaded the alert plugin, or the compiled Bootstrap JavaScript.
+-- Add a [close button]([[docsref:/components/close-button]]) and the `.alert-dismissible` class, which adds extra padding to the right of the alert and positions the close button.
++- Add a [close button]([[docsref:/components/close-button]]) and use flexbox utilities (e.g. `ms-auto`) to position it within the alert.
+ - On the close button, add the `data-bs-dismiss="alert"` attribute, which triggers the JavaScript functionality. Be sure to use the `<button>` element with it for proper behavior across all devices.
+ - To animate alerts when dismissing them, be sure to add the `.fade` and `.show` classes.
+ 
+ You can see this in action with a live demo:
+ 
+-<Example code={`<div class="alert theme-warning alert-dismissible fade show" role="alert">
++<Example code={`<div class="alert theme-warning fade show" role="alert">
+     <p>Something’s wrong, check the fields below and try again.</p>
+     <CloseButton dismiss="alert" class="ms-auto" />
+   </div>`} />
+diff --git a/site/src/content/docs/guides/migration.mdx b/site/src/content/docs/guides/migration.mdx
+index 6b48ed0abafe..0ff9c88db66c 100644
+--- a/site/src/content/docs/guides/migration.mdx
++++ b/site/src/content/docs/guides/migration.mdx
+@@ -208,6 +208,7 @@ Bootstrap 6 is a major release with many breaking changes to modernize our codeb
+   - Open state styling uses `details[open]` instead of JavaScript-toggled classes.
+   - Theme coloring via `.theme-*` classes on the `.accordion` wrapper.
+ - **Rebuilt close button markup.** `.btn-close` now renders its icon via a CSS `mask-image` (`--btn-close-icon`) tinted with `background-color: currentcolor`, so the button is self-contained—no child `<svg>` is required. The filter-based dark mode approach (`$btn-close-white-filter`) has been replaced by `currentcolor` inheritance, and the `.btn-close-white` class has been removed—on dark backgrounds (e.g., `.text-bg-dark`) the icon now inherits the contrast color automatically.
++- **Removed `.alert-dismissible`.** Dismissible alerts no longer require the `.alert-dismissible` modifier class. Place a `.btn-close` directly inside the alert—the alert's flex layout positions it automatically. Remove any `.alert-dismissible` class from your markup.
+ - **Restructured cards.** Borders now live on `.card-body` and `.card-list` segments rather than a single outer `.card` border. Added `--card-box-shadow` and `--card-body-gap` tokens. New variant classes: `.card-translucent` (frosted glass effect) and `.card-subtle` (themed with subtle backgrounds). Horizontal cards use a new `.card-row` class.
+ - **Reworked badge variants.** Badge color variants now use `.badge-subtle` and `.badge-outline` combined with `.theme-*` classes (e.g., `.badge-subtle .theme-primary`), replacing the v5 `.bg-primary` utility pattern on badges.
+ - **Updated breadcrumb markup.** Breadcrumbs now use `.breadcrumb-link` as an interactive element with padding, min-height, and hover background, and explicit `.breadcrumb-divider` elements as separators between items. An empty `.breadcrumb-divider` renders a default chevron via a CSS `mask-image` (`--breadcrumb-divider-icon`) tinted with `background-color: currentcolor`; add your own SVG, text, or markup inside it to override. This replaces the v5 `--bs-breadcrumb-divider` content string on the `.breadcrumb-item::before` pseudo-element.

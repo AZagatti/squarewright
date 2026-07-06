@@ -1,0 +1,280 @@
+diff --git a/.github/workflows/check.yml b/.github/workflows/check.yml
+index 30b58a660105..f9fcdbc0d38b 100644
+--- a/.github/workflows/check.yml
++++ b/.github/workflows/check.yml
+@@ -15,6 +15,8 @@ on:
+       - "pnpm-lock.yaml"
+       - "packages/astro/types.d.ts"
+ 
++permissions: {}
++
+ env:
+   ASTRO_TELEMETRY_DISABLED: true
+   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+@@ -25,11 +27,14 @@ jobs:
+   check:
+     name: astro check
+     runs-on: ubuntu-latest
++    permissions:
++      contents: read # Checkout only
+     timeout-minutes: 7
+     steps:
+       - name: Check out repository
+         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-
++        with:
++          persist-credentials: false
+       - name: Setup PNPM
+         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+ 
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 43082d5c39e7..d3e8fccae8d1 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -12,6 +12,8 @@ on:
+       - "**/*.md"
+       - ".github/ISSUE_TEMPLATE/**"
+ 
++permissions: {}
++
+ # Automatically cancel older in-progress jobs on the same branch
+ concurrency:
+   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request_target' && github.head_ref || github.ref }}
+@@ -33,7 +35,7 @@ jobs:
+   changes:
+     runs-on: ubuntu-latest
+     permissions:
+-      pull-requests: read
++      pull-requests: read # Required by dorny/paths-filter to read changed files
+     outputs:
+       language-tools: ${{ steps.filter.outputs.language-tools }}
+       astro-types: ${{ steps.filter.outputs.astro-types }}
+@@ -58,6 +60,8 @@ jobs:
+     name: "Build: ${{ matrix.os }}"
+     runs-on: ${{ matrix.os }}
+     timeout-minutes: 5
++    permissions:
++      contents: read # Checkout only
+     strategy:
+       matrix:
+         # windows-latest is still windows-2022 for some reason, even though the windows-2025 image is GA
+@@ -94,7 +98,7 @@ jobs:
+   biome-lint:
+     runs-on: ubuntu-latest
+     permissions:
+-      contents: read
++      contents: read # Checkout only
+     steps:
+       - name: Checkout
+         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+@@ -109,6 +113,8 @@ jobs:
+     name: Lint
+     runs-on: ubuntu-latest
+     timeout-minutes: 5
++    permissions:
++      contents: read # Checkout only
+     needs: 
+       - biome-lint
+     steps:
+@@ -147,6 +153,8 @@ jobs:
+     name: 'Test (${{ matrix.TEST_SUITE.name }}): ${{ matrix.os }} (node@${{ matrix.NODE_VERSION }})'
+     runs-on: ${{ matrix.os }}
+     timeout-minutes: 30
++    permissions:
++      contents: read # Checkout only
+     needs: build
+     strategy:
+       matrix:
+@@ -208,6 +216,8 @@ jobs:
+   test-language-tools:
+     runs-on: ${{ matrix.os }}
+     timeout-minutes: 30
++    permissions:
++      contents: read # Checkout only
+     needs:
+       - changes
+       - build
+@@ -267,6 +277,8 @@ jobs:
+     name: "Test (E2E): ${{ matrix.os }} (node@${{ matrix.NODE_VERSION }})"
+     runs-on: ${{ matrix.os }}
+     timeout-minutes: 30
++    permissions:
++      contents: read # Checkout only
+     needs: build
+     strategy:
+       matrix:
+@@ -304,6 +316,8 @@ jobs:
+     name: "Test (Smoke): ${{ matrix.os }} (node@${{ matrix.NODE_VERSION }})"
+     runs-on: ${{ matrix.os }}
+     timeout-minutes: 30
++    permissions:
++      contents: read # Checkout only
+     needs: build
+     strategy:
+       matrix:
+diff --git a/.github/workflows/congrats.yml b/.github/workflows/congrats.yml
+index 96282b7a73ab..4ba4e0e27e55 100644
+--- a/.github/workflows/congrats.yml
++++ b/.github/workflows/congrats.yml
+@@ -5,6 +5,8 @@ on:
+     branches:
+       - main
+ 
++permissions: {}
++
+ jobs:
+   congrats:
+     name: congratsbot
+diff --git a/.github/workflows/continuous_benchmark.yml b/.github/workflows/continuous_benchmark.yml
+index 78ca2323ad3e..85b9fd412726 100644
+--- a/.github/workflows/continuous_benchmark.yml
++++ b/.github/workflows/continuous_benchmark.yml
+@@ -15,6 +15,8 @@ on:
+       - 'packages/astro/src/**/*.ts'
+       - 'benchmark/**'
+ 
++permissions: {}
++
+ env:
+   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+   TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+@@ -29,8 +31,8 @@ jobs:
+       matrix:
+         shard: [ "1/4", "2/4", "3/4", "4/4" ]
+     permissions:
+-      contents: read
+-      pull-requests: write
++      contents: read # Checkout only
++      pull-requests: write # CodSpeed posts benchmark results as PR comment
+     steps:
+       - name: Check out repository
+         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+diff --git a/.github/workflows/issue-triage.yml b/.github/workflows/issue-triage.yml
+index fc877c12beae..625dd98b6ba3 100644
+--- a/.github/workflows/issue-triage.yml
++++ b/.github/workflows/issue-triage.yml
+@@ -6,6 +6,8 @@ on:
+   issue_comment:
+     types: [created]
+ 
++permissions: {}
++
+ env:
+   PNPM_STORE_DIR: .pnpm-store
+ 
+@@ -22,7 +24,7 @@ jobs:
+       (github.event.action == 'opened' || github.event.action == 'reopened')
+     runs-on: ubuntu-latest
+     permissions:
+-      issues: write
++      issues: write # Add "needs triage" label
+     steps:
+       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+         with:
+@@ -48,8 +50,8 @@ jobs:
+     runs-on: ubuntu-latest
+     timeout-minutes: 60
+     permissions:
+-      contents: write
+-      issues: read
++      contents: write # Push fix branches
++      issues: read # Read issue details for triage
+     steps:
+       - name: Checkout
+         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+diff --git a/.github/workflows/merge-fix.yml b/.github/workflows/merge-fix.yml
+index e42d999d7299..409596ef678a 100644
+--- a/.github/workflows/merge-fix.yml
++++ b/.github/workflows/merge-fix.yml
+@@ -14,6 +14,8 @@ on:
+         required: false
+         type: string
+ 
++permissions: {}
++
+ env:
+   IMAGE: ghcr.io/${{ github.repository }}/flue-sandbox
+ 
+@@ -31,9 +33,9 @@ jobs:
+     runs-on: ubuntu-latest
+     timeout-minutes: 30
+     permissions:
+-      contents: write
+-      pull-requests: write
+-      packages: read
++      contents: write # Push fix commits
++      pull-requests: write # Update PR
++      packages: read # Pull sandbox image from GHCR
+     steps:
+       - name: Lowercase image name
+         run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+diff --git a/.github/workflows/merge-main-to-next.yml b/.github/workflows/merge-main-to-next.yml
+index 8012a08cbbf4..7236606c9dc6 100644
+--- a/.github/workflows/merge-main-to-next.yml
++++ b/.github/workflows/merge-main-to-next.yml
+@@ -5,6 +5,8 @@ on:
+     types: [release-published]
+   workflow_dispatch:
+ 
++permissions: {}
++
+ env:
+   IMAGE: ghcr.io/${{ github.repository }}/flue-sandbox
+ 
+@@ -15,9 +17,9 @@ jobs:
+     runs-on: ubuntu-latest
+     timeout-minutes: 30
+     permissions:
+-      contents: write
+-      pull-requests: write
+-      packages: read
++      contents: write # Push merge branch
++      pull-requests: write # Create/update merge PR
++      packages: read # Pull sandbox image from GHCR
+     steps:
+       - name: Lowercase image name
+         run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+diff --git a/.github/workflows/scripts.yml b/.github/workflows/scripts.yml
+index 42599f43b916..0711d8648c91 100644
+--- a/.github/workflows/scripts.yml
++++ b/.github/workflows/scripts.yml
+@@ -9,6 +9,8 @@ on:
+       - "packages/astro/src/runtime/client/**/*"
+       - "!packages/astro/src/runtime/client/dev-toolbar/**/*"
+ 
++permissions: {}
++
+ # Automatically cancel in-progress actions on the same branch
+ concurrency:
+   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request_target' && github.head_ref || github.ref }}
+@@ -22,6 +24,9 @@ jobs:
+   bundle:
+     name: Bundle Size
+     runs-on: ubuntu-latest
++    permissions:
++      contents: read # Checkout only
++      pull-requests: write # Post bundle size comparison comment
+     steps:
+       - name: Checkout Repo
+         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+diff --git a/.github/workflows/semgrep.yml b/.github/workflows/semgrep.yml
+index f7171c43be5b..b40278da6b60 100644
+--- a/.github/workflows/semgrep.yml
++++ b/.github/workflows/semgrep.yml
+@@ -1,4 +1,7 @@
+ name: Semgrep OSS scan
++
++permissions: {}
++
+ on:
+   pull_request: {}
+   schedule:
+@@ -7,6 +10,8 @@ jobs:
+   semgrep:
+     name: semgrep-oss
+     runs-on: ubuntu-latest
++    permissions:
++      contents: read # Checkout only
+     container:
+       image: semgrep/semgrep@sha256:40579a2e70910d891959a4868711ba0399293949a2f1f141ddb5002d5fc7dd0f # v1.157.0
+     steps:

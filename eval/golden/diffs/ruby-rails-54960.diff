@@ -1,0 +1,52 @@
+diff --git a/activerecord/lib/active_record/connection_adapters/schema_cache.rb b/activerecord/lib/active_record/connection_adapters/schema_cache.rb
+index 77ea0f46e7799..aded7283aa7d7 100644
+--- a/activerecord/lib/active_record/connection_adapters/schema_cache.rb
++++ b/activerecord/lib/active_record/connection_adapters/schema_cache.rb
+@@ -271,10 +271,10 @@ def initialize_dup(other) # :nodoc:
+       end
+ 
+       def encode_with(coder) # :nodoc:
+-        coder["columns"]          = @columns.sort.to_h
++        coder["columns"]          = @columns.sort.to_h.transform_values { _1.sort_by(&:name) }
+         coder["primary_keys"]     = @primary_keys.sort.to_h
+         coder["data_sources"]     = @data_sources.sort.to_h
+-        coder["indexes"]          = @indexes.sort.to_h
++        coder["indexes"]          = @indexes.sort.to_h.transform_values { _1.sort_by(&:name) }
+         coder["version"]          = @version
+       end
+ 
+diff --git a/activerecord/test/cases/connection_adapters/schema_cache_test.rb b/activerecord/test/cases/connection_adapters/schema_cache_test.rb
+index 992a6896099be..ebd42efb3e71a 100644
+--- a/activerecord/test/cases/connection_adapters/schema_cache_test.rb
++++ b/activerecord/test/cases/connection_adapters/schema_cache_test.rb
+@@ -467,11 +467,15 @@ def test_when_lazily_load_schema_cache_is_set_cache_is_lazily_populated_when_est
+         values = [["z", nil], ["y", nil], ["x", nil]]
+         expected = values.sort.to_h
+ 
++        named = Struct.new(:name)
++        named_values = [["z", [named.new("c"), named.new("b")]], ["y", [named.new("c"), named.new("b")]], ["x", [named.new("c"), named.new("b")]]]
++        named_expected = named_values.sort.to_h.transform_values { _1.sort_by(&:name) }
++
+         coder = {
+-          "columns" => values,
++          "columns" => named_values,
+           "primary_keys" => values,
+           "data_sources" => values,
+-          "indexes" => values,
++          "indexes" => named_values,
+           "deduplicated" => true
+         }
+ 
+@@ -479,10 +483,10 @@ def test_when_lazily_load_schema_cache_is_set_cache_is_lazily_populated_when_est
+         schema_cache.init_with(coder)
+         schema_cache.encode_with(coder)
+ 
+-        assert_equal expected, coder["columns"]
++        assert_equal named_expected, coder["columns"]
+         assert_equal expected, coder["primary_keys"]
+         assert_equal expected, coder["data_sources"]
+-        assert_equal expected, coder["indexes"]
++        assert_equal named_expected, coder["indexes"]
+         assert coder.key?("version")
+       end
+ 

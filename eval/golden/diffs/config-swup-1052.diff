@@ -1,0 +1,132 @@
+diff --git a/tests/functional/link-resolution.spec.ts b/tests/functional/link-resolution.spec.ts
+index 585be4ce..c52043d6 100644
+--- a/tests/functional/link-resolution.spec.ts
++++ b/tests/functional/link-resolution.spec.ts
+@@ -40,7 +40,7 @@ test.describe('link resolution', () => {
+ 		await page.exposeBinding('navigated', () => (navigated = true));
+ 		await page.evaluate(() => {
+ 			window._swup.options.linkToSelf = 'navigate';
+-			window._swup.hooks.on('visit:start', () => window.navigated());
++			window._swup.hooks.on('visit:start', () => window.navigated?.());
+ 		});
+ 		scrollToPosition(page, 200);
+ 		await expectScrollPosition(page, 200);
+diff --git a/tests/support/commands.ts b/tests/support/commands.ts
+index 76e26f73..82b3e504 100644
+--- a/tests/support/commands.ts
++++ b/tests/support/commands.ts
+@@ -1,4 +1,5 @@
+-import { expect, Locator, Page, Request } from '@playwright/test';
++import { expect } from '@playwright/test';
++import type { Locator, Page, Request } from '@playwright/test';
+ 
+ export function sleep(timeout = 0): Promise<void> {
+   return new Promise((resolve) => setTimeout(() => resolve(undefined), timeout))
+diff --git a/tests/support/swup.ts b/tests/support/swup.ts
+index 0fc95097..cd5c69e6 100644
+--- a/tests/support/swup.ts
++++ b/tests/support/swup.ts
+@@ -7,6 +7,7 @@ declare global {
+ 	interface Window {
+ 		_swup: Swup;
+ 		data: any;
++		navigated?: () => void;
+ 	}
+ }
+ 
+@@ -15,7 +16,7 @@ export async function waitForSwup(page: Page) {
+ }
+ 
+ export function navigateWithSwup(page: Page, url: string, options?: Parameters<Swup['navigate']>[1]) {
+-	return page.evaluate(({ url, options }) => window._swup.navigate(url, options), { url, options });
++	return page.evaluate(({ url, options }) => window._swup.navigate(url, options), { url, options } as any);
+ }
+ 
+ export async function pushSwupHistoryState(page: Page, url: string, data: Record<string, unknown> = {}) {
+diff --git a/tests/unit/cache.test.ts b/tests/unit/cache.test.ts
+index d7dedb2e..c317de03 100644
+--- a/tests/unit/cache.test.ts
++++ b/tests/unit/cache.test.ts
+@@ -1,6 +1,7 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest';
+ import Swup from '../../src/Swup.js';
+-import { Cache, CacheData } from '../../src/modules/Cache.js';
++import { Cache } from '../../src/modules/Cache.js';
++import type { CacheData } from '../../src/modules/Cache.js';
+ import { Visit } from '../../src/modules/Visit.js';
+ 
+ interface CacheTtlData {
+@@ -143,7 +144,19 @@ describe('Cache', () => {
+ 	});
+ });
+ 
++// Augment CacheData via declaration merging — only possible if it's an interface
++declare module '../../src/modules/Cache.js' {
++	interface CacheData {
++		customProp?: string;
++	}
++}
++
+ describe('Types', () => {
++	it('CacheData can be augmented via declaration merging', () => {
++		const cache = new Cache(new Swup());
++		cache.set('/page', { url: '/page', html: '', customProp: 'hello' });
++	});
++
+ 	it('error when necessary', async () => {
+ 		const swup = new Swup();
+ 		const cache = new Cache(swup);
+diff --git a/tests/unit/delegateEvent.test.ts b/tests/unit/delegateEvent.test.ts
+index d9e78fc8..f0c4da8a 100644
+--- a/tests/unit/delegateEvent.test.ts
++++ b/tests/unit/delegateEvent.test.ts
+@@ -1,4 +1,4 @@
+-import { DelegateEvent } from 'delegate-it';
++import type { DelegateEvent } from 'delegate-it';
+ import { describe, it } from 'vitest';
+ 
+ import { delegateEvent } from '../../src/helpers/delegateEvent.js';
+diff --git a/tests/unit/ignoreVisit.test.ts b/tests/unit/ignoreVisit.test.ts
+index a4382aea..417202de 100644
+--- a/tests/unit/ignoreVisit.test.ts
++++ b/tests/unit/ignoreVisit.test.ts
+@@ -1,4 +1,4 @@
+-import { DelegateEvent } from 'delegate-it';
++import type { DelegateEvent } from 'delegate-it';
+ import { describe, expect, it, vi } from 'vitest';
+ 
+ import Swup from '../../src/index.js';
+diff --git a/tests/unit/swup.test.ts b/tests/unit/swup.test.ts
+index d3d9c193..dedbc0ec 100644
+--- a/tests/unit/swup.test.ts
++++ b/tests/unit/swup.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it } from 'vitest';
+ 
+-import pckg from '../../package.json';
++import pckg from '../../package.json' with { type: 'json' };
+ import Swup, { Location } from '../../src/index.js';
+ import { Cache } from '../../src/modules/Cache.js';
+ import { Hooks } from '../../src/modules/Hooks.js';
+diff --git a/tsconfig.json b/tsconfig.json
+index 9faa8f2a..3545abcb 100644
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -1,6 +1,7 @@
+ {
+   /** @see https://www.totaltypescript.com/tsconfig-cheat-sheet#quickstart */
+-  "include": ["src"],
++  "include": ["src", "tests"],
++  "exclude": ["tests/fixtures"],
+   "compilerOptions": {
+     /* Base Options: */
+     "esModuleInterop": true,
+@@ -16,7 +17,7 @@
+     /* If transpiling with TypeScript: */
+     "moduleResolution": "NodeNext",
+     "module": "NodeNext",
+-    "rootDir": "src",
++    "rootDir": ".",
+     "outDir": "dist",
+     "sourceMap": true,
+     /* If your code runs in the DOM: */

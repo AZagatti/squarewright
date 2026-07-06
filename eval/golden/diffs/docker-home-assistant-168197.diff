@@ -1,0 +1,46 @@
+diff --git a/Dockerfile b/Dockerfile
+index 460a738f1c6a1..e27c159645e64 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -34,8 +34,7 @@ RUN \
+ WORKDIR /usr/src
+ 
+ ## Setup Home Assistant Core dependencies
+-COPY requirements.txt homeassistant/
+-COPY homeassistant/package_constraints.txt homeassistant/homeassistant/
++COPY --parents requirements.txt homeassistant/package_constraints.txt homeassistant/
+ RUN \
+     uv pip install \
+         --no-build \
+@@ -51,7 +50,7 @@ RUN \
+         -r homeassistant/requirements_all.txt
+ 
+ ## Setup Home Assistant Core
+-COPY . homeassistant/
++COPY --parents LICENSE* README* homeassistant/ pyproject.toml homeassistant/
+ RUN \
+     uv pip install \
+         -e ./homeassistant \
+diff --git a/script/hassfest/docker.py b/script/hassfest/docker.py
+index 61fd416ee1382..cef1a6eb6b3a5 100644
+--- a/script/hassfest/docker.py
++++ b/script/hassfest/docker.py
+@@ -49,8 +49,7 @@
+ WORKDIR /usr/src
+ 
+ ## Setup Home Assistant Core dependencies
+-COPY requirements.txt homeassistant/
+-COPY homeassistant/package_constraints.txt homeassistant/homeassistant/
++COPY --parents requirements.txt homeassistant/package_constraints.txt homeassistant/
+ RUN \
+     uv pip install \
+         --no-build \
+@@ -66,7 +65,7 @@
+         -r homeassistant/requirements_all.txt
+ 
+ ## Setup Home Assistant Core
+-COPY . homeassistant/
++COPY --parents LICENSE* README* homeassistant/ pyproject.toml homeassistant/
+ RUN \
+     uv pip install \
+         -e ./homeassistant \

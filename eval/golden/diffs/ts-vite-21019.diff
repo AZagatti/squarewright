@@ -1,0 +1,103 @@
+diff --git a/packages/create-vite/src/index.ts b/packages/create-vite/src/index.ts
+index 5c3efcfc4b67cd..7b562071613200 100755
+--- a/packages/create-vite/src/index.ts
++++ b/packages/create-vite/src/index.ts
+@@ -644,7 +644,11 @@ async function init() {
+       )
+       fs.writeFileSync(targetPath, updatedContent)
+     } else {
+-      copy(path.join(templateDir, file), targetPath)
++      // eslint-disable-next-line n/no-unsupported-features/node-builtins -- it is not experimental in Node 22.3+
++      fs.cpSync(path.join(templateDir, file), targetPath, {
++        recursive: true,
++        mode: fs.constants.COPYFILE_FICLONE,
++      })
+     }
+   }
+ 
+@@ -710,15 +714,6 @@ function formatTargetDir(targetDir: string) {
+   return targetDir.trim().replace(/\/+$/g, '')
+ }
+ 
+-function copy(src: string, dest: string) {
+-  const stat = fs.statSync(src)
+-  if (stat.isDirectory()) {
+-    copyDir(src, dest)
+-  } else {
+-    fs.copyFileSync(src, dest)
+-  }
+-}
+-
+ function isValidPackageName(projectName: string) {
+   return /^(?:@[a-z\d\-*~][a-z\d\-*._~]*\/)?[a-z\d\-~][a-z\d\-._~]*$/.test(
+     projectName,
+@@ -734,15 +729,6 @@ function toValidPackageName(projectName: string) {
+     .replace(/[^a-z\d\-~]+/g, '-')
+ }
+ 
+-function copyDir(srcDir: string, destDir: string) {
+-  fs.mkdirSync(destDir, { recursive: true })
+-  for (const file of fs.readdirSync(srcDir)) {
+-    const srcFile = path.resolve(srcDir, file)
+-    const destFile = path.resolve(destDir, file)
+-    copy(srcFile, destFile)
+-  }
+-}
+-
+ function isEmpty(path: string) {
+   const files = fs.readdirSync(path)
+   return files.length === 0 || (files.length === 1 && files[0] === '.git')
+diff --git a/packages/vite/src/node/plugins/prepareOutDir.ts b/packages/vite/src/node/plugins/prepareOutDir.ts
+index 9ee4b3c4b9419c..25adb9ad01f9f5 100644
+--- a/packages/vite/src/node/plugins/prepareOutDir.ts
++++ b/packages/vite/src/node/plugins/prepareOutDir.ts
+@@ -4,7 +4,7 @@ import colors from 'picocolors'
+ import type { Plugin } from '../plugin'
+ import { getResolvedOutDirs, resolveEmptyOutDir } from '../watch'
+ import type { Environment } from '../environment'
+-import { copyDir, emptyDir, normalizePath } from '../utils'
++import { emptyDir, normalizePath } from '../utils'
+ import { withTrailingSlash } from '../../shared/utils'
+ 
+ export function prepareOutDirPlugin(): Plugin {
+@@ -86,7 +86,11 @@ function prepareOutDir(
+           ),
+         )
+       }
+-      copyDir(publicDir, outDir)
++      // eslint-disable-next-line n/no-unsupported-features/node-builtins -- it is not experimental in Node 22.3+
++      fs.cpSync(publicDir, outDir, {
++        recursive: true,
++        mode: fs.constants.COPYFILE_FICLONE,
++      })
+     }
+   }
+ }
+diff --git a/packages/vite/src/node/utils.ts b/packages/vite/src/node/utils.ts
+index 68c1883fdcca56..e5b226f4c3b5f3 100644
+--- a/packages/vite/src/node/utils.ts
++++ b/packages/vite/src/node/utils.ts
+@@ -624,23 +624,6 @@ export function emptyDir(dir: string, skip?: string[]): void {
+   }
+ }
+ 
+-export function copyDir(srcDir: string, destDir: string): void {
+-  fs.mkdirSync(destDir, { recursive: true })
+-  for (const file of fs.readdirSync(srcDir)) {
+-    const srcFile = path.resolve(srcDir, file)
+-    if (srcFile === destDir) {
+-      continue
+-    }
+-    const destFile = path.resolve(destDir, file)
+-    const stat = fs.statSync(srcFile)
+-    if (stat.isDirectory()) {
+-      copyDir(srcFile, destFile)
+-    } else {
+-      fs.copyFileSync(srcFile, destFile)
+-    }
+-  }
+-}
+-
+ export const ERR_SYMLINK_IN_RECURSIVE_READDIR =
+   'ERR_SYMLINK_IN_RECURSIVE_READDIR'
+ export async function recursiveReaddir(dir: string): Promise<string[]> {

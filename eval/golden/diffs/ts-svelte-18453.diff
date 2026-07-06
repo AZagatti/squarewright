@@ -1,0 +1,115 @@
+diff --git a/.changeset/late-geese-fix.md b/.changeset/late-geese-fix.md
+new file mode 100644
+index 000000000000..b8e83fc8cd8a
+--- /dev/null
++++ b/.changeset/late-geese-fix.md
+@@ -0,0 +1,5 @@
++---
++'svelte': patch
++---
++
++fix: always unset reactivity context after restoring it
+diff --git a/packages/svelte/src/internal/client/reactivity/async.js b/packages/svelte/src/internal/client/reactivity/async.js
+index 13b6e42b3e2a..2e7df92dc0af 100644
+--- a/packages/svelte/src/internal/client/reactivity/async.js
++++ b/packages/svelte/src/internal/client/reactivity/async.js
+@@ -25,6 +25,7 @@ import {
+ 	set_reactivity_loss_tracker
+ } from './deriveds.js';
+ import { aborted } from './effects.js';
++import { queue_micro_task } from '../dom/task.js';
+ 
+ /**
+  * @param {Blocker[]} blockers
+@@ -169,6 +170,7 @@ export async function save(promise) {
+ 
+ 	return () => {
+ 		restore();
++		queue_micro_task(unset_context);
+ 		return value;
+ 	};
+ }
+diff --git a/packages/svelte/tests/runtime-runes/samples/async-parallel-derived-template-mutation/_config.js b/packages/svelte/tests/runtime-runes/samples/async-parallel-derived-template-mutation/_config.js
+new file mode 100644
+index 000000000000..9650e8899300
+--- /dev/null
++++ b/packages/svelte/tests/runtime-runes/samples/async-parallel-derived-template-mutation/_config.js
+@@ -0,0 +1,44 @@
++import { tick } from 'svelte';
++import { test } from '../../test';
++
++export default test({
++	mode: ['client'],
++
++	compileOptions: {
++		dev: true
++	},
++
++	async test({ assert, target, errors }) {
++		await tick();
++		const [increment, update, resolve] = target.querySelectorAll('button');
++
++		increment.click();
++		await tick();
++
++		resolve.click();
++		await tick();
++
++		update.click();
++		await tick();
++
++		resolve.click();
++		await tick();
++
++		assert.deepEqual(
++			errors.filter((error) => error.includes('state_unsafe_mutation')),
++			[]
++		);
++		assert.htmlEqual(
++			target.innerHTML,
++			`
++				<button>increment</button>
++				<button>update</button>
++				<button>resolve</button>
++				<p>count: 1</p>	
++				<p>submits: 1</p>	
++				<p>pending: 0</p>	
++				<p>2</p>	
++			`
++		);
++	}
++});
+diff --git a/packages/svelte/tests/runtime-runes/samples/async-parallel-derived-template-mutation/main.svelte b/packages/svelte/tests/runtime-runes/samples/async-parallel-derived-template-mutation/main.svelte
+new file mode 100644
+index 000000000000..d9c804b3142b
+--- /dev/null
++++ b/packages/svelte/tests/runtime-runes/samples/async-parallel-derived-template-mutation/main.svelte
+@@ -0,0 +1,28 @@
++<script>
++	const queued = [];
++
++	function push(value) {
++		if(!value) return value;
++		return new Promise((resolve) => queued.push(() => resolve(value)));
++	}
++
++	let count = $state(0);
++	let submits = $state(0);
++
++	const a = $derived(push(count));
++	const b = $derived(push(count));
++
++	async function updateAfterPromise() {
++		await Promise.resolve(); 
++		submits += 1;
++	}
++</script>
++
++<button onclick={() => (count += 1)}>increment</button>
++<button onclick={updateAfterPromise}>update</button>
++<button onclick={() => queued.shift()?.()}>resolve</button>
++
++<p>count: {count}</p>
++<p>submits: {submits}</p>
++<p>pending: {$effect.pending()}</p>
++<p>{await a + await b}</p>

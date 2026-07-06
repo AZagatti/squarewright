@@ -1,0 +1,56 @@
+diff --git a/context.go b/context.go
+index e1d9be4356..c42459ff67 100644
+--- a/context.go
++++ b/context.go
+@@ -989,7 +989,8 @@ func (c *Context) ClientIP() string {
+ 
+ 	if trusted && c.engine.ForwardedByClientIP && c.engine.RemoteIPHeaders != nil {
+ 		for _, headerName := range c.engine.RemoteIPHeaders {
+-			ip, valid := c.engine.validateHeader(c.requestHeader(headerName))
++			headerValue := strings.Join(c.Request.Header.Values(headerName), ",")
++			ip, valid := c.engine.validateHeader(headerValue)
+ 			if valid {
+ 				return ip
+ 			}
+diff --git a/context_test.go b/context_test.go
+index 016fa86dc5..3080015c8c 100644
+--- a/context_test.go
++++ b/context_test.go
+@@ -1143,6 +1143,37 @@ func TestContextRenderNoContentIndentedJSON(t *testing.T) {
+ 	assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
+ }
+ 
++func TestContextClientIPWithMultipleHeaders(t *testing.T) {
++	c, _ := CreateTestContext(httptest.NewRecorder())
++	c.Request, _ = http.NewRequest(http.MethodGet, "/test", nil)
++
++	// Multiple X-Forwarded-For headers
++	c.Request.Header.Add("X-Forwarded-For", "1.2.3.4, "+localhostIP)
++	c.Request.Header.Add("X-Forwarded-For", "5.6.7.8")
++	c.Request.RemoteAddr = localhostIP + ":1234"
++
++	c.engine.ForwardedByClientIP = true
++	c.engine.RemoteIPHeaders = []string{"X-Forwarded-For"}
++	_ = c.engine.SetTrustedProxies([]string{localhostIP})
++
++	// Should return 5.6.7.8 (last non-trusted IP)
++	assert.Equal(t, "5.6.7.8", c.ClientIP())
++}
++
++func TestContextClientIPWithSingleHeader(t *testing.T) {
++	c, _ := CreateTestContext(httptest.NewRecorder())
++	c.Request, _ = http.NewRequest(http.MethodGet, "/test", nil)
++	c.Request.Header.Set("X-Forwarded-For", "1.2.3.4, "+localhostIP)
++	c.Request.RemoteAddr = localhostIP + ":1234"
++
++	c.engine.ForwardedByClientIP = true
++	c.engine.RemoteIPHeaders = []string{"X-Forwarded-For"}
++	_ = c.engine.SetTrustedProxies([]string{localhostIP})
++
++	// Should return 1.2.3.4
++	assert.Equal(t, "1.2.3.4", c.ClientIP())
++}
++
+ // Tests that the response is serialized as Secure JSON
+ // and Content-Type is set to application/json
+ func TestContextRenderSecureJSON(t *testing.T) {

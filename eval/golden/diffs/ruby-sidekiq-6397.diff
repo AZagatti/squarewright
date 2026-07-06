@@ -1,0 +1,85 @@
+diff --git a/lib/sidekiq/api.rb b/lib/sidekiq/api.rb
+index 8227af3bfc..0cc6eead7e 100644
+--- a/lib/sidekiq/api.rb
++++ b/lib/sidekiq/api.rb
+@@ -813,8 +813,8 @@ def initialize
+ 
+     # Add the given job to the Dead set.
+     # @param message [String] the job data as JSON
+-    # @option opts :notify_failure [Boolean] (true) Whether death handlers should be called
+-    # @option opts :ex [Exception] (RuntimeError) An exception to pass to the death handlers
++    # @option opts [Boolean] :notify_failure  (true) Whether death handlers should be called
++    # @option opts [Exception] :ex (RuntimeError) An exception to pass to the death handlers
+     def kill(message, opts = {})
+       now = Time.now.to_f
+       Sidekiq.redis do |conn|
+@@ -828,7 +828,7 @@ def kill(message, opts = {})
+       if opts[:notify_failure] != false
+         job = Sidekiq.load_json(message)
+         if opts[:ex]
+-          ex = opt[:ex]
++          ex = opts[:ex]
+         else
+           ex = RuntimeError.new("Job killed by API")
+           ex.set_backtrace(caller)
+diff --git a/test/api_test.rb b/test/api_test.rb
+index a0acd8549f..7791ccdc6a 100644
+--- a/test/api_test.rb
++++ b/test/api_test.rb
+@@ -727,4 +727,56 @@ def add_retry(jid = "bob", at = Time.now.to_f)
+       end
+     end
+   end
++
++  describe "dead set" do
++    after do
++      @cfg.death_handlers.clear
++    end
++
++    it "can kill a job" do
++      death_handler_call_count = 0
++      expected_ex = RuntimeError.new("Job killed by API")
++      @cfg.death_handlers << ->(_job, ex) do
++        death_handler_call_count += 1
++        assert_equal expected_ex.message, ex.message
++      end
++      job_id = ApiJob.perform_in(100, 1, '{"foo":123}')
++      job = Sidekiq::ScheduledSet.new.find_job(job_id)
++      ds = Sidekiq::DeadSet.new
++      assert_equal 0, ds.size
++      ds.kill(job.value)
++      assert_equal 1, ds.size
++      assert_equal 1, death_handler_call_count
++    end
++
++    it "can kill a job without notifying failure" do
++      death_handler_call_count = 0
++      Sidekiq.default_configuration.death_handlers << ->(_job, _ex) do
++        death_handler_call_count += 1
++      end
++      job_id = ApiJob.perform_in(100, 1, '{"foo":123}')
++      job = Sidekiq::ScheduledSet.new.find_job(job_id)
++      ds = Sidekiq::DeadSet.new
++      assert_equal 0, ds.size
++      ds.kill(job.value, notify_failure: false)
++      assert_equal 1, ds.size
++      assert_equal 0, death_handler_call_count
++    end
++
++    it "can kill a job with a custom exception" do
++      death_handler_call_count = 0
++      expected_ex = StandardError.new("custom error")
++      Sidekiq.default_configuration.death_handlers << ->(_job, ex) do
++        death_handler_call_count += 1
++        assert_equal expected_ex.message, ex.message
++      end
++      job_id = ApiJob.perform_in(100, 1, '{"foo":123}')
++      job = Sidekiq::ScheduledSet.new.find_job(job_id)
++      ds = Sidekiq::DeadSet.new
++      assert_equal 0, ds.size
++      ds.kill(job.value, ex: expected_ex)
++      assert_equal 1, ds.size
++      assert_equal 1, death_handler_call_count
++    end
++  end
+ end

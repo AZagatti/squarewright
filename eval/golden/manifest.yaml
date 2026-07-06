@@ -1,0 +1,216 @@
+# Golden PRs corpus — see README.md. 18 real PRs across 9 stacks; 9 clean + 9 has-issue.
+# Every has-issue case is evidence-backed (a revert PR or a documented follow-up regression).
+# Freeze diffs with:  bun run scripts/eval.ts --freeze
+cases:
+  # ── Rust ──────────────────────────────────────────────────────────────────
+  - id: rust-tokio-7757
+    repo: tokio-rs/tokio
+    pr: 7757
+    stack: rust
+    kind: perf
+    size: "+340/-126"
+    label: has-issue
+    note: "Shards the spawn_blocking queue (single mutex -> 16 shards). Well-benchmarked but the sharded locking/selection logic can deadlock/hang spawn_blocking; hang persisted even at NUM_SHARDS=1, so the bug is in the queue/locking design."
+    evidence: "Reverted 6 days later by tokio-rs/tokio#8057 ('revert #7757 to fix regression'): 'introduced a regression that causes programs using spawn_blocking to hang (see #8056)'."
+    expect_loci:
+      - path: tokio/src/runtime/blocking/pool.rs
+        about: "Shard selection / lock acquisition interacts badly with existing spawn_blocking bookkeeping and can hang."
+      - path: tokio/src/runtime/blocking/sharded_queue.rs
+        about: "New sharded queue is the deadlock source; hang persists at NUM_SHARDS=1."
+  - id: rust-ripgrep-3420
+    repo: BurntSushi/ripgrep
+    pr: 3420
+    stack: rust
+    kind: bugfix
+    size: "+208/-136"
+    label: clean
+    note: "Scopes compiled parent .gitignore/.ignore matchers to their directory root. Real matching-logic change, hashed out over 9 review rounds. A good reviewer stays clean (trivial nits at most)."
+    evidence: "Merged, APPROVED by MichaReiser and owner BurntSushi; no later revert/fixup referencing #3420."
+
+  # ── TypeScript / JavaScript ───────────────────────────────────────────────
+  - id: ts-vite-21019
+    repo: vitejs/vite
+    pr: 21019
+    stack: ts
+    kind: refactor
+    size: "+11/-38"
+    label: has-issue
+    note: "Replaces custom recursive copyDir with Node fs.cpSync. Looks like a clean simplification but fs.cpSync mishandles non-ASCII paths on Windows, and the PR omits dereference:true, changing symlink-copy semantics."
+    evidence: "Reverted ~10 days later by vitejs/vite#21081: 'fs.cpSync has a bug that affects Windows non-ascii paths (nodejs/node#58768) ... also a bug for dereference:true (nodejs/node#59168), which we should have set'."
+    expect_loci:
+      - path: packages/vite/src/node/utils.ts
+        about: "Drops custom copyDir for fs.cpSync without handling the known Windows non-ASCII-path bug."
+      - path: packages/create-vite/src/index.ts
+        about: "Switches template copy to fs.cpSync but omits dereference:true, changing symlink handling."
+  - id: ts-svelte-18453
+    repo: sveltejs/svelte
+    pr: 18453
+    stack: ts
+    kind: bugfix
+    size: "+79/-0"
+    label: clean
+    note: "Always unsets the reactivity-tracking context after temporary restore, even on early-return/exception paths; fixes a state leak with a regression test. Small, targeted, test-covered."
+    evidence: "Merged, APPROVED by Rich-Harris; no later revert/fixup."
+
+  # ── CSS / styling ─────────────────────────────────────────────────────────
+  - id: css-tailwindcss-17247
+    repo: tailwindlabs/tailwindcss
+    pr: 17247
+    stack: css
+    kind: bugfix
+    size: "+54/-38"
+    label: has-issue
+    note: "Swaps color-mix(currentColor) for oklab(from currentColor ...) in withAlpha() + Preflight to fix a Safari crash. The replacement breaks placeholder rendering on older Chrome and applies alpha as a flat percent instead of composing it."
+    evidence: "Reverted 3 days later by tailwindlabs/tailwindcss#17306: 'does break older versions of Chrome ... implementation was also wrong as it always set alpha to the specific percent instead of applying it additively'."
+    expect_loci:
+      - path: packages/tailwindcss/src/utilities.ts
+        about: "withAlpha() currentColor special-case regresses older Chrome and mis-applies alpha as a flat percentage."
+      - path: packages/tailwindcss/preflight.css
+        about: "Placeholder rule adopts the same broken oklab(from currentColor ...) pattern."
+  - id: css-bootstrap-42520
+    repo: twbs/bootstrap
+    pr: 42520
+    stack: css
+    kind: refactor
+    size: "+33/-28"
+    label: clean
+    note: "Removes internal/docs usages of the already-deprecated .alert-dismissible in favor of the current pattern. Small, mechanical, consistent with the project's own deprecation."
+    evidence: "Merged, APPROVED by lead maintainer mdo after two review rounds; no later revert."
+
+  # ── Go ────────────────────────────────────────────────────────────────────
+  - id: go-cli-10547
+    repo: cli/cli
+    pr: 10547
+    stack: go
+    kind: bugfix
+    size: "+30/-12"
+    label: has-issue
+    note: "Reorders Title/Body assignment and drops the Autofill/FillFirst guard around the WebMode branch, so `gh pr create --web` always overrides an explicit PR template even when no --title/--body/--fill is given."
+    evidence: "Regression issue cli/cli#11277 (shipped v2.75.0), reverted by cli/cli#11300 ('Reverts cli/cli#10547 ... based on new regression in #11277')."
+    expect_loci:
+      - path: pkg/cmd/pr/create/create.go
+        about: "Autofilled title/body now populates the --web browser form unconditionally, overriding PULL_REQUEST_TEMPLATE.md."
+  - id: go-gin-4472
+    repo: gin-gonic/gin
+    pr: 4472
+    stack: go
+    kind: bugfix
+    size: "+33/-1"
+    label: clean
+    note: "ClientIP() now joins all values of a repeated X-Forwarded-For header via Header.Values() instead of only the first via Get(), per spec. Security-relevant, test-covered."
+    evidence: "Merged, APPROVED by two reviewers incl. maintainer appleboy (one trivial nit); fixes gin#4468."
+
+  # ── Python ────────────────────────────────────────────────────────────────
+  - id: python-requests-6667
+    repo: psf/requests
+    pr: 6667
+    stack: python
+    kind: perf
+    size: "+28/-18"
+    label: has-issue
+    note: "Introduces a module-level shared mutable SSLContext loaded at import time and reused for every verified request, sharing SSL/cert state across concurrent sessions/threads (plus import-time cost + a multi-user cert-extraction permission clash)."
+    evidence: "Reverted by psf/requests#6767: 'Due to the number of edge cases and concurrency issues ... still receiving reports of novel issues'. Follow-on: requests#6790 (import-time regression)."
+    expect_loci:
+      - path: src/requests/adapters.py
+        about: "_preloaded_ssl_context created once at import and reused globally, sharing mutable SSL state across concurrent sessions."
+  - id: python-click-2846
+    repo: pallets/click
+    pr: 2846
+    stack: python
+    kind: bugfix
+    size: "+98/-1"
+    label: clean
+    note: "Escapes colons in Zsh completions only for the _describe primitive (not compadd), matching the two mechanisms' different escaping rules. Test-covered; correct final version."
+    evidence: "Merged: CHANGES_REQUESTED then APPROVED by maintainer AndreasBackx; resolves click#2703."
+
+  # ── Ruby ──────────────────────────────────────────────────────────────────
+  - id: ruby-rails-54960
+    repo: rails/rails
+    pr: 54960
+    stack: ruby
+    kind: bugfix
+    size: "+10/-6"
+    label: has-issue
+    note: "Sorts columns/indexes by name when serializing the schema cache (intended only to reduce diff noise), but this changes the enumeration ORDER of columns/indexes — observable, order-dependent behavior — not just formatting."
+    evidence: "Reverted by rails/rails#56565 (core committer): 'By sorting the schema cache we're changing the behavior of some queries such as pluck(\"*\") ... not hypothetical, I just ran into that situation'."
+    expect_loci:
+      - path: activerecord/lib/active_record/connection_adapters/schema_cache.rb
+        about: "encode_with sorts @columns/@indexes, changing per-table order and thus order-dependent queries like pluck('*')."
+  - id: ruby-sidekiq-6397
+    repo: sidekiq/sidekiq
+    pr: 6397
+    stack: ruby
+    kind: bugfix
+    size: "+55/-3"
+    label: clean
+    note: "Fixes a typo (opt[:ex] -> opts[:ex]) in DeadSet#kill that silently ignored the :ex option, plus a YARD doc fix. Maintainer required tests; three were added."
+    evidence: "Merged: maintainer mperham asked for a test, tests added, then merged."
+
+  # ── CI (GitHub Actions) ───────────────────────────────────────────────────
+  - id: ci-astro-16713
+    repo: withastro/astro
+    pr: 16713
+    stack: ci
+    kind: security
+    size: "+53/-14"
+    label: clean
+    note: "Adds explicit least-privilege permissions: blocks to 9 workflows (supply-chain hardening). Correct, well-scoped, no functional regression."
+    evidence: "Merged, member-approved after a substantive reviewer question was answered."
+  - id: ci-moby-52727
+    repo: moby/moby
+    pr: 52727
+    stack: ci
+    kind: bugfix
+    size: "+67/-0"
+    label: has-issue
+    note: "Adds PR-review workflows requesting `id-token: write`, but org/repo policy only allows `id-token: none`, so every run fails immediately. Should have verified the OIDC permission was grantable."
+    evidence: "Reverted same day by moby/moby#53006: 'the workflow is requesting id-token: write, but is only allowed id-token: none'."
+    expect_loci:
+      - path: .github/workflows/pr-review-trigger.yml
+        about: "Requests id-token: write that policy disallows (id-token: none), failing every run."
+  - id: config-astro-15139
+    repo: withastro/astro
+    pr: 15139
+    stack: config
+    kind: config
+    size: "+19/-14"
+    label: clean
+    note: "Moves pnpm settings from .npmrc into pnpm-workspace.yaml (supported migration path). Correct, minimal, motivated."
+    evidence: "Merged, maintainer-approved with a confirming comment."
+
+  # ── Config (tsconfig/toml/yaml) ───────────────────────────────────────────
+  - id: config-swup-1052
+    repo: swup/swup
+    pr: 1052
+    stack: config
+    kind: bugfix
+    size: "+25/-9"
+    label: has-issue
+    note: "Merges the tests' tsconfig into the main tsconfig.json include/exclude; this altered the published build output, and the next release (4.9.1) shipped without dist/types/index.d.ts, breaking TS resolution for all consumers."
+    evidence: "Reviewer daun questioned it pre-merge; bug swup/swup#1055 ('Types are missing' in 4.9.1); reverted by swup/swup#1056."
+    expect_loci:
+      - path: tsconfig.json
+        about: "Changing test include/exclude in the shared tsconfig changed emitted output, dropping dist/types/index.d.ts from the package."
+
+  # ── Docker ────────────────────────────────────────────────────────────────
+  - id: docker-home-assistant-168197
+    repo: home-assistant/core
+    pr: 168197
+    stack: docker
+    kind: refactor
+    size: "+4/-6"
+    label: clean
+    note: "Replaces `COPY . homeassistant/` with an explicit COPY --parents of only needed files (~55MB smaller), mirrored into the hassfest Dockerfile generator. Measured, low-risk."
+    evidence: "Merged after multiple maintainer rounds + a Copilot review; approved."
+  - id: docker-grafana-124812
+    repo: grafana/grafana
+    pr: 124812
+    stack: docker
+    kind: bugfix
+    size: "+6/-4"
+    label: has-issue
+    note: "chown/chmod's the plugins-bundled dir to fix a plugin auto-update permission-denied bug, but only touches the top-level dir before plugin subdirs are copied in by a later stage that resets ownership — so the bug recurs in the next release."
+    evidence: "Same bug reproduced in grafana:13.1.0 (grafana/grafana#127760); follow-up grafana/grafana#127770 explains the chown 'only fixed the top-level directory'."
+    expect_loci:
+      - path: Dockerfile
+        about: "chown applied before plugin subdirectories are copied by a later stage that resets/preserves root ownership; fix doesn't survive the copy."

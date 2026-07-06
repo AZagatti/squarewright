@@ -1,0 +1,380 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 1abf149f49b6..7e31c9aa654f 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+ 
+ - Fix incorrect angle in `-bg-conic-*` utilities ([#17174](https://github.com/tailwindlabs/tailwindcss/pull/17174))
+ - Fix `border-[12px_4px]` being interpreted as a `border-color` instead of a `border-width` ([#17248](https://github.com/tailwindlabs/tailwindcss/pull/17248))
++- Use the `oklab(…)` function when applying opacity to `currentColor` to work around a crash in Safari 16.4 and 16.5 ([#17247](https://github.com/tailwindlabs/tailwindcss/pull/17247))
+ 
+ ## [4.0.14] - 2025-03-13
+ 
+diff --git a/integrations/vite/astro.test.ts b/integrations/vite/astro.test.ts
+index 81db3e82c6d5..43406624c316 100644
+--- a/integrations/vite/astro.test.ts
++++ b/integrations/vite/astro.test.ts
+@@ -19,7 +19,10 @@ test(
+         import { defineConfig } from 'astro/config'
+ 
+         // https://astro.build/config
+-        export default defineConfig({ vite: { plugins: [tailwindcss()] } })
++        export default defineConfig({
++          vite: { plugins: [tailwindcss()] },
++          build: { inlineStylesheets: 'never' },
++        })
+       `,
+       'src/pages/index.astro': html`
+        <div class="underline">Hello, world!</div>
+@@ -90,8 +93,13 @@ test(
+         import { defineConfig } from 'astro/config'
+ 
+         // https://astro.build/config
+-        export default defineConfig({ vite: { plugins: [tailwindcss()] }, integrations: [react()] })
++        export default defineConfig({
++          vite: { plugins: [tailwindcss()] },
++          integrations: [react()],
++          build: { inlineStylesheets: 'never' },
++        })
+       `,
++      // prettier-ignore
+       'src/pages/index.astro': html`
+         ---
+         import ClientOnly from './client-only';
+diff --git a/packages/@tailwindcss-postcss/src/__snapshots__/index.test.ts.snap b/packages/@tailwindcss-postcss/src/__snapshots__/index.test.ts.snap
+index dbf73d755e12..3b61a8be89f9 100644
+--- a/packages/@tailwindcss-postcss/src/__snapshots__/index.test.ts.snap
++++ b/packages/@tailwindcss-postcss/src/__snapshots__/index.test.ts.snap
+@@ -169,7 +169,7 @@ exports[`\`@import 'tailwindcss'\` is replaced with the generated CSS 1`] = `
+ 
+   ::placeholder {
+     opacity: 1;
+-    color: color-mix(in oklab, currentColor 50%, transparent);
++    color: oklab(from currentColor l a b / 50%);
+   }
+ 
+   textarea {
+diff --git a/packages/tailwindcss/preflight.css b/packages/tailwindcss/preflight.css
+index 632d8aa1f246..f3163581236f 100644
+--- a/packages/tailwindcss/preflight.css
++++ b/packages/tailwindcss/preflight.css
+@@ -285,12 +285,12 @@ textarea,
+ 
+ /*
+   1. Reset the default placeholder opacity in Firefox. (https://github.com/tailwindlabs/tailwindcss/issues/3300)
+-  2. Set the default placeholder color to a semi-transparent version of the current text color.
++  2. Set the default placeholder color to a semi-transparent version of the current text color. We use the `oklab(…)` function to work around an issue in Safari 16.4 and 16.5. (https://github.com/tailwindlabs/tailwindcss/issues/17194)
+ */
+ 
+ ::placeholder {
+   opacity: 1; /* 1 */
+-  color: color-mix(in oklab, currentColor 50%, transparent); /* 2 */
++  color: oklab(from currentColor l a b / 50%); /* 2 */
+ }
+ 
+ /*
+diff --git a/packages/tailwindcss/src/__snapshots__/utilities.test.ts.snap b/packages/tailwindcss/src/__snapshots__/utilities.test.ts.snap
+index 5f1c2fea3f54..a33a5371acff 100644
+--- a/packages/tailwindcss/src/__snapshots__/utilities.test.ts.snap
++++ b/packages/tailwindcss/src/__snapshots__/utilities.test.ts.snap
+@@ -104,7 +104,7 @@ exports[`border-* 1`] = `
+ }
+ 
+ .border-current\\/50 {
+-  border-color: color-mix(in oklab, currentColor 50%, transparent);
++  border-color: oklab(from currentColor l a b / 50%);
+ }
+ 
+ .border-inherit {
+@@ -246,7 +246,7 @@ exports[`border-b-* 1`] = `
+ }
+ 
+ .border-b-current\\/50 {
+-  border-bottom-color: color-mix(in oklab, currentColor 50%, transparent);
++  border-bottom-color: oklab(from currentColor l a b / 50%);
+ }
+ 
+ .border-b-inherit {
+@@ -388,7 +388,7 @@ exports[`border-e-* 1`] = `
+ }
+ 
+ .border-e-current\\/50 {
+-  border-inline-end-color: color-mix(in oklab, currentColor 50%, transparent);
++  border-inline-end-color: oklab(from currentColor l a b / 50%);
+ }
+ 
+ .border-e-inherit {
+@@ -530,7 +530,7 @@ exports[`border-l-* 1`] = `
+ }
+ 
+ .border-l-current\\/50 {
+-  border-left-color: color-mix(in oklab, currentColor 50%, transparent);
++  border-left-color: oklab(from currentColor l a b / 50%);
+ }
+ 
+ .border-l-inherit {
+@@ -672,7 +672,7 @@ exports[`border-r-* 1`] = `
+ }
+ 
+ .border-r-current\\/50 {
+-  border-right-color: color-mix(in oklab, currentColor 50%, transparent);
++  border-right-color: oklab(from currentColor l a b / 50%);
+ }
+ 
+ .border-r-inherit {
+@@ -814,7 +814,7 @@ exports[`border-s-* 1`] = `
+ }
+ 
+ .border-s-current\\/50 {
+-  border-inline-start-color: color-mix(in oklab, currentColor 50%, transparent);
++  border-inline-start-color: oklab(from currentColor l a b / 50%);
+ }
+ 
+ .border-s-inherit {
+@@ -956,7 +956,7 @@ exports[`border-t-* 1`] = `
+ }
+ 
+ .border-t-current\\/50 {
+-  border-top-color: color-mix(in oklab, currentColor 50%, transparent);
++  border-top-color: oklab(from currentColor l a b / 50%);
+ }
+ 
+ .border-t-inherit {
+@@ -1098,7 +1098,7 @@ exports[`border-x-* 1`] = `
+ }
+ 
+ .border-x-current\\/50 {
+-  border-inline-color: color-mix(in oklab, currentColor 50%, transparent);
++  border-inline-color: oklab(from currentColor l a b / 50%);
+ }
+ 
+ .border-x-inherit {
+@@ -1240,7 +1240,7 @@ exports[`border-y-* 1`] = `
+ }
+ 
+ .border-y-current\\/50 {
+-  border-block-color: color-mix(in oklab, currentColor 50%, transparent);
++  border-block-color: oklab(from currentColor l a b / 50%);
+ }
+ 
+ .border-y-inherit {
+diff --git a/packages/tailwindcss/src/compat/plugin-api.test.ts b/packages/tailwindcss/src/compat/plugin-api.test.ts
+index b786f2311e28..d552b805dd8e 100644
+--- a/packages/tailwindcss/src/compat/plugin-api.test.ts
++++ b/packages/tailwindcss/src/compat/plugin-api.test.ts
+@@ -3860,7 +3860,7 @@ describe('matchUtilities()', () => {
+       }
+ 
+       .scrollbar-current\\/45 {
+-        scrollbar-color: color-mix(in oklab, currentColor 45%, transparent);
++        scrollbar-color: oklab(from currentColor l a b / 45%);
+       }"
+     `)
+   })
+diff --git a/packages/tailwindcss/src/utilities.test.ts b/packages/tailwindcss/src/utilities.test.ts
+index d19d9aa111d8..9c732878a2a0 100644
+--- a/packages/tailwindcss/src/utilities.test.ts
++++ b/packages/tailwindcss/src/utilities.test.ts
+@@ -7984,7 +7984,7 @@ test('accent', async () => {
+     }
+ 
+     .accent-current\\/50, .accent-current\\/\\[0\\.5\\], .accent-current\\/\\[50\\%\\] {
+-      accent-color: color-mix(in oklab, currentColor 50%, transparent);
++      accent-color: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .accent-inherit {
+@@ -8099,7 +8099,7 @@ test('caret', async () => {
+     }
+ 
+     .caret-current\\/50, .caret-current\\/\\[0\\.5\\], .caret-current\\/\\[50\\%\\] {
+-      caret-color: color-mix(in oklab, currentColor 50%, transparent);
++      caret-color: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .caret-inherit {
+@@ -8212,7 +8212,7 @@ test('divide-color', async () => {
+     }
+ 
+     :where(.divide-current\\/50 > :not(:last-child)), :where(.divide-current\\/\\[0\\.5\\] > :not(:last-child)), :where(.divide-current\\/\\[50\\%\\] > :not(:last-child)) {
+-      border-color: color-mix(in oklab, currentColor 50%, transparent);
++      border-color: oklab(from currentColor l a b / 50%);
+     }
+ 
+     :where(.divide-inherit > :not(:last-child)) {
+@@ -10144,11 +10144,11 @@ test('bg', async () => {
+     }
+ 
+     .bg-current\\/50, .bg-current\\/\\[0\\.5\\], .bg-current\\/\\[50\\%\\] {
+-      background-color: color-mix(in oklab, currentColor 50%, transparent);
++      background-color: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .bg-current\\/\\[var\\(--bg-opacity\\)\\] {
+-      background-color: color-mix(in oklab, currentColor var(--bg-opacity), transparent);
++      background-color: oklab(from currentColor l a b / var(--bg-opacity));
+     }
+ 
+     .bg-inherit {
+@@ -10666,11 +10666,11 @@ test('bg', async () => {
+     ),
+   ).toMatchInlineSnapshot(`
+     ".bg-current\\/custom {
+-      background-color: color-mix(in oklab, currentColor var(--opacity-custom, var(--custom-opacity)), transparent);
++      background-color: oklab(from currentColor l a b / var(--opacity-custom, var(--custom-opacity)));
+     }
+ 
+     .bg-current\\/half {
+-      background-color: color-mix(in oklab, currentColor var(--opacity-half, .5), transparent);
++      background-color: oklab(from currentColor l a b / var(--opacity-half, .5));
+     }
+ 
+     .\\[color\\:red\\]\\/half {
+@@ -10764,7 +10764,7 @@ test('from', async () => {
+     }
+ 
+     .from-current\\/50, .from-current\\/\\[0\\.5\\], .from-current\\/\\[50\\%\\] {
+-      --tw-gradient-from: color-mix(in oklab, currentColor 50%, transparent);
++      --tw-gradient-from: oklab(from currentColor l a b / 50%);
+       --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
+     }
+ 
+@@ -10990,7 +10990,7 @@ test('via', async () => {
+     }
+ 
+     .via-current\\/50, .via-current\\/\\[0\\.5\\], .via-current\\/\\[50\\%\\] {
+-      --tw-gradient-via: color-mix(in oklab, currentColor 50%, transparent);
++      --tw-gradient-via: oklab(from currentColor l a b / 50%);
+       --tw-gradient-via-stops: var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-via) var(--tw-gradient-via-position), var(--tw-gradient-to) var(--tw-gradient-to-position);
+       --tw-gradient-stops: var(--tw-gradient-via-stops);
+     }
+@@ -11212,7 +11212,7 @@ test('to', async () => {
+     }
+ 
+     .to-current\\/50, .to-current\\/\\[0\\.5\\], .to-current\\/\\[50\\%\\] {
+-      --tw-gradient-to: color-mix(in oklab, currentColor 50%, transparent);
++      --tw-gradient-to: oklab(from currentColor l a b / 50%);
+       --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
+     }
+ 
+@@ -11739,7 +11739,7 @@ test('fill', async () => {
+     }
+ 
+     .fill-current\\/50, .fill-current\\/\\[0\\.5\\], .fill-current\\/\\[50\\%\\] {
+-      fill: color-mix(in oklab, currentColor 50%, transparent);
++      fill: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .fill-inherit {
+@@ -11876,7 +11876,7 @@ test('stroke', async () => {
+     }
+ 
+     .stroke-current\\/50, .stroke-current\\/\\[0\\.5\\], .stroke-current\\/\\[50\\%\\] {
+-      stroke: color-mix(in oklab, currentColor 50%, transparent);
++      stroke: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .stroke-inherit {
+@@ -12852,7 +12852,7 @@ test('placeholder', async () => {
+     }
+ 
+     .placeholder-current\\/50::placeholder, .placeholder-current\\/\\[0\\.5\\]::placeholder, .placeholder-current\\/\\[50\\%\\]::placeholder {
+-      color: color-mix(in oklab, currentColor 50%, transparent);
++      color: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .placeholder-inherit::placeholder {
+@@ -13001,9 +13001,9 @@ test('decoration', async () => {
+     }
+ 
+     .decoration-current\\/50, .decoration-current\\/\\[0\\.5\\], .decoration-current\\/\\[50\\%\\] {
+-      -webkit-text-decoration-color: color-mix(in oklab, currentColor 50%, transparent);
+-      -webkit-text-decoration-color: color-mix(in oklab, currentColor 50%, transparent);
+-      text-decoration-color: color-mix(in oklab, currentColor 50%, transparent);
++      -webkit-text-decoration-color: oklab(from currentColor l a b / 50%);
++      -webkit-text-decoration-color: oklab(from currentColor l a b / 50%);
++      text-decoration-color: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .decoration-inherit {
+@@ -14706,7 +14706,7 @@ test('outline', async () => {
+     }
+ 
+     .outline-current\\/50, .outline-current\\/\\[0\\.5\\], .outline-current\\/\\[50\\%\\] {
+-      outline-color: color-mix(in oklab, currentColor 50%, transparent);
++      outline-color: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .outline-inherit {
+@@ -15156,7 +15156,7 @@ test('text', async () => {
+     }
+ 
+     .text-current\\/50, .text-current\\/\\[0\\.5\\], .text-current\\/\\[50\\%\\] {
+-      color: color-mix(in oklab, currentColor 50%, transparent);
++      color: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .text-inherit {
+@@ -15325,7 +15325,7 @@ test('shadow', async () => {
+     }
+ 
+     .shadow-current\\/50, .shadow-current\\/\\[0\\.5\\], .shadow-current\\/\\[50\\%\\] {
+-      --tw-shadow-color: color-mix(in oklab, currentColor 50%, transparent);
++      --tw-shadow-color: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .shadow-inherit {
+@@ -15547,7 +15547,7 @@ test('inset-shadow', async () => {
+     }
+ 
+     .inset-shadow-current\\/50, .inset-shadow-current\\/\\[0\\.5\\], .inset-shadow-current\\/\\[50\\%\\] {
+-      --tw-inset-shadow-color: color-mix(in oklab, currentColor 50%, transparent);
++      --tw-inset-shadow-color: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .inset-shadow-inherit {
+@@ -15785,7 +15785,7 @@ test('ring', async () => {
+     }
+ 
+     .ring-current\\/50, .ring-current\\/\\[0\\.5\\], .ring-current\\/\\[50\\%\\] {
+-      --tw-ring-color: color-mix(in oklab, currentColor 50%, transparent);
++      --tw-ring-color: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .ring-inherit {
+@@ -16124,7 +16124,7 @@ test('inset-ring', async () => {
+     }
+ 
+     .inset-ring-current\\/50, .inset-ring-current\\/\\[0\\.5\\], .inset-ring-current\\/\\[50\\%\\] {
+-      --tw-inset-ring-color: color-mix(in oklab, currentColor 50%, transparent);
++      --tw-inset-ring-color: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .inset-ring-inherit {
+@@ -16368,7 +16368,7 @@ test('ring-offset', async () => {
+     }
+ 
+     .ring-offset-current\\/50, .ring-offset-current\\/\\[0\\.5\\], .ring-offset-current\\/\\[50\\%\\] {
+-      --tw-ring-offset-color: color-mix(in oklab, currentColor 50%, transparent);
++      --tw-ring-offset-color: oklab(from currentColor l a b / 50%);
+     }
+ 
+     .ring-offset-inherit {
+diff --git a/packages/tailwindcss/src/utilities.ts b/packages/tailwindcss/src/utilities.ts
+index 31acd41df2a4..2b5782993eaa 100644
+--- a/packages/tailwindcss/src/utilities.ts
++++ b/packages/tailwindcss/src/utilities.ts
+@@ -136,6 +136,13 @@ export function withAlpha(value: string, alpha: string): string {
+     alpha = `${alphaAsNumber * 100}%`
+   }
+ 
++  // Use the `oklab(…)` function when applying alpha to `currentColor` to work
++  // around a crash with Safari 16.4 and 16.5
++  // https://github.com/tailwindlabs/tailwindcss/issues/17194
++  if (value === 'currentColor') {
++    return `oklab(from currentColor l a b / ${alpha})`
++  }
++
+   return `color-mix(in oklab, ${value} ${alpha}, transparent)`
+ }
+ 

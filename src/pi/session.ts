@@ -15,9 +15,11 @@ export interface WorkerRequest {
   context: ReviewContext;
   /** the persona/system prompt that defines the review lens */
   systemPrompt: string;
+  /** persona id, stamped onto findings for provenance/feedback */
+  persona?: string;
   lane: ModelLane;
   /** custom tools to expose to the Worker (registered into Pi via defineTool) */
-  tools: WorkerTool[];
+  tools?: WorkerTool[];
   budget?: { maxToolCalls?: number; maxTokens?: number };
 }
 
@@ -32,7 +34,7 @@ export interface WorkerTool {
 export interface WorkerResult {
   findings: Finding[];
   /** cost/latency captured from Pi's transcript, for the feedback/data loop */
-  usage?: { toolCalls: number; costUsd?: number; ms?: number };
+  usage?: { toolCalls: number; costUsd?: number; ms?: number; summary?: string };
 }
 
 /** The one call the assembly makes into Pi. Implemented in v0.1 against `@earendil-works/pi-coding-agent`. */
