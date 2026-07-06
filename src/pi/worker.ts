@@ -175,6 +175,18 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
 
       await session.prompt(renderPrompt(request.context));
 
+      // Robustness: reasoning models frequently reason and then answer in prose WITHOUT calling
+      // submit_findings — which would silently look like a clean review. Nudge up to twice to actually
+      // emit the tool call. (The principled fix is a two-pass reason->structure split; this is the net.)
+      let nudges = 0;
+      while (captured === undefined && nudges < 2) {
+        nudges++;
+        await session.prompt(
+          "You did not call the submit_findings tool. Call it now, exactly once, with your findings " +
+            "(use an empty findings array if the change is sound). Do not reply in prose.",
+        );
+      }
+
       // sum cost from assistant messages
       let costUsd = 0;
       for (const m of session.messages) {
