@@ -46,7 +46,17 @@ export interface WorkerTool {
 export interface WorkerResult {
   findings: Finding[];
   /** cost/latency captured from Pi's transcript, for the feedback/data loop */
-  usage?: { toolCalls: number; costUsd?: number; ms?: number; summary?: string };
+  usage?: {
+    toolCalls: number;
+    costUsd?: number;
+    ms?: number;
+    summary?: string;
+    /**
+     * Did the model actually call submit_findings? If false, `findings` is empty because the model never
+     * submitted (NOT because the change is clean) — the caller must not treat that as a clean review.
+     */
+    submitted: boolean;
+  };
 }
 
 /** The one call the assembly makes into Pi. Implemented in v0.1 against `@earendil-works/pi-coding-agent`. */

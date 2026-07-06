@@ -209,6 +209,7 @@ async function main() {
     const t0 = Date.now();
     let findings: Finding[];
     let workerCost = 0;
+    let noSubmit = 0; // passes where the model never called submit_findings (NOT a clean review — a dropped submission)
     if (doPersonas) {
       const selected = selectPersonas(DEFAULT_PERSONAS, context.files, { cap: 4 });
       const passes = buildPasses(selected);
@@ -218,12 +219,14 @@ async function main() {
         const pr = await worker.run({ context, systemPrompt: pass.prompt, persona: pass.id, lane: passLane, repoReader });
         all.push(...pr.findings);
         workerCost += pr.usage?.costUsd ?? 0;
+        if (!pr.usage?.submitted) noSubmit++;
       }
       findings = aggregateFindings(all);
     } else {
       const pr = await worker.run({ context, systemPrompt: PERSONA, persona: "persona:general", lane, repoReader });
       findings = pr.findings;
       workerCost += pr.usage?.costUsd ?? 0;
+      if (!pr.usage?.submitted) noSubmit++;
     }
     let confirmed = findings.length;
     let verifyCost = 0;
@@ -236,15 +239,15 @@ async function main() {
       }
     }
     const ms = Date.now() - t0;
-    // has-issue recall: a finding on the same file (basename) as an expected locus counts as a hit
+    // has-issue recall: a finding on the same file as an expected locus counts as a hit (boundary-safe;
+    // NOTE this is file-level only — it cannot see root-cause/precision; a judge scorer is the real fix).
+    const sameFile = (fp: string, lp: string) =>
+      fp === lp || fp.endsWith("/" + lp) || lp.endsWith("/" + fp) || fp.split("/").pop() === lp.split("/").pop();
     const lociTotal = c.expect_loci?.length ?? 0;
-    const hitLoci =
-      c.expect_loci?.filter((l) =>
-        findings.some((f) => f.path.endsWith(l.path) || l.path.endsWith(f.path.split("/").pop() ?? "")),
-      ).length ?? 0;
+    const hitLoci = c.expect_loci?.filter((l) => findings.some((f) => sameFile(f.path, l.path))).length ?? 0;
     const line = `[${c.label === "clean" ? "clean    " : "has-issue"}] ${c.id.padEnd(28)} raw=${findings.length} ${
       verifier ? `confirmed=${confirmed} ` : ""
-    }${lociTotal ? `hits=${hitLoci}/${lociTotal} ` : ""}$${(workerCost + verifyCost).toFixed(4)} ${(ms / 1000).toFixed(0)}s`;
+    }${lociTotal ? `hits=${hitLoci}/${lociTotal} ` : ""}${noSubmit ? `nosub=${noSubmit} ` : ""}$${(workerCost + verifyCost).toFixed(4)} ${(ms / 1000).toFixed(0)}s`;
     console.log(line);
     return {
       id: c.id,
@@ -254,6 +257,7 @@ async function main() {
       confirmed,
       hitLoci,
       lociTotal,
+      noSubmit,
       costUsd: workerCost + verifyCost,
       ms,
       findings: findings.map((f) => ({ path: f.path, line: f.line, severity: f.severity, message: f.message })),
@@ -269,9 +273,13 @@ async function main() {
   const cost = results.reduce((s, r) => s + r.costUsd, 0);
   const secs = results.reduce((s, r) => s + r.ms, 0) / 1000;
 
-  console.log(`\n── ${model} ──`);
+  const totalNoSubmit = results.reduce((s, r) => s + (r.noSubmit ?? 0), 0);
+  const config = { provider, model, personas: doPersonas, thinking: thinkingSet ? thinking : "per-persona", ground: doGround, verify: doVerify };
+
+  console.log(`\n── ${provider}/${model} ──`);
   console.log(`  clean cases: ${clean.length}  ·  false positives (${doVerify ? "post-verify" : "raw"}): ${cleanFP}`);
   console.log(`  has-issue cases: ${issue.length}  ·  locus recall: ${issueHits}/${issueTotal}`);
+  if (totalNoSubmit) console.log(`  ⚠ dropped submissions (model never called submit_findings): ${totalNoSubmit}`);
   console.log(`  total cost: $${cost.toFixed(4)}  ·  total model-time: ${secs.toFixed(0)}s`);
 
   mkdirSync(REPORT_DIR, { recursive: true });
@@ -279,7 +287,7 @@ async function main() {
   const reportPath = `${REPORT_DIR}/${model.replace(/\//g, "_")}-${stamp}.json`;
   writeFileSync(
     reportPath,
-    JSON.stringify({ model, verify: doVerify, cleanFP, issueHits, issueTotal, cost, results }, null, 2),
+    JSON.stringify({ config, cleanFP, issueHits, issueTotal, totalNoSubmit, cost, results }, null, 2),
   );
   console.log(`\n  report: ${reportPath}\n`);
 }

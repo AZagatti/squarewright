@@ -195,7 +195,7 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
 
       return {
         findings,
-        usage: { toolCalls, costUsd, summary: captured?.summary },
+        usage: { toolCalls, costUsd, summary: captured?.summary, submitted: captured !== undefined },
       };
     },
   };
