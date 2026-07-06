@@ -8,7 +8,7 @@
  * Corpus:  eval/golden/manifest.yaml + eval/golden/diffs/<id>.diff  (both committed = the golden fixtures)
  * Reports: eval/reports/<model>-<stamp>.json                        (gitignored run artifacts)
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { parse as parseYaml } from "yaml";
@@ -289,7 +289,23 @@ async function main() {
     reportPath,
     JSON.stringify({ config, cleanFP, issueHits, issueTotal, totalNoSubmit, cost, results }, null, 2),
   );
-  console.log(`\n  report: ${reportPath}\n`);
+  // durable, committed run log (one line per run) for cost/quality tracking across configs/models
+  appendFileSync(
+    `${ROOT}eval/runs.jsonl`,
+    JSON.stringify({
+      stamp,
+      ...config,
+      cleanCases: clean.length,
+      cleanFP,
+      issueCases: issue.length,
+      issueHits,
+      issueTotal,
+      totalNoSubmit,
+      cost: Number(cost.toFixed(4)),
+      modelSeconds: Number(secs.toFixed(0)),
+    }) + "\n",
+  );
+  console.log(`\n  report: ${reportPath}  ·  logged to eval/runs.jsonl\n`);
 }
 
 main().catch((e) => {
