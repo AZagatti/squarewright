@@ -1,0 +1,60 @@
+# Squarewright — Review (TRUSTED phase)
+#
+# Triggered by the Gather workflow completing (workflow_run). This runs with the BASE repo's permissions and
+# secrets, regardless of which fork opened the PR — and it NEVER checks out or executes PR head code. The only
+# PR-derived input is the text artifact from Gather, treated purely as data fed to the model.
+#
+# Security notes baked in:
+#   - secrets (provider key) exist ONLY in this workflow, never in Gather.
+#   - least-privilege permissions, each justified below.
+#   - the artifact's claimed PR/head-sha is cross-checked against the workflow_run event's head_sha before we
+#     trust it to decide WHERE to post (a poisoned artifact must not be able to redirect the comment).
+#
+# Scaffolded by `squarewright init`. The harness it calls is pre-v0.1 (see squarewright ROADMAP).
+name: Squarewright - Review
+
+on:
+  workflow_run:
+    workflows: ["Squarewright - Gather"]
+    types: [completed]
+
+permissions:
+  contents: read # checkout trusted base only
+  actions: read # download the gather artifact
+  checks: read # read CI signals for grounding
+  pull-requests: write # post the review
+
+concurrency:
+  group: squarewright-review-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout base repo (trusted; never PR head)
+        uses: actions/checkout@v4
+
+      - name: Download gather artifact (by run-id)
+        uses: actions/download-artifact@v4
+        with:
+          name: squarewright-input
+          path: artifacts
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      # Placeholder for the versioned squarewright harness. When published this becomes e.g.
+      #   uses: AZagatti/squarewright-action@v1
+      # which runs `squarewright review --phase post`, cross-checks the artifact head_sha against
+      # `${{ github.event.workflow_run.head_sha }}`, drives Pi, and posts sticky + inline comments.
+      - name: Run Squarewright review (pre-v0.1 — harness in construction)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          # Provider key lives ONLY here. Set the one matching your .squarewright.yml lanes:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "Squarewright review harness is pre-v0.1. This workflow encodes the safe two-phase"
+          echo "structure; the posting harness is being built. See docs/ROADMAP.md."

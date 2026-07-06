@@ -1,0 +1,27 @@
+{
+  "name": "squarewright",
+  "version": "0.0.0-pre",
+  "description": "An open-source toolbox for assembling your own repo-local AI code reviewer on top of Pi.",
+  "type": "module",
+  "license": "MIT",
+  "author": "André Zagatti",
+  "repository": { "type": "git", "url": "https://github.com/AZagatti/squarewright" },
+  "bin": { "squarewright": "./dist/cli.js" },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:binary": "bun build ./src/cli.ts --compile --outfile dist/squarewright",
+    "dev": "bun run src/cli.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "yaml": "^2.4.0",
+    "zod": "^3.23.0"
+  },
+  "//dependencies-note": "Pi (@earendil-works/pi-coding-agent) becomes a direct dependency when the review harness lands (v0.1). The harness uses it as a library (createAgentSession/defineTool); a fast deterministic grounder may be a separate polyglot binary.",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}
