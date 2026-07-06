@@ -37,14 +37,16 @@ export interface ModelLane {
 /** A review lens the Worker applies. */
 export interface Persona {
   id: string;
-  /** default model lane for this persona */
+  /** default model lane for this persona (label; the concrete model is resolved by the assembly) */
   lane: string;
   /** glob triggers; empty/"always" => runs on any reviewable change */
   when?: string[];
   /** skip on docs-only PRs */
   needsCode?: boolean;
-  /** never paired with another persona in one Worker call */
+  /** never paired with another persona in one Worker call (own dedicated call) */
   solo?: boolean;
+  /** reasoning level for this lens */
+  thinking?: ThinkingLevel;
   /** the checklist / role prompt injected into the Worker */
   prompt: string;
 }

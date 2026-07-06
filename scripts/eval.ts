@@ -15,7 +15,10 @@ import { parse as parseYaml } from "yaml";
 import { createPiWorker } from "../src/pi/worker.js";
 import { createVerifier } from "../src/pi/verifier.js";
 import { splitUnifiedDiff } from "../src/core/diff.js";
-import type { ReviewContext, ThinkingLevel } from "../src/core/types.js";
+import { selectPersonas } from "../src/personas/routing.js";
+import { buildPasses, DEFAULT_PERSONAS } from "../src/personas/defaults.js";
+import { aggregateFindings } from "../src/output/aggregate.js";
+import type { Finding, ReviewContext, ThinkingLevel } from "../src/core/types.js";
 import type { RepoReader } from "../src/pi/session.js";
 
 const PERSONA = `You are a careful senior code reviewer reviewing a single pull request.
@@ -115,6 +118,8 @@ function loadCases(): Case[] {
   const id = arg("id");
   if (stack) cases = cases.filter((c) => c.stack === stack);
   if (id) cases = cases.filter((c) => c.id === id);
+  const label = arg("label");
+  if (label) cases = cases.filter((c) => c.label === label);
   const limit = arg("limit");
   if (limit) cases = cases.slice(0, Number(limit));
   return cases;
@@ -171,6 +176,8 @@ async function main() {
   const thinking = (arg("thinking") ?? "off") as ThinkingLevel;
   const doVerify = flag("verify");
   const doGround = flag("ground");
+  const doPersonas = flag("personas");
+  const thinkingSet = arg("thinking") !== undefined;
   const concurrency = Number(arg("concurrency") ?? 3);
   const keys = readKeys();
   const worker = createPiWorker({ apiKeys: keys });
@@ -183,7 +190,9 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`\n▸ eval  model=${provider}/${model}  thinking=${thinking}  ground=${doGround}  verify=${doVerify}  cases=${cases.length}  concurrency=${concurrency}\n`);
+  console.log(
+    `\n▸ eval  model=${provider}/${model}  personas=${doPersonas}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cases=${cases.length}  concurrency=${concurrency}\n`,
+  );
 
   const results = await pool(cases, concurrency, async (c) => {
     const diff = readFileSync(diffPath(c.id), "utf8").slice(0, 60_000);
@@ -198,12 +207,29 @@ async function main() {
     };
     const repoReader = doGround ? ghRepoReader(c.repo, c.pr) : undefined;
     const t0 = Date.now();
-    const r = await worker.run({ context, systemPrompt: PERSONA, persona: `persona:general`, lane, repoReader });
-    let confirmed = r.findings.length;
+    let findings: Finding[];
+    let workerCost = 0;
+    if (doPersonas) {
+      const selected = selectPersonas(DEFAULT_PERSONAS, context.files, { cap: 4 });
+      const passes = buildPasses(selected);
+      const all: Finding[] = [];
+      for (const pass of passes) {
+        const passLane = { ...lane, thinking: thinkingSet ? thinking : pass.thinking };
+        const pr = await worker.run({ context, systemPrompt: pass.prompt, persona: pass.id, lane: passLane, repoReader });
+        all.push(...pr.findings);
+        workerCost += pr.usage?.costUsd ?? 0;
+      }
+      findings = aggregateFindings(all);
+    } else {
+      const pr = await worker.run({ context, systemPrompt: PERSONA, persona: "persona:general", lane, repoReader });
+      findings = pr.findings;
+      workerCost += pr.usage?.costUsd ?? 0;
+    }
+    let confirmed = findings.length;
     let verifyCost = 0;
     if (verifier) {
       confirmed = 0;
-      for (const f of r.findings) {
+      for (const f of findings) {
         const v = await verifier.verify(f, context, lane);
         verifyCost += v.usage?.costUsd ?? 0;
         if (v.verdict === "confirmed") confirmed += 1;
@@ -214,23 +240,23 @@ async function main() {
     const lociTotal = c.expect_loci?.length ?? 0;
     const hitLoci =
       c.expect_loci?.filter((l) =>
-        r.findings.some((f) => f.path.endsWith(l.path) || l.path.endsWith(f.path.split("/").pop() ?? "")),
+        findings.some((f) => f.path.endsWith(l.path) || l.path.endsWith(f.path.split("/").pop() ?? "")),
       ).length ?? 0;
-    const line = `[${c.label === "clean" ? "clean    " : "has-issue"}] ${c.id.padEnd(28)} raw=${r.findings.length} ${
+    const line = `[${c.label === "clean" ? "clean    " : "has-issue"}] ${c.id.padEnd(28)} raw=${findings.length} ${
       verifier ? `confirmed=${confirmed} ` : ""
-    }${lociTotal ? `hits=${hitLoci}/${lociTotal} ` : ""}$${((r.usage?.costUsd ?? 0) + verifyCost).toFixed(4)} ${(ms / 1000).toFixed(0)}s`;
+    }${lociTotal ? `hits=${hitLoci}/${lociTotal} ` : ""}$${(workerCost + verifyCost).toFixed(4)} ${(ms / 1000).toFixed(0)}s`;
     console.log(line);
     return {
       id: c.id,
       stack: c.stack,
       label: c.label,
-      rawFindings: r.findings.length,
+      rawFindings: findings.length,
       confirmed,
       hitLoci,
       lociTotal,
-      costUsd: (r.usage?.costUsd ?? 0) + verifyCost,
+      costUsd: workerCost + verifyCost,
       ms,
-      findings: r.findings.map((f) => ({ path: f.path, line: f.line, severity: f.severity, message: f.message })),
+      findings: findings.map((f) => ({ path: f.path, line: f.line, severity: f.severity, message: f.message })),
     };
   });
 

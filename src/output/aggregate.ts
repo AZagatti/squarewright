@@ -1,0 +1,61 @@
+/**
+ * Aggregate findings from multiple personas into one deduplicated set. Two personas flagging the same issue
+ * (same file, near line, overlapping wording) collapse into one with a bumped consensus — deterministic, no
+ * extra model call (an LLM merge is a lossy recall leak).
+ */
+import type { Finding, Severity } from "../core/types.js";
+
+const SEV_RANK: Record<Severity, number> = { error: 3, warning: 2, info: 1 };
+
+export interface AggregatedFinding extends Finding {
+  /** how many personas independently raised this */
+  consensus: number;
+  /** persona ids that raised it */
+  sources: string[];
+}
+
+function tokens(s: string): Set<string> {
+  return new Set(
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .split(" ")
+      .filter((t) => t.length > 2),
+  );
+}
+
+/** Jaccard overlap of two token sets. */
+function overlap(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter++;
+  return inter / (a.size + b.size - inter);
+}
+
+/** Same issue if same file, within 3 lines, and titles/messages meaningfully overlap. */
+function isSame(a: AggregatedFinding, b: Finding): boolean {
+  if (a.path !== b.path) return false;
+  if (Math.abs(a.line - b.line) > 3) return false;
+  return overlap(tokens(a.message), tokens(b.message)) >= 0.4;
+}
+
+export function aggregateFindings(findings: Finding[]): AggregatedFinding[] {
+  const out: AggregatedFinding[] = [];
+  for (const f of findings) {
+    const existing = out.find((e) => isSame(e, f));
+    if (existing) {
+      existing.consensus += 1;
+      const src = f.source ?? f.rule;
+      if (!existing.sources.includes(src)) existing.sources.push(src);
+      // keep the highest severity and the longer (richer) message
+      if (SEV_RANK[f.severity] > SEV_RANK[existing.severity]) existing.severity = f.severity;
+      if (f.message.length > existing.message.length) existing.message = f.message;
+      if (!existing.suggestion && f.suggestion) existing.suggestion = f.suggestion;
+    } else {
+      out.push({ ...f, consensus: 1, sources: [f.source ?? f.rule] });
+    }
+  }
+  // strongest first: severity, then consensus
+  out.sort((a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity] || b.consensus - a.consensus);
+  return out;
+}
