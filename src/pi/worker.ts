@@ -19,7 +19,48 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { Finding, ModelLane, ReviewContext, Severity } from "../core/types.js";
-import type { PiWorker, WorkerRequest, WorkerResult } from "./session.js";
+import type { PiWorker, RepoReader, WorkerRequest, WorkerResult } from "./session.js";
+
+const GROUNDING_NOTE = `
+
+You can inspect the repository at this PR's revision with tools: read_repo_file(path) reads a file's full
+contents, and list_repo_dir(path) lists a directory. BEFORE reporting a suspected issue, use them to check the
+surrounding code, callers, and definitions the diff doesn't show. Ground every finding in the real code — do
+NOT flag something you have not verified against the actual files. If reading the code shows the concern is
+unfounded, do not report it.`;
+
+/** Read-only repo tools that let the Worker ground findings (see RepoReader). */
+function buildRepoTools(reader: RepoReader) {
+  const readFile = defineTool({
+    name: "read_repo_file",
+    label: "Read repo file",
+    description: "Read the full contents of a file in the repository at the PR's revision, to check context.",
+    parameters: Type.Object({ path: Type.String({ description: "repo-relative file path" }) }),
+    execute: async (_id, params) => {
+      const p = (params as { path: string }).path;
+      const content = await reader.readFile(p);
+      return {
+        content: [{ type: "text", text: content ?? `(file not found: ${p})` }],
+        details: {},
+      };
+    },
+  });
+  const listDir = defineTool({
+    name: "list_repo_dir",
+    label: "List repo dir",
+    description: "List the entries of a directory in the repository at the PR's revision.",
+    parameters: Type.Object({ path: Type.String({ description: "repo-relative directory path (\"\" for root)" }) }),
+    execute: async (_id, params) => {
+      const p = (params as { path: string }).path;
+      const entries = await reader.listDir(p);
+      return {
+        content: [{ type: "text", text: entries ? entries.join("\n") : `(not a directory: ${p})` }],
+        details: {},
+      };
+    },
+  });
+  return [readFile, listDir];
+}
 
 const findingsSchema = Type.Object({
   summary: Type.String({ description: "One or two sentences: the overall verdict on this change." }),
@@ -102,10 +143,13 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
         },
       });
 
+      const groundingTools = request.repoReader ? buildRepoTools(request.repoReader) : [];
+      const systemPrompt = request.repoReader ? request.systemPrompt + GROUNDING_NOTE : request.systemPrompt;
+
       const loader = new DefaultResourceLoader({
         cwd: process.cwd(),
         agentDir: getAgentDir(),
-        systemPromptOverride: () => request.systemPrompt,
+        systemPromptOverride: () => systemPrompt,
       });
       await loader.reload();
 
@@ -115,8 +159,8 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
         authStorage,
         modelRegistry,
         resourceLoader: loader,
-        customTools: [submitFindings],
-        noTools: "builtin", // no read/bash/edit/write — this spike is diff-only
+        customTools: [submitFindings, ...groundingTools],
+        noTools: "builtin", // disable Pi's builtin read/bash/edit/write; grounding uses our read-only repo tools
         sessionManager: SessionManager.inMemory(),
         settingsManager: SettingsManager.inMemory({
           compaction: { enabled: false },

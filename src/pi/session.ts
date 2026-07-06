@@ -11,6 +11,16 @@
  */
 import type { Finding, ModelLane, ReviewContext } from "../core/types.js";
 
+/**
+ * Read-only access to the repository at the PR's revision, so the Worker can GROUND findings against real
+ * code (check surrounding code, callers, definitions) instead of guessing from the diff. The caller supplies
+ * it: the eval fetches from GitHub at the head SHA; the real CI review reads from the checkout.
+ */
+export interface RepoReader {
+  readFile(path: string): Promise<string | null>;
+  listDir(path: string): Promise<string[] | null>;
+}
+
 export interface WorkerRequest {
   context: ReviewContext;
   /** the persona/system prompt that defines the review lens */
@@ -18,7 +28,9 @@ export interface WorkerRequest {
   /** persona id, stamped onto findings for provenance/feedback */
   persona?: string;
   lane: ModelLane;
-  /** custom tools to expose to the Worker (registered into Pi via defineTool) */
+  /** read-only repo access for grounding; when present the Worker gets read_repo_file/list_repo_dir tools */
+  repoReader?: RepoReader;
+  /** extra custom tools to expose to the Worker (registered into Pi via defineTool) */
   tools?: WorkerTool[];
   budget?: { maxToolCalls?: number; maxTokens?: number };
 }

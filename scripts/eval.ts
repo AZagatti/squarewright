@@ -16,6 +16,7 @@ import { createPiWorker } from "../src/pi/worker.js";
 import { createVerifier } from "../src/pi/verifier.js";
 import { splitUnifiedDiff } from "../src/core/diff.js";
 import type { ReviewContext, ThinkingLevel } from "../src/core/types.js";
+import type { RepoReader } from "../src/pi/session.js";
 
 const PERSONA = `You are a careful senior code reviewer reviewing a single pull request.
 Review ONLY the changes in the diff. Flag correctness bugs, security issues, and clear regressions.
@@ -49,8 +50,63 @@ function arg(name: string): string | undefined {
 function flag(name: string): boolean {
   return process.argv.includes(`--${name}`);
 }
-function readKey(): string {
-  return (process.env.OPENROUTER_API_KEY ?? readFileSync(`${homedir()}/.or_key`, "utf8")).trim();
+function readKeys(): Record<string, string> {
+  const keys: Record<string, string> = {};
+  try {
+    keys.openrouter = (process.env.OPENROUTER_API_KEY ?? readFileSync(`${homedir()}/.or_key`, "utf8")).trim();
+  } catch {
+    /* no OpenRouter key */
+  }
+  try {
+    keys.zai = (process.env.ZAI_API_KEY ?? readFileSync(`${homedir()}/.zai_key`, "utf8")).trim();
+  } catch {
+    /* no z.ai key */
+  }
+  return keys;
+}
+
+const headShaCache = new Map<string, string>();
+function headSha(repo: string, pr: number): string {
+  const k = `${repo}#${pr}`;
+  const cached = headShaCache.get(k);
+  if (cached) return cached;
+  const sha = execFileSync("gh", ["pr", "view", String(pr), "--repo", repo, "--json", "headRefOid", "-q", ".headRefOid"], {
+    encoding: "utf8",
+  }).trim();
+  headShaCache.set(k, sha);
+  return sha;
+}
+
+/** RepoReader backed by the GitHub contents API at the PR's head SHA (immutable => reproducible). */
+function ghRepoReader(repo: string, pr: number): RepoReader {
+  const sha = headSha(repo, pr);
+  const fetch = (path: string): unknown => {
+    const q = path ? `repos/${repo}/contents/${path}?ref=${sha}` : `repos/${repo}/contents?ref=${sha}`;
+    return JSON.parse(
+      execFileSync("gh", ["api", q], { encoding: "utf8", maxBuffer: 20 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] }),
+    );
+  };
+  return {
+    async readFile(path) {
+      try {
+        const j = fetch(path) as { encoding?: string; content?: string } | unknown[];
+        if (Array.isArray(j)) return null;
+        const f = j as { encoding?: string; content?: string };
+        return f.encoding === "base64" && f.content ? Buffer.from(f.content, "base64").toString("utf8") : null;
+      } catch {
+        return null;
+      }
+    },
+    async listDir(path) {
+      try {
+        const j = fetch(path);
+        if (!Array.isArray(j)) return null;
+        return (j as { name: string; type: string }[]).map((e) => `${e.type === "dir" ? "d" : "-"} ${e.name}`);
+      } catch {
+        return null;
+      }
+    },
+  };
 }
 function loadCases(): Case[] {
   const doc = parseYaml(readFileSync(`${ROOT}eval/golden/manifest.yaml`, "utf8")) as { cases: Case[] };
@@ -110,14 +166,16 @@ async function main() {
     return;
   }
 
+  const provider = arg("provider") ?? "openrouter";
   const model = arg("model") ?? process.env.SW_MODEL ?? "deepseek/deepseek-v3.2";
   const thinking = (arg("thinking") ?? "off") as ThinkingLevel;
   const doVerify = flag("verify");
+  const doGround = flag("ground");
   const concurrency = Number(arg("concurrency") ?? 3);
-  const key = readKey();
-  const worker = createPiWorker({ apiKeys: { openrouter: key } });
-  const verifier = doVerify ? createVerifier({ apiKeys: { openrouter: key } }) : undefined;
-  const lane = { id: "eval", provider: "openrouter", model, thinking };
+  const keys = readKeys();
+  const worker = createPiWorker({ apiKeys: keys });
+  const verifier = doVerify ? createVerifier({ apiKeys: keys }) : undefined;
+  const lane = { id: "eval", provider, model, thinking };
 
   const missing = cases.filter((c) => !existsSync(diffPath(c.id)));
   if (missing.length) {
@@ -125,7 +183,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`\n▸ eval  model=openrouter/${model}  thinking=${thinking}  verify=${doVerify}  cases=${cases.length}  concurrency=${concurrency}\n`);
+  console.log(`\n▸ eval  model=${provider}/${model}  thinking=${thinking}  ground=${doGround}  verify=${doVerify}  cases=${cases.length}  concurrency=${concurrency}\n`);
 
   const results = await pool(cases, concurrency, async (c) => {
     const diff = readFileSync(diffPath(c.id), "utf8").slice(0, 60_000);
@@ -138,8 +196,9 @@ async function main() {
       body: "",
       files: splitUnifiedDiff(diff),
     };
+    const repoReader = doGround ? ghRepoReader(c.repo, c.pr) : undefined;
     const t0 = Date.now();
-    const r = await worker.run({ context, systemPrompt: PERSONA, persona: `persona:general`, lane });
+    const r = await worker.run({ context, systemPrompt: PERSONA, persona: `persona:general`, lane, repoReader });
     let confirmed = r.findings.length;
     let verifyCost = 0;
     if (verifier) {
