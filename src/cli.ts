@@ -4,11 +4,16 @@
  *
  * Commands:
  *   init     scaffold a reviewer assembly into the current repo   [implemented]
- *   review   run a review (gather / post phases)                  [v0.1 — in construction]
- *   doctor   check config + provider setup                        [v0.1 — in construction]
+ *   review   run a review over a gathered PR                      [--phase post implemented; gather runs in the workflow]
+ *   doctor   check config + provider setup                        [not implemented]
  */
 import { Command } from "commander";
+import { readGatherArtifact } from "./assembly/artifact.js";
+import { loadAssemblyConfig } from "./assembly/config.js";
+import { runReviewPost } from "./assembly/review-post.js";
 import { scaffold } from "./init/scaffold.js";
+import { resolveProviderKeys } from "./pi/keys.js";
+import { createPiWorker } from "./pi/worker.js";
 
 const program = new Command();
 
@@ -29,14 +34,40 @@ program
 
 program
   .command("review")
-  .description("Run a review over a PR (drives Pi). v0.1 — in construction.")
+  .description("Run a review over a gathered PR (drives Pi).")
   .option("--phase <phase>", "gather | post", "post")
-  .action((opts: { phase: string }) => {
-    console.error(
-      `squarewright review (--phase ${opts.phase}) is not implemented yet.\n` +
-        "The Pi-driven harness is the v0.1 build — see docs/ROADMAP.md."
-    );
-    process.exitCode = 2;
+  .option("--input <dir>", "gather-artifact directory", "artifacts")
+  .option(
+    "-C, --cwd <dir>",
+    "repo root holding .squarewright.yml",
+    process.cwd()
+  )
+  .action(async (opts: { phase: string; input: string; cwd: string }) => {
+    if (opts.phase !== "post") {
+      console.error(
+        `squarewright review --phase ${opts.phase} is not implemented yet — only --phase post. See docs/ROADMAP.md.`
+      );
+      process.exitCode = 2;
+      return;
+    }
+    try {
+      const config = loadAssemblyConfig(opts.cwd);
+      const context = readGatherArtifact(opts.input);
+      const { sticky, inline, unplaceable } = await runReviewPost(
+        config,
+        context,
+        {
+          makeWorker: (apiKeys) => createPiWorker({ apiKeys }),
+          resolveKeys: resolveProviderKeys,
+        }
+      );
+      process.stdout.write(
+        `${JSON.stringify({ inline, sticky, unplaceable }, null, 2)}\n`
+      );
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : String(e));
+      process.exitCode = 2;
+    }
   });
 
 program
