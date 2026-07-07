@@ -137,5 +137,9 @@ that can stay selective under scope discipline instead of going silent.
   grounding zeroed recall on this model. Ungrounded (1–3 hits, 0–1 FP) is the best balance for glm-5-turbo.
 - **Precision, not recall, remains the lever** — and grounding is a precision *liability* on weak models.
 - **Report ranges, not points.** Bench single-runs understate variance; treat any single recall number as ±2.
-- **`--verify` still unmeasured** — deferred (it multiplies model calls per finding; measure when the operating
-  model is stronger and findings are worth the extra passes).
+- **`--verify` measured (2026-07-07), OFF by default.** One verify-on run of the value pick (glm-5-turbo,
+  ungrounded): clean false-positives held at 0/9, recall 1/12 (in the 1–3 variance band). It worked
+  mechanically — on `python-requests` it pruned raw 4 → 1 confirmed while *keeping* the real hit — but
+  glm-5-turbo ungrounded is already clean, so verify bought ~0 precision at **~2× wall time with a bad tail**
+  (per-finding passes serialize within a case; one case took 28 min). Keep it OFF by default; reach for it
+  only on a *noisy* model (where there's real noise to prune) rather than the already-clean value pick.
