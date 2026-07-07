@@ -27,8 +27,9 @@ Module layout (see `src/`):
 
 | Module | Responsibility |
 |---|---|
+| `core/` | Shared domain types (`Finding`, `ModelLane`, `Persona`, `ReviewContext`…) — the studs other modules build on |
 | `cli/` | `init`, `review` (gather/post phases), `doctor` |
-| `assembly/` | `.squarewright.yml` schema, loading, validation |
+| `assembly/` | `.squarewright.yml` schema + loading; the `runReview` composer + post-phase orchestration |
 | `pi/` | Pi integration: session creation, custom-tool registration, model-lane policy |
 | `personas/` | Persona definitions + routing/pairing/batching engine (glob → persona → lane) |
 | `tools/` | Custom Pi tools: repo-inspect, ci-signal, post-comment |
@@ -54,7 +55,7 @@ postable*, then the depth that makes it good.
 
 | | Milestone | Notes |
 |---|---|---|
-| **M1** | **Reachable review** — wire the working engine into `squarewright review` | the biggest single lever; the engine is proven in `scripts/eval.ts` and just isn't reachable from the command |
+| **M1** | **Reachable review** — wire the working engine into `squarewright review` | the biggest single lever — exposes the proven engine (`scripts/eval.ts`) as `squarewright review --phase post`, which runs the review and prints findings. Posting them to GitHub is M2. |
 | **M2** | **Safe posting** — a `Poster` interface (behind which `gh api` is the first impl, swappable to Octokit) + the artifact **head-SHA trust check** + sticky & inline comments | the trust-boundary half; the head-SHA cross-check is **non-negotiable** and currently unimplemented |
 | **M3** | **Re-review on new commit** — re-run on a new push and update the sticky comment in place (no spam) | early because a reviewer that reviews once is barely a reviewer |
 | **M4** | **Onboarding — two first-class paths** | (a) **low-friction GitHub Action + config** (drop a workflow + `.squarewright.yml` pointing at the versioned harness); (b) **CLI binary + `init`**. Plus `doctor` + config loading. `init`+binary is **not** the only path. |

@@ -4,8 +4,8 @@
  *
  * Commands:
  *   init     scaffold a reviewer assembly into the current repo   [implemented]
- *   review   run a review (gather / post phases)                  [v0.1 — in construction]
- *   doctor   check config + provider setup                        [v0.1 — in construction]
+ *   review   run a review over a gathered PR                      [--phase post implemented; gather runs in the workflow]
+ *   doctor   check config + provider setup                        [not implemented]
  */
 import { Command } from "commander";
 import { readGatherArtifact } from "./assembly/artifact.js";
