@@ -32,8 +32,8 @@ export async function runReviewPost(
   );
   if (missing.length > 0) {
     throw new Error(
-      `Missing credentials for provider(s): ${missing.join(", ")}. Set each provider's API key ` +
-        "(the exact variable names are in your `squarewright init` setup notes) before running review — " +
+      `Missing credentials for provider(s): ${missing.join(", ")}. Set each provider's API key in the ` +
+        "environment (see the provider's docs for its key variable) before running review — " +
         "no model runs until every required key is present."
     );
   }
