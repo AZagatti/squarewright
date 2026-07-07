@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { envApiKeyName, envApiKeys } from "./keys.js";
+import { envApiKeyName, envApiKeys, missingApiKeys } from "./keys.js";
 
 describe("envApiKeyName", () => {
   test("maps provider ids to <PROVIDER>_API_KEY", () => {
@@ -29,5 +29,13 @@ describe("envApiKeys", () => {
     expect(envApiKeys(["openrouter", "zai", "anthropic"])).toEqual({
       openrouter: "or-key",
     });
+  });
+
+  test("missingApiKeys lists the env vars for providers with no key", () => {
+    process.env.ZAI_API_KEY = "z";
+    process.env.OPENROUTER_API_KEY = ""; // empty → treated as missing
+    expect(missingApiKeys(["zai", "openrouter"])).toEqual([
+      "OPENROUTER_API_KEY",
+    ]);
   });
 });

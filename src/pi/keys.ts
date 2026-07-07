@@ -22,3 +22,15 @@ export function envApiKeys(
   }
   return keys;
 }
+
+/** Env-var names for the providers whose key is not set — the review must not start if any are missing. */
+export function missingApiKeys(providers: Iterable<string>): string[] {
+  const missing: string[] = [];
+  for (const provider of providers) {
+    const name = envApiKeyName(provider);
+    if (!process.env[name]) {
+      missing.push(name);
+    }
+  }
+  return missing;
+}

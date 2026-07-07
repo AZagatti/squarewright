@@ -10,9 +10,8 @@
 import { Command } from "commander";
 import { readGatherArtifact } from "./assembly/artifact.js";
 import { loadAssemblyConfig } from "./assembly/config.js";
-import { runReview } from "./assembly/review.js";
+import { runReviewPost } from "./assembly/review-post.js";
 import { scaffold } from "./init/scaffold.js";
-import { envApiKeys } from "./pi/keys.js";
 import { createPiWorker } from "./pi/worker.js";
 
 const program = new Command();
@@ -53,14 +52,10 @@ program
     try {
       const config = loadAssemblyConfig(opts.cwd);
       const context = readGatherArtifact(opts.input);
-      // openrouter added for the pass-2 structurer's default provider (see src/pi/worker.ts).
-      const providers = new Set(config.lanes.map((l) => l.provider));
-      providers.add("openrouter");
-      const worker = createPiWorker({ apiKeys: envApiKeys(providers) });
-      const { sticky, inline, unplaceable } = await runReview(
-        context,
+      const { sticky, inline, unplaceable } = await runReviewPost(
         config,
-        worker
+        context,
+        (apiKeys) => createPiWorker({ apiKeys })
       );
       process.stdout.write(
         `${JSON.stringify({ inline, sticky, unplaceable }, null, 2)}\n`
