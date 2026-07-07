@@ -47,3 +47,39 @@ clean false-positives, fast. For context, trimwire's 67-case bench put real ambi
 - Add the adversarial **verifier** pass to clear the 2 clean-case false positives (precision).
 - The remaining gap looks model-capability-bound → the setup is near "good enough to rank": run the
   cheap-vs-expensive-5-family model comparison on this locked persona+grounding setup.
+
+---
+
+# Initial model rank — 2026-07-07
+
+**State of the project when measured:** two-pass worker (analysis → structurer), persona set, **no grounding**,
+`--thinking off`, scored by a **Claude subagent** on real defect-match (not the inflating file metric). This is
+an INITIAL, rough rank of *cheap* models — precision (noise) is the clear bottleneck; the "good" quality ceiling
+(expensive 5-family models) is untested (OpenRouter budget exhausted twice by reasoning-token burns — see the
+guardrail + circuit-breaker now in `scripts/eval.ts`).
+
+Real defect-recall over 12 has-issue loci; noise = off-target findings; cost = real OpenRouter spend (credits delta):
+
+| model | provider | defect-recall | noise | real cost | structurer |
+|---|---|---|---|---|---|
+| deepseek-v4-flash | OpenRouter | 5/12 | ~34 | $0.96 (forced reasoning) | qwen3-coder-30b |
+| **glm-5-turbo** | z.ai | **3/12** | **~1** | free | glm-5-turbo |
+| deepseek-v3.2 | OpenRouter | 2/12 | ~24 | $0.077 | qwen3-coder-30b |
+| glm-5.2 | z.ai | 2/12 | ~14 | free | qwen3-coder-30b |
+| glm-5.1 | z.ai | 2/12 | ~7 | free | glm-5-turbo |
+| glm-4.5-air | z.ai | 2/12 | ~14 | free | glm-5-turbo |
+| glm-4.7 | z.ai | 1/12 | ~15 | free | glm-5-turbo |
+| xiaomi/mimo-v2.5 | OpenRouter | 1/12 | ~11 | $6.6 (forced reasoning) | qwen3-coder-30b |
+
+**Reads:**
+- **glm-5-turbo (free) is the value pick** — best precision (~1 noise) with solid recall (3/12 ≈ 25%, matching
+  trimwire's ~27% reality). Our default dev model.
+- **deepseek-v4-flash** tops recall (5/12) but at $0.96/run (forced reasoning) and ~34 noise — not viable as-is.
+- Model choice moves recall only within a narrow 1–5/12 band. **Precision is the lever**, and it's controllable
+  without a bigger model: the **structurer's selectivity** dominated noise (glm-5-turbo structurer ~1 vs
+  qwen3-coder ~24–34), independent of the analysis model.
+- The **file metric inflated recall ~2–4×** vs the Claude judge — always judge on defect-match.
+
+**Caveats:** single run each (variance), 12 loci (small), no grounding, mixed structurers (a confound — the
+z.ai rows used the glm-5-turbo structurer). Treat as directional, not final. Improvements (below) are tested
+against these numbers.
