@@ -12,6 +12,7 @@ import { readGatherArtifact } from "./assembly/artifact.js";
 import { loadAssemblyConfig } from "./assembly/config.js";
 import { runReviewPost } from "./assembly/review-post.js";
 import { scaffold } from "./init/scaffold.js";
+import { resolveProviderKeys } from "./pi/keys.js";
 import { createPiWorker } from "./pi/worker.js";
 
 const program = new Command();
@@ -55,7 +56,10 @@ program
       const { sticky, inline, unplaceable } = await runReviewPost(
         config,
         context,
-        (apiKeys) => createPiWorker({ apiKeys })
+        {
+          makeWorker: (apiKeys) => createPiWorker({ apiKeys }),
+          resolveKeys: resolveProviderKeys,
+        }
       );
       process.stdout.write(
         `${JSON.stringify({ inline, sticky, unplaceable }, null, 2)}\n`

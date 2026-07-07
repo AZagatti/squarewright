@@ -1,36 +1,40 @@
 /**
- * Resolve provider API keys from the environment. Pi's request path does not read env vars, so a caller must
- * hand keys to the worker explicitly. Convention: `<PROVIDER>_API_KEY` (e.g. openrouter → OPENROUTER_API_KEY).
+ * Resolve provider API keys through Pi's own auth model — its provider→env-var map, stored auth, and OAuth
+ * (see `@earendil-works/pi-ai` env-api-keys). Squarewright owns the policy (which providers a review needs),
+ * not the key naming. Pi's request path doesn't read env, so we resolve here and hand keys to the worker
+ * explicitly; a provider with no credential is reported by Pi's own env-var name.
  */
-const PROVIDER_SEP = /[^a-z0-9]/gi;
+import { AuthStorage } from "@earendil-works/pi-coding-agent";
 
-/** The env var name a provider's key is read from. */
-export function envApiKeyName(provider: string): string {
-  return `${provider.replace(PROVIDER_SEP, "_").toUpperCase()}_API_KEY`;
+/** The slice of AuthStorage we depend on — narrowed so a test can supply a fake. */
+interface ProviderAuth {
+  getApiKey: (provider: string) => Promise<string | undefined>;
+  getAuthStatus: (provider: string) => { label?: string };
 }
 
-/** Collect the set env keys for the given providers; a provider with no env var is omitted. */
-export function envApiKeys(
-  providers: Iterable<string>
-): Record<string, string> {
-  const keys: Record<string, string> = {};
-  for (const provider of providers) {
-    const value = process.env[envApiKeyName(provider)];
-    if (value) {
-      keys[provider] = value;
-    }
-  }
-  return keys;
+export interface ResolvedKeys {
+  /** provider → key, for the providers whose credential Pi could resolve */
+  apiKeys: Record<string, string>;
+  /** Pi's env-var name (or the provider id) for each provider with no credential */
+  missing: string[];
 }
 
-/** Env-var names for the providers whose key is not set — the review must not start if any are missing. */
-export function missingApiKeys(providers: Iterable<string>): string[] {
+/** Resolve keys for the given providers via Pi; report the missing ones by Pi's own env-var name. */
+export async function resolveProviderKeys(
+  providers: Iterable<string>,
+  auth: ProviderAuth = AuthStorage.create()
+): Promise<ResolvedKeys> {
+  const list = [...providers];
+  const keys = await Promise.all(list.map((p) => auth.getApiKey(p)));
+  const apiKeys: Record<string, string> = {};
   const missing: string[] = [];
-  for (const provider of providers) {
-    const name = envApiKeyName(provider);
-    if (!process.env[name]) {
-      missing.push(name);
+  for (const [i, provider] of list.entries()) {
+    const key = keys[i];
+    if (key) {
+      apiKeys[provider] = key;
+    } else {
+      missing.push(auth.getAuthStatus(provider).label ?? provider);
     }
   }
-  return missing;
+  return { apiKeys, missing };
 }

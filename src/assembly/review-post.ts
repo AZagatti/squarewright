@@ -1,17 +1,22 @@
 /**
  * Orchestrate a `review --phase post` run. Preflight EVERY required provider key — the config's lanes plus the
  * openrouter structurer (src/pi/worker.ts) — before any model call, so a run can't spend on pass 1 and then
- * fail on pass 2's missing key. Worker construction is injected so the flow is testable without a real Pi
- * session (and so the preflight provably runs before the worker exists).
+ * fail on pass 2's missing key. Key resolution and worker construction are injected so the flow is testable
+ * without Pi (and so the preflight provably precedes the worker).
  */
 import type { ReviewContext } from "../core/types.js";
-import { envApiKeys, missingApiKeys } from "../pi/keys.js";
+import type { ResolvedKeys } from "../pi/keys.js";
 import type { PiWorker } from "../pi/session.js";
 import type { AssemblyConfig } from "./config.js";
 import { type ReviewOutput, runReview } from "./review.js";
 
+interface ReviewPostDeps {
+  makeWorker: (apiKeys: Record<string, string>) => PiWorker;
+  resolveKeys: (providers: Iterable<string>) => Promise<ResolvedKeys>;
+}
+
 /** Providers whose keys the review needs: the config's lanes plus the openrouter structurer. */
-export function requiredProviders(config: AssemblyConfig): Set<string> {
+function requiredProviders(config: AssemblyConfig): Set<string> {
   const providers = new Set(config.lanes.map((l) => l.provider));
   providers.add("openrouter");
   return providers;
@@ -20,15 +25,17 @@ export function requiredProviders(config: AssemblyConfig): Set<string> {
 export async function runReviewPost(
   config: AssemblyConfig,
   context: ReviewContext,
-  makeWorker: (apiKeys: Record<string, string>) => PiWorker
+  deps: ReviewPostDeps
 ): Promise<ReviewOutput> {
-  const providers = requiredProviders(config);
-  const missing = missingApiKeys(providers);
+  const { apiKeys, missing } = await deps.resolveKeys(
+    requiredProviders(config)
+  );
   if (missing.length > 0) {
     throw new Error(
-      `Missing required provider key(s): ${missing.join(", ")}. ` +
-        "Set them before running review — no model runs until every required key is present."
+      `Missing credentials for provider(s): ${missing.join(", ")}. Set each provider's API key ` +
+        "(the exact variable names are in your `squarewright init` setup notes) before running review — " +
+        "no model runs until every required key is present."
     );
   }
-  return await runReview(context, config, makeWorker(envApiKeys(providers)));
+  return await runReview(context, config, deps.makeWorker(apiKeys));
 }

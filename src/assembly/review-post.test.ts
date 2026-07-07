@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { ReviewContext } from "../core/types.js";
 import type { PiWorker } from "../pi/session.js";
 import type { AssemblyConfig } from "./config.js";
@@ -14,64 +14,52 @@ const CONTEXT: ReviewContext = {
   title: "t",
 };
 
-// z.ai analysis lane; the pass-2 structurer defaults to openrouter, so BOTH keys are required.
-const ZAI_CONFIG: AssemblyConfig = {
+const CONFIG: AssemblyConfig = {
   grounders: [],
   lanes: [{ id: "cheap", model: "glm-5-turbo", provider: "zai" }],
   personas: [{ id: "gen", lane: "cheap", prompt: "x", when: ["always"] }],
 };
 
-describe("runReviewPost preflight", () => {
-  const NAMES = ["OPENROUTER_API_KEY", "ZAI_API_KEY"];
-  const saved = new Map(NAMES.map((n) => [n, process.env[n]]));
-  afterEach(() => {
-    for (const [n, v] of saved) {
-      if (v === undefined) {
-        delete process.env[n];
-      } else {
-        process.env[n] = v;
-      }
-    }
-  });
+const STUB_WORKER: PiWorker = {
+  run: () =>
+    Promise.resolve({ findings: [], usage: { submitted: true, toolCalls: 0 } }),
+};
 
+describe("runReviewPost preflight", () => {
   test("fails before constructing the worker when a required key is missing", async () => {
-    process.env.ZAI_API_KEY = "z"; // pass-1 provider present
-    process.env.OPENROUTER_API_KEY = ""; // pass-2 structurer provider absent
     let made = false;
-    const makeWorker = (): PiWorker => {
-      made = true;
-      return {
-        run: () =>
-          Promise.resolve({
-            findings: [],
-            usage: { submitted: true, toolCalls: 0 },
-          }),
-      };
+    const deps = {
+      makeWorker: () => {
+        made = true;
+        return STUB_WORKER;
+      },
+      resolveKeys: () =>
+        Promise.resolve({ apiKeys: {}, missing: ["OPENROUTER_API_KEY"] }),
     };
 
-    await expect(
-      runReviewPost(ZAI_CONFIG, CONTEXT, makeWorker)
-    ).rejects.toThrow("OPENROUTER_API_KEY");
-    // no worker was constructed → worker.run was never reached → no z.ai spend on a doomed run
+    await expect(runReviewPost(CONFIG, CONTEXT, deps)).rejects.toThrow(
+      "OPENROUTER_API_KEY"
+    );
+    // no worker constructed → worker.run never reached → no spend on a doomed run
     expect(made).toBe(false);
   });
 
-  test("constructs the worker with the resolved keys and returns output when all are present", async () => {
-    process.env.ZAI_API_KEY = "z";
-    process.env.OPENROUTER_API_KEY = "or";
+  test("constructs the worker with the resolved keys when none are missing", async () => {
     let received: Record<string, string> | undefined;
-    const makeWorker = (apiKeys: Record<string, string>): PiWorker => {
-      received = apiKeys;
-      return {
-        run: () =>
-          Promise.resolve({
-            findings: [],
-            usage: { submitted: true, toolCalls: 0 },
-          }),
-      };
+    const deps = {
+      makeWorker: (apiKeys: Record<string, string>) => {
+        received = apiKeys;
+        return STUB_WORKER;
+      },
+      resolveKeys: () =>
+        Promise.resolve({
+          apiKeys: { openrouter: "or", zai: "z" },
+          missing: [],
+        }),
     };
 
-    const out = await runReviewPost(ZAI_CONFIG, CONTEXT, makeWorker);
+    const out = await runReviewPost(CONFIG, CONTEXT, deps);
+
     expect(received).toEqual({ openrouter: "or", zai: "z" });
     expect(out.sticky).toContain("No blocking issues found");
   });
