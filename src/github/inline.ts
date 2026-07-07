@@ -19,14 +19,16 @@ export function commentableLines(patch: string): Set<number> {
       inHunk = true;
       continue;
     }
-    if (!inHunk) continue;
-    const c = raw[0];
+    if (!inHunk) {
+      continue;
+    }
+    const [c] = raw;
     if (c === "+") {
       lines.add(newLine);
-      newLine++;
+      newLine += 1;
     } else if (c === " ") {
       lines.add(newLine);
-      newLine++;
+      newLine += 1;
     } else if (c === "-") {
       // left-side only; no right-side position, not commentable
     } else {
@@ -37,9 +39,9 @@ export function commentableLines(patch: string): Set<number> {
 }
 
 export interface InlineComment {
-  path: string;
-  line: number;
   body: string;
+  line: number;
+  path: string;
 }
 
 /**
@@ -49,18 +51,20 @@ export interface InlineComment {
 export function mapToInlineComments(
   findings: Finding[],
   files: ChangedFile[],
-  opts: { cap?: number } = {},
+  opts: { cap?: number } = {}
 ): { inline: InlineComment[]; unplaceable: Finding[] } {
   const commentable = new Map<string, Set<number>>();
   for (const f of files) {
-    if (f.patch) commentable.set(f.path, commentableLines(f.patch));
+    if (f.patch) {
+      commentable.set(f.path, commentableLines(f.patch));
+    }
   }
   const inline: InlineComment[] = [];
   const unplaceable: Finding[] = [];
   for (const f of findings) {
     const lines = commentable.get(f.path);
     if (lines?.has(f.line)) {
-      inline.push({ path: f.path, line: f.line, body: f.message });
+      inline.push({ body: f.message, line: f.line, path: f.path });
     } else {
       unplaceable.push(f);
     }

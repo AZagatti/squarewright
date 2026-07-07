@@ -5,16 +5,26 @@
   "type": "module",
   "license": "MIT",
   "author": "André Zagatti",
-  "repository": { "type": "git", "url": "https://github.com/AZagatti/squarewright" },
-  "bin": { "squarewright": "./dist/cli.js" },
-  "engines": { "node": ">=22" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AZagatti/squarewright"
+  },
+  "bin": {
+    "squarewright": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:binary": "bun build ./src/cli.ts --compile --outfile dist/squarewright",
     "dev": "bun run src/cli.ts",
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "verify:pr": "bun run typecheck && bun test"
+    "check": "ultracite check",
+    "format": "ultracite fix",
+    "verify:pr": "bun run typecheck && bun test && bun run check",
+    "prepare": "lefthook install"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.80.3",
@@ -24,7 +34,10 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.2",
     "@types/node": "^22.0.0",
-    "typescript": "^5.5.0"
+    "lefthook": "^2.1.9",
+    "typescript": "^5.5.0",
+    "ultracite": "^7.9.2"
   }
 }

@@ -23,7 +23,7 @@ The point of this loop is that the maintainer is an **orchestrator**, not a line
    **Ready** issue it's taking (see the Ready-issue template below).
 2. **Branch.** `git switch -c <type>/<slug>` from `origin/main`. Agent work never commits to `main`.
 3. **Implement to the acceptance criteria.** Hit a **stop condition** → stop and ask (see below).
-4. **Verify.** `bun run verify:pr` (typecheck + tests today; lint joins once Biome/Ultracite lands). If the change touches review quality
+4. **Verify.** `bun run verify:pr` (typecheck + tests + lint). If the change touches review quality
    (`personas/`, `pi/`, `output/`), also run the eval — **free z.ai only, ≥3 runs, behind the spend guard** —
    and record the delta in `eval/RESULTS.md`.
 5. **Open a PR** with the template filled: briefing, *what you need from the maintainer*, subagent-review
@@ -36,7 +36,7 @@ The point of this loop is that the maintainer is an **orchestrator**, not a line
 
 1. **Implementation agent** produces the change on a branch + the PR briefing and risk summary.
 2. **Independent subagent review** — fresh context, adversarial (prompt below). Never grades its own homework.
-3. **Automated checks** — `bun run verify:pr` locally (CI will run the same once wired, per ADR-0004).
+3. **Automated checks** — `bun run verify:pr` locally; CI runs the same on every PR.
 4. **Squarewright dogfood** — *once the reviewer can post (roadmap M2+)*, Squarewright reviews its own PR. Until
    then this step is skipped and noted as such.
 5. **Maintainer merge decision** — the final human gate.
@@ -44,8 +44,8 @@ The point of this loop is that the maintainer is an **orchestrator**, not a line
 ## `bun run verify:pr` — the single verification target
 
 One command an agent (or CI) runs to check a change, so nobody has to remember the individual steps. It wraps
-typecheck + tests today, and grows to include lint once Biome/Ultracite lands (ADR-0004). Treated as the
-pass/fail gate for a PR.
+typecheck + tests + lint (Biome via Ultracite). Treated as the pass/fail gate for a PR, and CI runs it on
+every PR.
 
 ## Stop conditions — ask, don't guess
 

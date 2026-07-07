@@ -1,6 +1,6 @@
-import { test, expect } from "bun:test";
-import { commentableLines, mapToInlineComments } from "./inline.js";
+import { expect, test } from "bun:test";
 import type { ChangedFile, Finding } from "../core/types.js";
+import { commentableLines, mapToInlineComments } from "./inline.js";
 
 const PATCH = `diff --git a/foo.ts b/foo.ts
 index abc..def 100644
@@ -20,15 +20,35 @@ test("commentableLines: added + context on the new side, not removed", () => {
 });
 
 test("mapToInlineComments: places on commentable lines, flags the rest", () => {
-  const files: ChangedFile[] = [{ path: "foo.ts", status: "modified", patch: PATCH }];
+  const files: ChangedFile[] = [
+    { patch: PATCH, path: "foo.ts", status: "modified" },
+  ];
   const findings: Finding[] = [
-    { path: "foo.ts", line: 2, severity: "warning", rule: "r", message: "on an added line" },
-    { path: "foo.ts", line: 99, severity: "error", rule: "r", message: "off the diff" },
-    { path: "other.ts", line: 1, severity: "info", rule: "r", message: "file not in diff" },
+    {
+      line: 2,
+      message: "on an added line",
+      path: "foo.ts",
+      rule: "r",
+      severity: "warning",
+    },
+    {
+      line: 99,
+      message: "off the diff",
+      path: "foo.ts",
+      rule: "r",
+      severity: "error",
+    },
+    {
+      line: 1,
+      message: "file not in diff",
+      path: "other.ts",
+      rule: "r",
+      severity: "info",
+    },
   ];
   const { inline, unplaceable } = mapToInlineComments(findings, files);
   expect(inline).toHaveLength(1);
-  expect(inline[0]).toMatchObject({ path: "foo.ts", line: 2 });
+  expect(inline[0]).toMatchObject({ line: 2, path: "foo.ts" });
   expect(unplaceable.map((f) => f.line).sort((a, b) => a - b)).toEqual([1, 99]);
 });
 

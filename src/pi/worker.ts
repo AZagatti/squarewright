@@ -14,22 +14,32 @@
 import {
   AuthStorage,
   createAgentSession,
-  defineTool,
   DefaultResourceLoader,
+  defineTool,
   getAgentDir,
   ModelRegistry,
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { Finding, ModelLane, ReviewContext, Severity } from "../core/types.js";
-import type { PiWorker, RepoReader, WorkerRequest, WorkerResult } from "./session.js";
+import type {
+  Finding,
+  ModelLane,
+  ReviewContext,
+  Severity,
+} from "../core/types.js";
+import type {
+  PiWorker,
+  RepoReader,
+  WorkerRequest,
+  WorkerResult,
+} from "./session.js";
 
 /** Fixed pass-2 extractor: no reasoning, reliably calls tools, cheap. */
 const DEFAULT_STRUCTURER: ModelLane = {
   id: "structurer",
-  provider: "openrouter",
   model: "qwen/qwen3-coder-30b-a3b-instruct",
+  provider: "openrouter",
   thinking: "off",
 };
 
@@ -58,51 +68,87 @@ path, line number, severity, and explanation — and call submit_findings exactl
 no issues, call submit_findings with an empty findings array. Do not add issues the analysis didn't raise.`;
 
 const findingsSchema = Type.Object({
-  summary: Type.String({ description: "One or two sentences: the overall verdict on this change." }),
   findings: Type.Array(
     Type.Object({
+      detail: Type.String({
+        description: "Why it matters, grounded in the diff/code.",
+      }),
+      line: Type.Integer({
+        description: "1-indexed line on the new side the finding applies to.",
+      }),
       path: Type.String({ description: "Repo-relative file path (new side)." }),
-      line: Type.Integer({ description: "1-indexed line on the new side the finding applies to." }),
-      severity: Type.Union([Type.Literal("error"), Type.Literal("warning"), Type.Literal("info")]),
-      title: Type.String({ description: "Short one-line summary of the issue." }),
-      detail: Type.String({ description: "Why it matters, grounded in the diff/code." }),
-      suggestion: Type.Optional(Type.String({ description: "Exact single-line replacement, only for mechanical fixes." })),
-    }),
+      severity: Type.Union([
+        Type.Literal("error"),
+        Type.Literal("warning"),
+        Type.Literal("info"),
+      ]),
+      suggestion: Type.Optional(
+        Type.String({
+          description:
+            "Exact single-line replacement, only for mechanical fixes.",
+        })
+      ),
+      title: Type.String({
+        description: "Short one-line summary of the issue.",
+      }),
+    })
   ),
+  summary: Type.String({
+    description: "One or two sentences: the overall verdict on this change.",
+  }),
 });
 
 interface SubmittedFinding {
-  path: string;
-  line: number;
-  severity: Severity;
-  title: string;
   detail: string;
+  line: number;
+  path: string;
+  severity: Severity;
   suggestion?: string;
+  title: string;
 }
 
 /** Read-only repo tools that let Pass 1 ground its analysis. */
 function buildRepoTools(reader: RepoReader) {
   const readFile = defineTool({
-    name: "read_repo_file",
-    label: "Read repo file",
-    description: "Read the full contents of a file in the repository at the PR's revision, to check context.",
-    parameters: Type.Object({ path: Type.String({ description: "repo-relative file path" }) }),
+    description:
+      "Read the full contents of a file in the repository at the PR's revision, to check context.",
     execute: async (_id, params) => {
       const p = (params as { path: string }).path;
       const content = await reader.readFile(p);
-      return { content: [{ type: "text", text: content ?? `(file not found: ${p})` }], details: {} };
+      return {
+        content: [{ text: content ?? `(file not found: ${p})`, type: "text" }],
+        details: {},
+      };
     },
+    label: "Read repo file",
+    name: "read_repo_file",
+    parameters: Type.Object({
+      path: Type.String({ description: "repo-relative file path" }),
+    }),
   });
   const listDir = defineTool({
-    name: "list_repo_dir",
-    label: "List repo dir",
-    description: "List the entries of a directory in the repository at the PR's revision.",
-    parameters: Type.Object({ path: Type.String({ description: 'repo-relative directory path ("" for root)' }) }),
+    description:
+      "List the entries of a directory in the repository at the PR's revision.",
     execute: async (_id, params) => {
       const p = (params as { path: string }).path;
       const entries = await reader.listDir(p);
-      return { content: [{ type: "text", text: entries ? entries.join("\n") : `(not a directory: ${p})` }], details: {} };
+      return {
+        content: [
+          {
+            text: entries ? entries.join("\n") : `(not a directory: ${p})`,
+            type: "text",
+          },
+        ],
+        details: {},
+      };
     },
+    label: "List repo dir",
+    name: "list_repo_dir",
+    parameters: Type.Object({
+      path: Type.String({
+        description: 'repo-relative directory path ("" for root)',
+      }),
+    }),
   });
   return [readFile, listDir];
 }
@@ -110,13 +156,17 @@ function buildRepoTools(reader: RepoReader) {
 /** The diff, rendered for the Pass-1 analysis prompt (no tool instruction — the model just reviews it). */
 function renderAnalysisPrompt(ctx: ReviewContext): string {
   const parts: string[] = [
-    `Review this pull request. Report only real issues in the changed lines; ground every claim in the code.`,
+    "Review this pull request. Report only real issues in the changed lines; ground every claim in the code.",
     `\nPR #${ctx.prNumber} — ${ctx.title}`,
   ];
-  if (ctx.body?.trim()) parts.push(`\nDescription:\n${ctx.body.trim()}`);
-  parts.push(`\nUnified diff:\n`);
+  if (ctx.body.trim()) {
+    parts.push(`\nDescription:\n${ctx.body.trim()}`);
+  }
+  parts.push("\nUnified diff:\n");
   for (const f of ctx.files) {
-    if (f.patch) parts.push(`\n--- ${f.path} (${f.status}) ---\n${f.patch}`);
+    if (f.patch) {
+      parts.push(`\n--- ${f.path} (${f.status}) ---\n${f.patch}`);
+    }
   }
   return parts.join("\n");
 }
@@ -124,12 +174,16 @@ function renderAnalysisPrompt(ctx: ReviewContext): string {
 function extractAssistantText(messages: unknown[]): string {
   const parts: string[] = [];
   for (const m of messages as Array<{ role?: string; content?: unknown }>) {
-    if (m.role !== "assistant") continue;
+    if (m.role !== "assistant") {
+      continue;
+    }
     if (typeof m.content === "string") {
       parts.push(m.content);
     } else if (Array.isArray(m.content)) {
       for (const b of m.content as Array<{ type?: string; text?: string }>) {
-        if (b.type === "text" && typeof b.text === "string") parts.push(b.text);
+        if (b.type === "text" && typeof b.text === "string") {
+          parts.push(b.text);
+        }
       }
     }
   }
@@ -138,8 +192,12 @@ function extractAssistantText(messages: unknown[]): string {
 
 function sumCost(messages: unknown[]): number {
   let c = 0;
-  for (const m of messages as Array<{ usage?: { cost?: { total?: number } } }>) {
-    if (m.usage?.cost?.total) c += m.usage.cost.total;
+  for (const m of messages as Array<{
+    usage?: { cost?: { total?: number } };
+  }>) {
+    if (m.usage?.cost?.total) {
+      c += m.usage.cost.total;
+    }
   }
   return c;
 }
@@ -148,9 +206,13 @@ function sumCost(messages: unknown[]): number {
 function sumTokens(messages: unknown[]): { input: number; output: number } {
   let input = 0;
   let output = 0;
-  for (const m of messages as Array<{ usage?: { input?: number; output?: number; totalTokens?: number } }>) {
+  for (const m of messages as Array<{
+    usage?: { input?: number; output?: number; totalTokens?: number };
+  }>) {
     const u = m.usage;
-    if (!u) continue;
+    if (!u) {
+      continue;
+    }
     input += u.input ?? 0;
     output += u.output ?? Math.max(0, (u.totalTokens ?? 0) - (u.input ?? 0));
   }
@@ -171,7 +233,11 @@ export interface PiWorkerOptions {
 const SETTINGS = () =>
   SettingsManager.inMemory({
     compaction: { enabled: false },
-    retry: { enabled: true, maxRetries: 2, provider: { maxRetries: 4, maxRetryDelayMs: 20_000 } },
+    retry: {
+      enabled: true,
+      maxRetries: 2,
+      provider: { maxRetries: 4, maxRetryDelayMs: 20_000 },
+    },
   });
 
 export function createPiWorker(options: PiWorkerOptions): PiWorker {
@@ -186,31 +252,43 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
       let costUsd = 0;
 
       // ── Pass 1: analyze (reason freely + optional grounding, output prose) ──
-      const analysisModel = modelRegistry.find(request.lane.provider, request.lane.model);
+      const analysisModel = modelRegistry.find(
+        request.lane.provider,
+        request.lane.model
+      );
       if (!analysisModel) {
-        throw new Error(`Model not found in Pi's catalog: ${request.lane.provider}/${request.lane.model}.`);
+        throw new Error(
+          `Model not found in Pi's catalog: ${request.lane.provider}/${request.lane.model}.`
+        );
       }
-      const groundingTools = request.repoReader ? buildRepoTools(request.repoReader) : [];
-      const analysisSystem = request.systemPrompt + (request.repoReader ? GROUNDING_NOTE : "") + ANALYSIS_NOTE;
+      const groundingTools = request.repoReader
+        ? buildRepoTools(request.repoReader)
+        : [];
+      const analysisSystem =
+        request.systemPrompt +
+        (request.repoReader ? GROUNDING_NOTE : "") +
+        ANALYSIS_NOTE;
       const loader1 = new DefaultResourceLoader({
-        cwd: process.cwd(),
         agentDir: getAgentDir(),
+        cwd: process.cwd(),
         systemPromptOverride: () => analysisSystem,
       });
       await loader1.reload();
       const { session: s1 } = await createAgentSession({
-        model: analysisModel,
-        thinkingLevel: request.lane.thinking ?? "off",
         authStorage,
-        modelRegistry,
-        resourceLoader: loader1,
         customTools: groundingTools,
+        model: analysisModel,
+        modelRegistry,
         noTools: "builtin",
+        resourceLoader: loader1,
         sessionManager: SessionManager.inMemory(),
         settingsManager: SETTINGS(),
+        thinkingLevel: request.lane.thinking ?? "off",
       });
       s1.subscribe((e) => {
-        if (e.type === "tool_execution_start") toolCalls += 1;
+        if (e.type === "tool_execution_start") {
+          toolCalls += 1;
+        }
       });
       await s1.prompt(renderAnalysisPrompt(request.context));
       const analysisText = extractAssistantText(s1.messages);
@@ -220,74 +298,102 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
 
       // ── Pass 2: structure (fixed reliable extractor, no reasoning) ──
       const structLane = options.structurerLane ?? DEFAULT_STRUCTURER;
-      const structModel = modelRegistry.find(structLane.provider, structLane.model);
+      const structModel = modelRegistry.find(
+        structLane.provider,
+        structLane.model
+      );
       if (!structModel) {
-        throw new Error(`Structurer model not found: ${structLane.provider}/${structLane.model}.`);
+        throw new Error(
+          `Structurer model not found: ${structLane.provider}/${structLane.model}.`
+        );
       }
-      let captured: { summary: string; findings: SubmittedFinding[] } | undefined;
+      let captured:
+        | { summary: string; findings: SubmittedFinding[] }
+        | undefined;
       const submitFindings = defineTool({
-        name: "submit_findings",
-        label: "Submit findings",
-        description: "Submit the structured findings extracted from the analysis. Call exactly once.",
-        parameters: findingsSchema,
-        execute: async (_id, params) => {
-          captured = params as { summary: string; findings: SubmittedFinding[] };
-          return { content: [{ type: "text", text: `Recorded ${captured.findings.length} finding(s).` }], details: {} };
+        description:
+          "Submit the structured findings extracted from the analysis. Call exactly once.",
+        execute: (_id, params) => {
+          captured = params as {
+            summary: string;
+            findings: SubmittedFinding[];
+          };
+          return Promise.resolve({
+            content: [
+              {
+                text: `Recorded ${captured.findings.length} finding(s).`,
+                type: "text",
+              },
+            ],
+            details: {},
+          });
         },
+        label: "Submit findings",
+        name: "submit_findings",
+        parameters: findingsSchema,
       });
       const loader2 = new DefaultResourceLoader({
-        cwd: process.cwd(),
         agentDir: getAgentDir(),
+        cwd: process.cwd(),
         systemPromptOverride: () => STRUCTURER_SYSTEM,
       });
       await loader2.reload();
       const { session: s2 } = await createAgentSession({
-        model: structModel,
-        thinkingLevel: structLane.thinking ?? "off",
         authStorage,
-        modelRegistry,
-        resourceLoader: loader2,
         customTools: [submitFindings],
+        model: structModel,
+        modelRegistry,
         noTools: "builtin",
+        resourceLoader: loader2,
         sessionManager: SessionManager.inMemory(),
         settingsManager: SETTINGS(),
+        thinkingLevel: structLane.thinking ?? "off",
       });
       s2.subscribe((e) => {
-        if (e.type === "tool_execution_start") toolCalls += 1;
+        if (e.type === "tool_execution_start") {
+          toolCalls += 1;
+        }
       });
-      const analysisForStructuring = analysisText.length > 0 ? analysisText : "(the reviewer produced no analysis text)";
+      const analysisForStructuring =
+        analysisText.length > 0
+          ? analysisText
+          : "(the reviewer produced no analysis text)";
       await s2.prompt(
-        `Extract the findings from this code-review analysis into submit_findings ` +
-          `(empty findings array if it reports no issues):\n\n${analysisForStructuring}`,
+        "Extract the findings from this code-review analysis into submit_findings " +
+          `(empty findings array if it reports no issues):\n\n${analysisForStructuring}`
       );
       let nudges = 0;
       while (captured === undefined && nudges < 2) {
-        nudges++;
-        await s2.prompt("Call submit_findings now, exactly once, with the findings from the analysis (empty array if none).");
+        nudges += 1;
+        // biome-ignore lint/performance/noAwaitInLoops: each nudge is only sent if the previous one failed to elicit submit_findings — inherently sequential/dependent
+        await s2.prompt(
+          "Call submit_findings now, exactly once, with the findings from the analysis (empty array if none)."
+        );
       }
       costUsd += sumCost(s2.messages);
       const structTokens = sumTokens(s2.messages);
       s2.dispose();
 
+      // biome-ignore lint/suspicious/noUnnecessaryConditions: runtime guard — the model may still not have called submit_findings after the nudge loop exhausts its retries; Biome's flow analysis can't see that the while loop can exit with `captured` still undefined
       const findings: Finding[] = (captured?.findings ?? []).map((f) => ({
-        path: f.path,
         line: f.line,
-        severity: f.severity,
-        rule: request.persona ?? "persona:general",
         message: f.detail ? `${f.title} — ${f.detail}` : f.title,
-        suggestion: f.suggestion,
+        path: f.path,
+        rule: request.persona ?? "persona:general",
+        severity: f.severity,
         source: request.persona ?? "persona:general",
+        suggestion: f.suggestion,
       }));
 
       return {
         findings,
         usage: {
-          toolCalls,
-          costUsd,
-          summary: captured?.summary,
-          submitted: captured !== undefined,
           analysisTokens,
+          costUsd,
           structTokens,
+          submitted: captured !== undefined,
+          summary: captured?.summary,
+          toolCalls,
         },
       };
     },

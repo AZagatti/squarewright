@@ -1,0 +1,11 @@
+# Git hooks (fast, via lefthook). Installed by `bun install` (prepare script) or `bunx lefthook install`.
+# See AGENTS.md / docs/adr/0004.
+pre-commit:
+  parallel: true
+  commands:
+    format-lint:
+      glob: "*.{js,jsx,ts,tsx,json,jsonc,css}"
+      run: bunx ultracite fix {staged_files}
+      stage_fixed: true
+    typecheck:
+      run: bun run typecheck

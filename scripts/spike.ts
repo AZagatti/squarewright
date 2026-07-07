@@ -9,13 +9,14 @@
  *   bun run scripts/spike.ts --diff <path-to.diff>
  *   SW_MODEL=deepseek/deepseek-v3.2 bun run scripts/spike.ts --repo gin-gonic/gin --pr 4003
  */
+
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { execFileSync } from "node:child_process";
-import { createPiWorker } from "../src/pi/worker.js";
-import { createVerifier } from "../src/pi/verifier.js";
 import { splitUnifiedDiff } from "../src/core/diff.js";
 import type { ReviewContext, ThinkingLevel } from "../src/core/types.js";
+import { createVerifier } from "../src/pi/verifier.js";
+import { createPiWorker } from "../src/pi/worker.js";
 
 const THINKING = (process.env.SW_THINKING ?? "off") as ThinkingLevel;
 
@@ -34,47 +35,64 @@ function arg(name: string): string | undefined {
 
 function readKey(): string {
   const env = process.env.OPENROUTER_API_KEY;
-  if (env) return env.trim();
+  if (env) {
+    return env.trim();
+  }
   return readFileSync(`${homedir()}/.or_key`, "utf8").trim();
 }
 
 function getDiff(): { diff: string; label: string } {
   const diffPath = arg("diff");
-  if (diffPath) return { diff: readFileSync(diffPath, "utf8"), label: diffPath };
+  if (diffPath) {
+    return { diff: readFileSync(diffPath, "utf8"), label: diffPath };
+  }
   const repo = arg("repo");
   const pr = arg("pr");
-  if (!repo || !pr) throw new Error("provide --diff <file> OR --repo <owner/repo> --pr <number>");
-  const diff = execFileSync("gh", ["pr", "diff", pr, "--repo", repo], { encoding: "utf8", maxBuffer: 50 * 1024 * 1024 });
+  if (!(repo && pr)) {
+    throw new Error(
+      "provide --diff <file> OR --repo <owner/repo> --pr <number>"
+    );
+  }
+  const diff = execFileSync("gh", ["pr", "diff", pr, "--repo", repo], {
+    encoding: "utf8",
+    maxBuffer: 50 * 1024 * 1024,
+  });
   return { diff, label: `${repo}#${pr}` };
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: refactor tracked separately — behavior-preserving change out of scope for the tooling PR
 async function main() {
   const model = process.env.SW_MODEL ?? "anthropic/claude-haiku-4.5";
   const { diff: rawDiff, label } = getDiff();
-  const diff = rawDiff.length > MAX_DIFF_CHARS ? rawDiff.slice(0, MAX_DIFF_CHARS) : rawDiff;
+  const diff =
+    rawDiff.length > MAX_DIFF_CHARS
+      ? rawDiff.slice(0, MAX_DIFF_CHARS)
+      : rawDiff;
   const truncated = rawDiff.length > MAX_DIFF_CHARS;
 
   const files = splitUnifiedDiff(diff);
   const context: ReviewContext = {
-    repo: label,
-    prNumber: Number(arg("pr") ?? 0),
     baseSha: "",
-    headSha: "",
-    title: label,
     body: "",
     files,
+    headSha: "",
+    prNumber: Number(arg("pr") ?? 0),
+    repo: label,
+    title: label,
   };
 
   console.log(`\n▸ spike: ${label}  (model: openrouter/${model})`);
-  console.log(`  diff: ${rawDiff.length} chars${truncated ? ` (truncated to ${MAX_DIFF_CHARS})` : ""}, ${files.length} file(s)\n`);
+  console.log(
+    `  diff: ${rawDiff.length} chars${truncated ? ` (truncated to ${MAX_DIFF_CHARS})` : ""}, ${files.length} file(s)\n`
+  );
 
   const worker = createPiWorker({ apiKeys: { openrouter: readKey() } });
   const t0 = Date.now();
   const result = await worker.run({
     context,
-    systemPrompt: PERSONA,
+    lane: { id: "default", model, provider: "openrouter", thinking: THINKING },
     persona: "persona:general",
-    lane: { id: "default", provider: "openrouter", model, thinking: THINKING },
+    systemPrompt: PERSONA,
   });
   const ms = Date.now() - t0;
 
@@ -83,29 +101,50 @@ async function main() {
   for (const f of result.findings) {
     console.log(`\n[${f.severity}] ${f.path}:${f.line}  (${f.rule})`);
     console.log(`  ${f.message}`);
-    if (f.suggestion) console.log(`  suggestion: ${f.suggestion}`);
+    if (f.suggestion) {
+      console.log(`  suggestion: ${f.suggestion}`);
+    }
   }
   console.log(
-    `\n── worker cost/latency ──\n  tool calls: ${result.usage?.toolCalls}  ·  cost: $${(result.usage?.costUsd ?? 0).toFixed(5)}  ·  wall: ${(ms / 1000).toFixed(1)}s`,
+    `\n── worker cost/latency ──\n  tool calls: ${result.usage?.toolCalls}  ·  cost: $${(result.usage?.costUsd ?? 0).toFixed(5)}  ·  wall: ${(ms / 1000).toFixed(1)}s`
   );
 
   if (process.argv.includes("--verify") && result.findings.length > 0) {
     const verifyModel = process.env.SW_VERIFY_MODEL ?? model;
-    console.log(`\n══ adversarial verify (model: openrouter/${verifyModel}) ══`);
+    console.log(
+      `\n══ adversarial verify (model: openrouter/${verifyModel}) ══`
+    );
     const verifier = createVerifier({ apiKeys: { openrouter: readKey() } });
     let confirmed = 0;
     let verifyCost = 0;
     for (const f of result.findings) {
-      const v = await verifier.verify(f, context, { id: "verify", provider: "openrouter", model: verifyModel, thinking: THINKING });
+      // biome-ignore lint/performance/noAwaitInLoops: sequential by design — respects the provider's concurrency limits for one-off verify runs
+      const v = await verifier.verify(f, context, {
+        id: "verify",
+        model: verifyModel,
+        provider: "openrouter",
+        thinking: THINKING,
+      });
       verifyCost += v.usage?.costUsd ?? 0;
-      if (v.verdict === "confirmed") confirmed += 1;
-      const mark = v.verdict === "confirmed" ? "✓ CONFIRMED" : v.verdict === "refuted" ? "✗ REFUTED" : "? UNCERTAIN";
+      if (v.verdict === "confirmed") {
+        confirmed += 1;
+      }
+      let mark: string;
+      if (v.verdict === "confirmed") {
+        mark = "✓ CONFIRMED";
+      } else if (v.verdict === "refuted") {
+        mark = "✗ REFUTED";
+      } else {
+        mark = "? UNCERTAIN";
+      }
       console.log(`\n${mark}  ${f.path}:${f.line}`);
       console.log(`  ${v.reasoning}`);
-      if (v.evidence) console.log(`  evidence: ${v.evidence.replace(/\n/g, "\n  ")}`);
+      if (v.evidence) {
+        console.log(`  evidence: ${v.evidence.replace(/\n/g, "\n  ")}`);
+      }
     }
     console.log(
-      `\n── after verify ──\n  ${result.findings.length} raw → ${confirmed} confirmed  ·  verify cost: $${verifyCost.toFixed(5)}\n`,
+      `\n── after verify ──\n  ${result.findings.length} raw → ${confirmed} confirmed  ·  verify cost: $${verifyCost.toFixed(5)}\n`
     );
   }
 }

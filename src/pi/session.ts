@@ -17,30 +17,30 @@ import type { Finding, ModelLane, ReviewContext } from "../core/types.js";
  * it: the eval fetches from GitHub at the head SHA; the real CI review reads from the checkout.
  */
 export interface RepoReader {
-  readFile(path: string): Promise<string | null>;
-  listDir(path: string): Promise<string[] | null>;
+  listDir: (path: string) => Promise<string[] | null>;
+  readFile: (path: string) => Promise<string | null>;
 }
 
 export interface WorkerRequest {
+  budget?: { maxToolCalls?: number; maxTokens?: number };
   context: ReviewContext;
-  /** the persona/system prompt that defines the review lens */
-  systemPrompt: string;
+  lane: ModelLane;
   /** persona id, stamped onto findings for provenance/feedback */
   persona?: string;
-  lane: ModelLane;
   /** read-only repo access for grounding; when present the Worker gets read_repo_file/list_repo_dir tools */
   repoReader?: RepoReader;
+  /** the persona/system prompt that defines the review lens */
+  systemPrompt: string;
   /** extra custom tools to expose to the Worker (registered into Pi via defineTool) */
   tools?: WorkerTool[];
-  budget?: { maxToolCalls?: number; maxTokens?: number };
 }
 
 export interface WorkerTool {
-  name: string;
   description: string;
+  execute: (args: unknown) => Promise<{ content: string; details?: unknown }>;
+  name: string;
   /** JSON-schema-ish parameter spec; adapted to Pi's TypeBox tool contract at the boundary */
   parameters: Record<string, unknown>;
-  execute: (args: unknown) => Promise<{ content: string; details?: unknown }>;
 }
 
 export interface WorkerResult {
@@ -64,5 +64,5 @@ export interface WorkerResult {
 
 /** The one call the assembly makes into Pi. Implemented in v0.1 against `@earendil-works/pi-coding-agent`. */
 export interface PiWorker {
-  run(request: WorkerRequest): Promise<WorkerResult>;
+  run: (request: WorkerRequest) => Promise<WorkerResult>;
 }

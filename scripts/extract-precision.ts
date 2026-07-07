@@ -11,7 +11,12 @@ const ROOT = new URL("..", import.meta.url).pathname;
 const MAX_DIFF = 12_000;
 
 const report = JSON.parse(readFileSync(process.argv[2], "utf8")) as {
-  results: Array<{ id: string; stack: string; label: string; findings?: Array<{ path: string; line: number; message: string }> }>;
+  results: Array<{
+    id: string;
+    stack: string;
+    label: string;
+    findings?: Array<{ path: string; line: number; message: string }>;
+  }>;
 };
 
 const out = report.results
@@ -19,18 +24,27 @@ const out = report.results
   .map((r) => {
     let diff = "";
     try {
-      diff = readFileSync(`${ROOT}eval/golden/diffs/${r.id}.diff`, "utf8").slice(0, MAX_DIFF);
+      diff = readFileSync(
+        `${ROOT}eval/golden/diffs/${r.id}.diff`,
+        "utf8"
+      ).slice(0, MAX_DIFF);
     } catch {
       /* diff missing */
     }
     return {
+      diff,
+      findings: (r.findings ?? []).map((f) => ({
+        line: f.line,
+        message: f.message,
+        path: f.path,
+      })),
       id: r.id,
       stack: r.stack,
-      diff,
-      findings: (r.findings ?? []).map((f) => ({ path: f.path, line: f.line, message: f.message })),
     };
   });
 
 writeFileSync(process.argv[3], JSON.stringify(out, null, 1));
 const totalFindings = out.reduce((s, c) => s + c.findings.length, 0);
-console.log(`${out.length} cases with findings, ${totalFindings} findings total (no loci included)`);
+console.log(
+  `${out.length} cases with findings, ${totalFindings} findings total (no loci included)`
+);
