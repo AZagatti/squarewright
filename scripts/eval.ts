@@ -68,6 +68,21 @@ function readKeys(): Record<string, string> {
   return keys;
 }
 
+/** Authoritative spend: OpenRouter's own credits balance (Pi's usage.cost undercounts reasoning tokens). */
+function openrouterCredits(): number | null {
+  try {
+    const key = readFileSync("/tmp/openrouter_mgm_key", "utf8").trim();
+    const out = execFileSync("curl", ["-s", "https://openrouter.ai/api/v1/credits", "-H", `Authorization: Bearer ${key}`], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const d = JSON.parse(out).data;
+    return d.total_credits - d.total_usage;
+  } catch {
+    return null;
+  }
+}
+
 const headShaCache = new Map<string, string>();
 function headSha(repo: string, pr: number): string {
   const k = `${repo}#${pr}`;
@@ -180,9 +195,23 @@ async function main() {
   const thinkingSet = arg("thinking") !== undefined;
   const concurrency = Number(arg("concurrency") ?? 3);
   const keys = readKeys();
-  const worker = createPiWorker({ apiKeys: keys });
+  // Pass-2 structurer override, e.g. --structurer zai:glm-4.5-air (free) or openrouter:qwen/qwen3-coder-30b-a3b-instruct
+  const structArg = arg("structurer");
+  const structurerLane = structArg
+    ? {
+        id: "structurer",
+        provider: structArg.slice(0, structArg.indexOf(":")),
+        model: structArg.slice(structArg.indexOf(":") + 1),
+        thinking: "off" as ThinkingLevel,
+      }
+    : undefined;
+  const worker = createPiWorker({ apiKeys: keys, structurerLane });
   const verifier = doVerify ? createVerifier({ apiKeys: keys }) : undefined;
   const lane = { id: "eval", provider, model, thinking };
+
+  // real-spend guard: default structurer is OpenRouter (qwen3-coder), so any run touches OR unless overridden to z.ai
+  const usesOR = provider === "openrouter" || (structurerLane ? structurerLane.provider === "openrouter" : true);
+  const creditsBefore = usesOR ? openrouterCredits() : null;
 
   const missing = cases.filter((c) => !existsSync(diffPath(c.id)));
   if (missing.length) {
@@ -190,9 +219,12 @@ async function main() {
     process.exit(1);
   }
 
+  const structDesc = structurerLane ? `${structurerLane.provider}/${structurerLane.model}` : "openrouter/qwen3-coder-30b";
   console.log(
-    `\n▸ eval  model=${provider}/${model}  personas=${doPersonas}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cases=${cases.length}  concurrency=${concurrency}\n`,
+    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cases=${cases.length}  conc=${concurrency}`,
   );
+  if (creditsBefore !== null) console.log(`  OpenRouter credits before: $${creditsBefore.toFixed(4)}`);
+  console.log();
 
   const results = await pool(cases, concurrency, async (c) => {
     const diff = readFileSync(diffPath(c.id), "utf8").slice(0, 60_000);
@@ -280,7 +312,10 @@ async function main() {
   console.log(`  clean cases: ${clean.length}  ·  false positives (${doVerify ? "post-verify" : "raw"}): ${cleanFP}`);
   console.log(`  has-issue cases: ${issue.length}  ·  locus recall: ${issueHits}/${issueTotal}`);
   if (totalNoSubmit) console.log(`  ⚠ dropped submissions (model never called submit_findings): ${totalNoSubmit}`);
-  console.log(`  total cost: $${cost.toFixed(4)}  ·  total model-time: ${secs.toFixed(0)}s`);
+  console.log(`  reported cost (undercounts reasoning): $${cost.toFixed(4)}  ·  total model-time: ${secs.toFixed(0)}s`);
+  const creditsAfter = usesOR ? openrouterCredits() : null;
+  const realCost = creditsBefore !== null && creditsAfter !== null ? creditsBefore - creditsAfter : null;
+  if (realCost !== null) console.log(`  💳 REAL OpenRouter spend: $${realCost.toFixed(4)}  ·  remaining: $${creditsAfter!.toFixed(4)}`);
 
   mkdirSync(REPORT_DIR, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -301,7 +336,8 @@ async function main() {
       issueHits,
       issueTotal,
       totalNoSubmit,
-      cost: Number(cost.toFixed(4)),
+      reportedCost: Number(cost.toFixed(4)),
+      realCostUsd: realCost !== null ? Number(realCost.toFixed(4)) : null,
       modelSeconds: Number(secs.toFixed(0)),
     }) + "\n",
   );
