@@ -83,6 +83,29 @@ function openrouterCredits(): number | null {
   }
 }
 
+/**
+ * OpenRouter marks some models `reasoning.mandatory: true` — reasoning CANNOT be disabled, so even
+ * `--thinking off` bills reasoning tokens (this burned ~$4.8 on minimax-m2.7). Guardrail: refuse these
+ * unless explicitly allowed.
+ */
+function openrouterMandatoryReasoning(model: string): boolean | null {
+  try {
+    const out = execFileSync("curl", ["-s", "https://openrouter.ai/api/v1/models"], {
+      encoding: "utf8",
+      maxBuffer: 50 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const m = (JSON.parse(out).data as Array<{ id: string; reasoning?: unknown; reasoning_config?: unknown }>).find(
+      (x) => x.id === model,
+    );
+    if (!m) return null;
+    const r = (m.reasoning ?? m.reasoning_config) as { mandatory?: boolean } | undefined;
+    return r && typeof r === "object" ? !!r.mandatory : false;
+  } catch {
+    return null;
+  }
+}
+
 const headShaCache = new Map<string, string>();
 function headSha(repo: string, pr: number): string {
   const k = `${repo}#${pr}`;
@@ -211,6 +234,20 @@ async function main() {
 
   // real-spend guard: default structurer is OpenRouter (qwen3-coder), so any run touches OR unless overridden to z.ai
   const usesOR = provider === "openrouter" || (structurerLane ? structurerLane.provider === "openrouter" : true);
+
+  // guardrail: refuse OpenRouter mandatory-reasoning models (can't run cheap even at off) unless forced
+  if (provider === "openrouter" && !flag("allow-mandatory-reasoning")) {
+    if (openrouterMandatoryReasoning(model)) {
+      console.error(
+        `\n✋ ABORT: ${model} has reasoning.mandatory=true on OpenRouter — reasoning can't be disabled, so even\n` +
+          `   --thinking off bills reasoning tokens (this burned ~$4.8 on minimax-m2.7). Use a mandatory:false\n` +
+          `   model (deepseek-v3.2/v4-flash, xiaomi/mimo-v2.5, qwen3.5-flash), the model's native provider, or\n` +
+          `   pass --allow-mandatory-reasoning to run it on purpose.\n`,
+      );
+      process.exit(2);
+    }
+  }
+
   const creditsBefore = usesOR ? openrouterCredits() : null;
 
   const missing = cases.filter((c) => !existsSync(diffPath(c.id)));
