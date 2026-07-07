@@ -263,6 +263,22 @@ async function main() {
 
   const creditsBefore = usesOR ? openrouterCredits() : null;
 
+  // REAL-TIME SPEND CIRCUIT BREAKER — the only reliable protection. Metadata (mandatory/efforts) missed
+  // mimo-v2.5, which looked safe but force-reasoned and burned ~$6.6. This checks actual OR credits during
+  // the run and aborts the moment this run's spend exceeds --max-spend (default $0.50).
+  const maxSpend = Number(arg("max-spend") ?? 0.5);
+  let aborted = false;
+  const spendGuard = () => {
+    if (!usesOR || creditsBefore === null || aborted) return;
+    const now = openrouterCredits();
+    if (now === null) return;
+    const spent = creditsBefore - now;
+    if (spent > maxSpend) {
+      aborted = true;
+      console.error(`\n🛑 CIRCUIT BREAKER: this run has spent $${spent.toFixed(4)} (> --max-spend $${maxSpend}). Aborting remaining cases.`);
+    }
+  };
+
   const missing = cases.filter((c) => !existsSync(diffPath(c.id)));
   if (missing.length) {
     console.error(`Missing frozen diffs for: ${missing.map((c) => c.id).join(", ")}. Run --freeze first.`);
@@ -276,7 +292,9 @@ async function main() {
   if (creditsBefore !== null) console.log(`  OpenRouter credits before: $${creditsBefore.toFixed(4)}`);
   console.log();
 
-  const results = await pool(cases, concurrency, async (c) => {
+  const rawResults = await pool(cases, concurrency, async (c) => {
+    spendGuard();
+    if (aborted) return null;
     const diff = readFileSync(diffPath(c.id), "utf8").slice(0, 60_000);
     const context: ReviewContext = {
       repo: c.repo,
@@ -346,7 +364,9 @@ async function main() {
     };
   });
 
-  // aggregate
+  // aggregate (drop any cases skipped by the circuit breaker)
+  const results = rawResults.filter((r): r is NonNullable<typeof r> => r !== null);
+  if (aborted) console.log(`  (circuit breaker: ${cases.length - results.length} cases skipped)`);
   const clean = results.filter((r) => r.label === "clean");
   const issue = results.filter((r) => r.label === "has-issue");
   const cleanFP = clean.reduce((s, r) => s + (doVerify ? r.confirmed : r.rawFindings), 0);
