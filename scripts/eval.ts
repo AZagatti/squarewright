@@ -117,6 +117,23 @@ function openrouterReasoningRisk(model: string): { block: boolean; detail: strin
   }
 }
 
+/** Per-token price ($/token) for an OpenRouter model — used for the immediate, lag-free local spend guard. */
+function openrouterPrice(model: string): { in: number; out: number } {
+  try {
+    const out = execFileSync("curl", ["-s", "https://openrouter.ai/api/v1/models"], {
+      encoding: "utf8",
+      maxBuffer: 50 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const m = (JSON.parse(out).data as Array<{ id: string; pricing?: { prompt?: string; completion?: string } }>).find(
+      (x) => x.id === model,
+    );
+    return { in: Number(m?.pricing?.prompt) || 0, out: Number(m?.pricing?.completion) || 0 };
+  } catch {
+    return { in: 0, out: 0 };
+  }
+}
+
 const headShaCache = new Map<string, string>();
 function headSha(repo: string, pr: number): string {
   const k = `${repo}#${pr}`;
@@ -267,16 +284,23 @@ async function main() {
   // mimo-v2.5, which looked safe but force-reasoned and burned ~$6.6. This checks actual OR credits during
   // the run and aborts the moment this run's spend exceeds --max-spend (default $0.50).
   const maxSpend = Number(arg("max-spend") ?? 0.5);
+  const analysisPrice = provider === "openrouter" ? openrouterPrice(model) : { in: 0, out: 0 };
+  const structModelId = structurerLane?.model ?? "qwen/qwen3-coder-30b-a3b-instruct";
+  const structPrice = (structurerLane?.provider ?? "openrouter") === "openrouter" ? openrouterPrice(structModelId) : { in: 0, out: 0 };
+  /** immediate $ estimate from a worker call's token usage (no credit-endpoint lag) */
+  const passSpend = (u?: { analysisTokens?: { input: number; output: number }; structTokens?: { input: number; output: number } }) => {
+    const a = u?.analysisTokens ?? { input: 0, output: 0 };
+    const s = u?.structTokens ?? { input: 0, output: 0 };
+    return a.input * analysisPrice.in + a.output * analysisPrice.out + s.input * structPrice.in + s.output * structPrice.out;
+  };
+  let localSpend = 0;
   let aborted = false;
   const spendGuard = () => {
-    if (!usesOR || creditsBefore === null || aborted) return;
-    const now = openrouterCredits();
-    if (now === null) return;
-    const spent = creditsBefore - now;
-    if (spent > maxSpend) {
-      aborted = true;
-      console.error(`\n🛑 CIRCUIT BREAKER: this run has spent $${spent.toFixed(4)} (> --max-spend $${maxSpend}). Aborting remaining cases.`);
-    }
+    if (aborted || localSpend <= maxSpend) return;
+    aborted = true;
+    console.error(
+      `\n🛑 CIRCUIT BREAKER: this run has spent ~$${localSpend.toFixed(4)} (local token estimate > --max-spend $${maxSpend}). Aborting remaining cases.`,
+    );
   };
 
   const missing = cases.filter((c) => !existsSync(diffPath(c.id)));
@@ -319,13 +343,17 @@ async function main() {
         const pr = await worker.run({ context, systemPrompt: pass.prompt, persona: pass.id, lane: passLane, repoReader });
         all.push(...pr.findings);
         workerCost += pr.usage?.costUsd ?? 0;
+        localSpend += passSpend(pr.usage);
         if (!pr.usage?.submitted) noSubmit++;
+        spendGuard();
+        if (aborted) break;
       }
       findings = aggregateFindings(all);
     } else {
       const pr = await worker.run({ context, systemPrompt: PERSONA, persona: "persona:general", lane, repoReader });
       findings = pr.findings;
       workerCost += pr.usage?.costUsd ?? 0;
+      localSpend += passSpend(pr.usage);
       if (!pr.usage?.submitted) noSubmit++;
     }
     let confirmed = findings.length;

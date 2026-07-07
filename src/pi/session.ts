@@ -56,6 +56,9 @@ export interface WorkerResult {
      * submitted (NOT because the change is clean) — the caller must not treat that as a clean review.
      */
     submitted: boolean;
+    /** billable tokens per pass — for the eval's immediate (lag-free) local spend guard */
+    analysisTokens?: { input: number; output: number };
+    structTokens?: { input: number; output: number };
   };
 }
 

@@ -138,6 +138,19 @@ function sumCost(messages: unknown[]): number {
   return c;
 }
 
+/** Sum billable tokens (output includes reasoning tokens) — for the eval's immediate, lag-free spend guard. */
+function sumTokens(messages: unknown[]): { input: number; output: number } {
+  let input = 0;
+  let output = 0;
+  for (const m of messages as Array<{ usage?: { input?: number; output?: number; totalTokens?: number } }>) {
+    const u = m.usage;
+    if (!u) continue;
+    input += u.input ?? 0;
+    output += u.output ?? Math.max(0, (u.totalTokens ?? 0) - (u.input ?? 0));
+  }
+  return { input, output };
+}
+
 export interface PiWorkerOptions {
   /** provider -> api key, injected at runtime (never persisted) */
   apiKeys: Record<string, string>;
@@ -189,6 +202,7 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
       await s1.prompt(renderAnalysisPrompt(request.context));
       const analysisText = extractAssistantText(s1.messages);
       costUsd += sumCost(s1.messages);
+      const analysisTokens = sumTokens(s1.messages);
       s1.dispose();
 
       // ── Pass 2: structure (fixed reliable extractor, no reasoning) ──
@@ -239,6 +253,7 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
         await s2.prompt("Call submit_findings now, exactly once, with the findings from the analysis (empty array if none).");
       }
       costUsd += sumCost(s2.messages);
+      const structTokens = sumTokens(s2.messages);
       s2.dispose();
 
       const findings: Finding[] = (captured?.findings ?? []).map((f) => ({
@@ -253,7 +268,14 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
 
       return {
         findings,
-        usage: { toolCalls, costUsd, summary: captured?.summary, submitted: captured !== undefined },
+        usage: {
+          toolCalls,
+          costUsd,
+          summary: captured?.summary,
+          submitted: captured !== undefined,
+          analysisTokens,
+          structTokens,
+        },
       };
     },
   };
