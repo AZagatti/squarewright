@@ -84,25 +84,36 @@ function openrouterCredits(): number | null {
 }
 
 /**
- * OpenRouter marks some models `reasoning.mandatory: true` — reasoning CANNOT be disabled, so even
- * `--thinking off` bills reasoning tokens (this burned ~$4.8 on minimax-m2.7). Guardrail: refuse these
- * unless explicitly allowed.
+ * Will running this OpenRouter model at `--thinking off` still bill (expensive) reasoning tokens?
+ * Pi sends `reasoning:{effort:"none"}` for off, but that only helps if the model actually honours it. It does NOT when:
+ *  - reasoning.mandatory=true (minimax-m2.x, gpt-oss/gpt-5): the model reasons regardless (~$4.8 burn), OR
+ *  - the model only supports high/xhigh efforts with no cheap tier (deepseek-v4-flash: supported ["xhigh","high"],
+ *    default "high"): "none" is unsupported → OpenRouter falls back to default_effort → full reasoning ($0.96 burn).
+ * A true disable would need `reasoning:{enabled:false}` (Pi can't send it) or the model's native provider.
  */
-function openrouterMandatoryReasoning(model: string): boolean | null {
+function openrouterReasoningRisk(model: string): { block: boolean; detail: string } {
   try {
     const out = execFileSync("curl", ["-s", "https://openrouter.ai/api/v1/models"], {
       encoding: "utf8",
       maxBuffer: 50 * 1024 * 1024,
       stdio: ["ignore", "pipe", "ignore"],
     });
-    const m = (JSON.parse(out).data as Array<{ id: string; reasoning?: unknown; reasoning_config?: unknown }>).find(
-      (x) => x.id === model,
-    );
-    if (!m) return null;
-    const r = (m.reasoning ?? m.reasoning_config) as { mandatory?: boolean } | undefined;
-    return r && typeof r === "object" ? !!r.mandatory : false;
+    const m = (JSON.parse(out).data as Array<{ id: string; reasoning?: unknown }>).find((x) => x.id === model);
+    if (!m) return { block: false, detail: "model not found in OpenRouter catalog" };
+    const r = m.reasoning as { mandatory?: boolean; supported_efforts?: string[]; default_effort?: string } | undefined;
+    if (!r || typeof r !== "object") return { block: false, detail: "no reasoning (safe)" };
+    if (r.mandatory) return { block: true, detail: "reasoning.mandatory=true — reasoning cannot be disabled" };
+    const efforts = r.supported_efforts ?? [];
+    const cheap = efforts.some((e) => ["none", "minimal", "low", "medium"].includes(e));
+    if (efforts.length > 0 && !cheap) {
+      return {
+        block: true,
+        detail: `only supports efforts [${efforts.join(", ")}] (default ${r.default_effort}) — 'off' falls back to expensive reasoning`,
+      };
+    }
+    return { block: false, detail: "reasoning disableable at off (safe)" };
   } catch {
-    return null;
+    return { block: false, detail: "reasoning-risk check failed (proceeding)" };
   }
 }
 
@@ -235,14 +246,16 @@ async function main() {
   // real-spend guard: default structurer is OpenRouter (qwen3-coder), so any run touches OR unless overridden to z.ai
   const usesOR = provider === "openrouter" || (structurerLane ? structurerLane.provider === "openrouter" : true);
 
-  // guardrail: refuse OpenRouter mandatory-reasoning models (can't run cheap even at off) unless forced
-  if (provider === "openrouter" && !flag("allow-mandatory-reasoning")) {
-    if (openrouterMandatoryReasoning(model)) {
+  // guardrail: refuse OpenRouter reasoning models that can't run cheap at low effort (they fall back to
+  // expensive reasoning). Skipped if you explicitly ask for high/xhigh reasoning or pass --allow-reasoning-burn.
+  if (provider === "openrouter" && thinking !== "high" && thinking !== "xhigh" && !flag("allow-reasoning-burn")) {
+    const risk = openrouterReasoningRisk(model);
+    if (risk.block) {
       console.error(
-        `\n✋ ABORT: ${model} has reasoning.mandatory=true on OpenRouter — reasoning can't be disabled, so even\n` +
-          `   --thinking off bills reasoning tokens (this burned ~$4.8 on minimax-m2.7). Use a mandatory:false\n` +
-          `   model (deepseek-v3.2/v4-flash, xiaomi/mimo-v2.5, qwen3.5-flash), the model's native provider, or\n` +
-          `   pass --allow-mandatory-reasoning to run it on purpose.\n`,
+        `\n✋ ABORT: ${model} — ${risk.detail}.\n` +
+          `   At low/off effort it still bills expensive reasoning tokens (minimax burned ~$4.8; deepseek-v4-flash ~$0.96/run).\n` +
+          `   Use a model whose reasoning disables cheaply (deepseek-v3.2, xiaomi/mimo-v2.5, qwen3.5-flash, or a non-reasoning model),\n` +
+          `   or run it intentionally with --thinking high, or pass --allow-reasoning-burn.\n`,
       );
       process.exit(2);
     }
