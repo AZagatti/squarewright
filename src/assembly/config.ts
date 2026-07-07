@@ -3,6 +3,8 @@
  * routing. This is the "customize" height of the progressive-disclosure API (ADR-0001).
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
@@ -55,4 +57,19 @@ export type AssemblyConfig = z.infer<typeof assemblyConfigSchema>;
 export function parseAssemblyConfig(text: string): AssemblyConfig {
   const raw = parseYaml(text);
   return assemblyConfigSchema.parse(raw);
+}
+
+/** Load and validate `.squarewright.yml` from a repo root. */
+export function loadAssemblyConfig(cwd: string): AssemblyConfig {
+  const path = join(cwd, ".squarewright.yml");
+  let text: string;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (e) {
+    throw new Error(
+      `No .squarewright.yml in ${cwd}. Run \`squarewright init\` to scaffold one.`,
+      { cause: e }
+    );
+  }
+  return parseAssemblyConfig(text);
 }

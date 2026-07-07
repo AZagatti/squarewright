@@ -1,0 +1,46 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { loadAssemblyConfig } from "./config.js";
+
+const MINIMAL = `
+lanes:
+  - id: cheap
+    provider: zai
+    model: glm-5-turbo
+personas:
+  - id: gen
+    lane: cheap
+    prompt: review it
+`;
+
+function configDir(text: string): string {
+  const dir = mkdtempSync(join(tmpdir(), "sqw-config-"));
+  writeFileSync(join(dir, ".squarewright.yml"), text);
+  return dir;
+}
+
+describe("loadAssemblyConfig", () => {
+  test("loads and validates a .squarewright.yml", () => {
+    const config = loadAssemblyConfig(configDir(MINIMAL));
+    expect(config.lanes[0]?.id).toBe("cheap");
+    expect(config.personas[0]?.lane).toBe("cheap");
+  });
+
+  test("throws a helpful error when the config is missing", () => {
+    expect(() => loadAssemblyConfig(join(tmpdir(), "no-config-sqw"))).toThrow(
+      "No .squarewright.yml"
+    );
+  });
+
+  test("the scaffolded template is a valid assembly", () => {
+    const template = readFileSync(
+      new URL("../../templates/.squarewright.yml", import.meta.url),
+      "utf8"
+    );
+    const config = loadAssemblyConfig(configDir(template));
+    expect(config.lanes.length).toBeGreaterThan(0);
+    expect(config.personas.length).toBeGreaterThan(0);
+  });
+});
