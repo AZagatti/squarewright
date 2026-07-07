@@ -44,7 +44,13 @@ const GROUNDING_NOTE = `
 You can inspect the repository at this PR's revision with tools: read_repo_file(path) reads a file's full
 contents, and list_repo_dir(path) lists a directory. BEFORE asserting an issue, use them to check the
 surrounding code, callers, and definitions the diff doesn't show. Ground every claim in the real code — do
-NOT flag something you have not verified against the actual files.`;
+NOT flag something you have not verified against the actual files.
+
+SCOPE — critical: use these tools ONLY to VERIFY issues that this PR's diff introduces or directly triggers.
+Do NOT report pre-existing problems in code the PR did not change, missing hardening in files outside the
+diff, or "this other file should also be fixed" observations — those are out of scope even when real. A
+finding is valid only if this PR's changed lines cause it. If the change is sound, say so; do not go hunting
+the wider repository for unrelated issues.`;
 
 const STRUCTURER_SYSTEM = `You convert a code-review analysis into structured data. You are given one
 reviewer's prose analysis of a pull request. Extract EVERY distinct issue it identifies — preserving the file
@@ -158,8 +164,15 @@ export interface PiWorkerOptions {
   structurerLane?: ModelLane;
 }
 
+// retry.provider re-enables the openai-node SDK's own HTTP-level 429/5xx backoff, which Pi zeroes out by
+// default (openai-completions.ts sets maxRetries:0). It reacts per-request and honors server-requested delay,
+// which is the right layer for z.ai's undocumented concurrency throttle — the agent-level `retry` (fixed
+// 2s/4s/8s, whole-turn restart) stays on as a coarse backstop. See docs/design/zai-reliability.md.
 const SETTINGS = () =>
-  SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: true, maxRetries: 2 } });
+  SettingsManager.inMemory({
+    compaction: { enabled: false },
+    retry: { enabled: true, maxRetries: 2, provider: { maxRetries: 4, maxRetryDelayMs: 20_000 } },
+  });
 
 export function createPiWorker(options: PiWorkerOptions): PiWorker {
   return {

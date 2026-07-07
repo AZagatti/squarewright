@@ -83,3 +83,59 @@ Real defect-recall over 12 has-issue loci; noise = off-target findings; cost = r
 **Caveats:** single run each (variance), 12 loci (small), no grounding, mixed structurers (a confound — the
 z.ai rows used the glm-5-turbo structurer). Treat as directional, not final. Improvements (below) are tested
 against these numbers.
+
+---
+
+# Measurement-first pass — 2026-07-07 (grounding + run-to-run variance)
+
+The initial rank used single runs; three unbiased critics flagged that (1) we hadn't measured run-to-run
+variance at `thinking off`, and (2) `--ground` and `--verify` were never measured before being trusted. This
+pass measures both on the value pick (**glm-5-turbo**, personas, `thinking off`, glm-5-turbo structurer,
+z.ai). All findings here are **metric-independent** (they hold on the crude file metric; the Claude
+defect-judge would only refine the recall digit, not the direction).
+
+## Run-to-run variance is large (noise floor)
+
+Three runs of the **identical** ungrounded config:
+
+| run | file-hits / 12 | clean false-pos / 9 |
+|---|---|---|
+| A | 3 | 0 |
+| B | 1 | 1 |
+| C | 1 | 0 |
+
+Recall swings 1→3 across identical runs. **The "3/12" in the initial rank is the top of the range, not the
+median (~1/12).** Consequence: single-run per-model numbers are directional only — real comparisons need ≥3
+runs (or many more loci). Precision is stable (0–1 FP) when ungrounded.
+
+## Grounding (free repo read, as first wired) HURT — precision collapse
+
+One grounded run of the same config: **file-hits 2/12 (no gain), clean false-positives 7/9 (from 0–1).**
+Handing the model `read_repo_file`/`list_repo_dir` with no scope discipline made it review the *repository's
+pre-existing state* instead of the *PR's change*. Concretely, on the clean `ci-astro-16713` PR it emitted 6
+findings — all out-of-scope: "this *other* workflow lacks `persist-credentials: false`", "pre-existing dead
+code", "`label.yml` not included in this hardening pass". Real observations, wrong job: none are introduced
+by the diff.
+
+**Attempted fix:** tightened `GROUNDING_NOTE` (src/pi/worker.ts) — grounding tools may only VERIFY issues the
+diff introduces or directly triggers; explicitly forbid reporting pre-existing problems or "this other file
+should also be fixed" in untouched code. Re-run of the same grounded config after the fix:
+**clean false-positives 7/9 → 2/9 (precision restored), but file-hits 2 → 0/12** — the model emitted just **1
+finding across all 9 has-issue cases.** The scope note over-suppressed this weak free model: it clammed up
+rather than reporting selectively.
+
+**Verdict: grounding fails glm-5-turbo both ways** — free repo-read collapses precision (7 FP), scope-disciplined
+repo-read collapses recall (~0 findings). Neither beats ungrounded (1–3 hits, 0–1 FP). We keep the scoped
+`GROUNDING_NOTE` because the guardrail is *correct in principle* (a PR reviewer should only flag diff-introduced
+issues, never hunt the repo's pre-existing state) and it **only affects the grounded path, which is off by
+default** — so it can't regress the operating point. Revisit grounding when testing a stronger analysis model
+that can stay selective under scope discipline instead of going silent.
+
+## Operating point (updated)
+
+- **Default grounding OFF.** Free grounding cost +6 clean-case false positives for zero recall gain; scoped
+  grounding zeroed recall on this model. Ungrounded (1–3 hits, 0–1 FP) is the best balance for glm-5-turbo.
+- **Precision, not recall, remains the lever** — and grounding is a precision *liability* on weak models.
+- **Report ranges, not points.** Bench single-runs understate variance; treat any single recall number as ±2.
+- **`--verify` still unmeasured** — deferred (it multiplies model calls per finding; measure when the operating
+  model is stronger and findings are worth the extra passes).
