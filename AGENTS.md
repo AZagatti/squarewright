@@ -8,6 +8,7 @@ deliberately short and mostly points elsewhere so it doesn't drift.
 - **What we're building & why** → [`NORTH_STAR.md`](NORTH_STAR.md), [`docs/ROADMAP.md`](docs/ROADMAP.md), [`docs/adr/`](docs/adr/)
 - **Vocabulary** (Persona, Grounder, Assembly, Finding, …) → [`docs/CONTEXT.md`](docs/CONTEXT.md)
 - **Provider / eval operations** (paths, endpoints, commands, limits) → ai-memory page `procedural/provider-and-eval-operations.md`
+- **Reporting finished work to the maintainer** → [`docs/templates/agent-report.md`](docs/templates/agent-report.md)
 
 ## What this is (30 seconds)
 Squarewright is the **assembly layer** for a repo-local AI code reviewer built on **Pi** (a borrowed agent
@@ -45,6 +46,33 @@ single maintainer, **public** repo.
 - **Check `docs/adr/` before an architectural change; propose a new ADR before making one.**
 - Match surrounding code. **Strict TypeScript — don't weaken `tsconfig`.** Commit messages: `type(scope):
   summary`, imperative, explain *why*.
+
+## Engineering principles
+- **Simple code.** Aim for code that (1) passes its tests, (2) expresses every idea it needs to, (3) says
+  everything *once* (no duplicated knowledge), and (4) has no superfluous parts. These pull against each other;
+  balance them for whoever maintains this next. Work in order — **make it work → make it right → make it
+  fast** — and only once it works, pause to ask whether it should be made simpler or faster. Don't polish or
+  optimize code that isn't yet correct.
+- **Comments earn their place.** A comment that only restates the code is noise — delete it (applying the
+  simplicity rules usually removes it for you). Keep the ones that explain *why*, a non-obvious constraint, or
+  a decision the code can't show.
+- **No historical framing.** Code, comments, and docs describe what *is*, never what changed — no "previously
+  X, now Y", no "used to…", no changelog asides in source or docs. When a decision changes, rewrite the doc to
+  state the new decision and delete the old; git history is the record. A change to a **big direction** needs
+  maintainer approval before the doc is rewritten. (Dated records are the exception — `docs/adr/` decision
+  records and `eval/RESULTS.md` exist to capture context and measurements over time.)
+- **Tests protect the future.** A test earns its place by answering three questions: would it fail *today*
+  (the code doesn't already do this)? will it pass when you're done? will it still catch a regression
+  *tomorrow*? Write the test that guards a future change, not one that just echoes today's diff.
+- **No pre-existing failures left behind.** There is no "not our job." For any failure you find, decide *where*
+  to fix it: aligned with the current work → in this PR; small and off-topic → its own PR; large → a separate
+  (possibly stacked) PR. Keep the software buildable, workable, maintainable, and valuable.
+- **Estimate by complexity, never by time.** Don't say "quick fix" or "a day's work" — that reflects how long
+  *humans* take. Describe scope instead: lines/files touched, surface area of behavior change, trust-boundary
+  or public-API surfaces crossed, whether it needs eval/benchmarking.
+- **Delegate with judgment.** For a coding task, run an appropriately-powered model in a subagent when it fits
+  (cheaper for mechanical work, stronger for hard reasoning) — and always review the result yourself before
+  trusting it. See `docs/WORKFLOW.md` for the review loop.
 
 ## Dev loop
 - Install: `bun install`

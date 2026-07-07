@@ -35,11 +35,32 @@ The point of this loop is that the maintainer is an **orchestrator**, not a line
 ## The merge gate (a chain, not a solo human read)
 
 1. **Implementation agent** produces the change on a branch + the PR briefing and risk summary.
-2. **Independent subagent review** — fresh context, adversarial (prompt below). Never grades its own homework.
+2. **Independent subagent review** — a fresh, adversarial pass by the `sqw-reviewer` agent
+   ([`.claude/agents/sqw-reviewer.md`](../.claude/agents/sqw-reviewer.md)). Never grades its own homework.
 3. **Automated checks** — `bun run verify:pr` locally; CI runs the same on every PR.
 4. **Squarewright dogfood** — *once the reviewer can post (roadmap M2+)*, Squarewright reviews its own PR. Until
    then this step is skipped and noted as such.
 5. **Maintainer merge decision** — the final human gate.
+
+**Review every big step, and loop.** Reviews are not only for the final PR — spawn `sqw-reviewer` on any
+substantial step. If it returns `REQUEST-CHANGES` or blocking must-fixes, fix them on the branch and review
+again; repeat until the verdict is `APPROVE` (or `APPROVE-WITH-NITS`, where nits are the author's call). Report
+finished work using [`docs/templates/agent-report.md`](templates/agent-report.md).
+
+## Milestone execution mode
+
+When the maintainer approves a **milestone's direction** ("M1 is approved — continue"), the agent slices the
+milestone into small PRs and opens them **without asking "go" before each one**, continuing until the milestone
+is complete. This is the burden-reduction default: the maintainer sets direction and handles exceptions, not
+per-step approvals.
+
+Stop and surface a decision **only** for a real stop condition — those under "Stop conditions" below
+(product/API-shape, trust-boundary, out-of-scope, paid-model spend), plus three that apply while running a
+milestone unattended: **failed CI**, an independent review returning **REQUEST-CHANGES** that needs a direction
+call, and **scope outside the milestone**.
+
+Every PR still carries: what changed, a risk summary, the reviewer's result, commands/CI, and whether
+maintainer input is needed — or "No maintainer decision beyond merge/block" when it isn't.
 
 ## `bun run verify:pr` — the single verification target
 
@@ -60,26 +81,12 @@ or before starting if it blocks the whole issue) whenever a task needs:
 Never bury one of these in prose or resolve it silently by picking an answer. A wrong guess here can mean
 throwing away a full implementation.
 
-## Standard subagent-review prompt
+## The reviewer
 
-Use this to spawn the independent reviewer in step 2 of the gate. Fill in `<PR / branch>` and the touched areas.
-
-> You are an INDEPENDENT reviewer of a pull request in the Squarewright repo. You did NOT write this change —
-> review it adversarially; do not rubber-stamp. Your job is to protect the maintainer from having to deeply
-> self-review.
->
-> Read the branch diff `<PR / branch>` and the ground truth it must respect: `AGENTS.md` (hard rules),
-> `docs/CONTEXT.md` (vocabulary), the relevant `docs/adr/`, and the issue's acceptance criteria.
->
-> Check specifically: (1) **correctness** — does it do what the issue asked, with the right edge cases?
-> (2) **trust boundary** — does anything touch gather/review, secrets, permissions, or the head-SHA check
-> incorrectly? (3) **non-goals & scope** — does it quietly do more than the issue, or reintroduce a documented
-> non-goal? (4) **test/verify coverage** — is the behavior actually covered; does `bun run verify:pr` pass?
-> (5) **honesty** — any claim (in code comments, the PR, or RESULTS.md) not backed by evidence?
->
-> Output: **Verdict** (APPROVE / APPROVE-WITH-NITS / REQUEST-CHANGES); **Must-fix** (blocking, numbered, each
-> with file + exact problem + suggested fix); **Nits** (non-blocking). Be concrete; quote the offending line.
-> Do not modify files.
+The independent reviewer is packaged as the `sqw-reviewer` agent
+([`.claude/agents/sqw-reviewer.md`](../.claude/agents/sqw-reviewer.md)) — its system prompt, review dimensions,
+and output format live there, so there's one source and no drift. Spawn it for step 2 of the gate; give it the
+branch/PR under review, the touched areas, and the issue's acceptance criteria.
 
 ## Ready-issue template
 
