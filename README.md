@@ -61,9 +61,10 @@ provider key.
 
 ## Design & decisions
 
+- [`NORTH_STAR.md`](NORTH_STAR.md) — **the product vision** (the end state we're building toward)
 - [`docs/adr/0001`](docs/adr/0001-pi-centered-reviewer-assembly.md) — **foundational decision** (identity, what we own vs Pi, substrate, non-goals)
 - [`docs/CONTEXT.md`](docs/CONTEXT.md) — glossary / ubiquitous language
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — v0.1 scope, later phases, non-goals
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — current bet, milestones, later bets, parking lot, non-goals
 - [`docs/design/feedback-and-data.md`](docs/design/feedback-and-data.md) — the feedback/data-signal strategy
 - [`docs/adr/`](docs/adr/) — the decision record
 

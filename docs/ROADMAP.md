@@ -1,14 +1,15 @@
 # Squarewright — Roadmap
 
-Authoritative direction: [`docs/adr/0001`](adr/0001-pi-centered-reviewer-assembly.md). This roadmap is scope,
-not schedule. There is no rush to deploy a first version; correctness and the right architecture come before
-adoption.
+Authoritative direction: [`docs/adr/0001`](adr/0001-pi-centered-reviewer-assembly.md). Product vision:
+[`NORTH_STAR.md`](../NORTH_STAR.md). This roadmap is **scope, not schedule** — correctness and the right
+architecture come before adoption; there is no rush to deploy a first version.
 
-## North star
+## North star (summary)
 
-`squarewright init` creates a working, safe, customizable AI-reviewer assembly in a repo, driven by Pi.
-Squarewright owns the assembly layer; Pi owns the agent runtime. Deterministic checks are optional
-grounders/verifiers that feed or check the AI — never the product's center.
+`squarewright init` — or a low-friction GitHub Action + config — stands up a working, safe, customizable
+AI-reviewer assembly in a repo, driven by Pi. Squarewright owns the assembly layer; Pi owns the agent runtime.
+Deterministic checks are optional grounders/verifiers that feed or check the AI — never the product's center.
+Full vision in [`NORTH_STAR.md`](../NORTH_STAR.md).
 
 ## Architecture
 
@@ -38,41 +39,54 @@ Module layout (see `src/`):
 | `grounders/` | Optional deterministic fact-finders (polyglot plugin contract) |
 | `init/` | Scaffolder — emits workflows + config + rules from `templates/` |
 
-## v0.1 — the smallest credible proof (dogfooded, not launched)
+## Current bet — v0.1 (dogfooded, not launched)
 
-Goal: prove `init → a working repo-local AI reviewer on Pi`, then dogfood it on **big, ambiguous PRs from
-famous repositories** (the same kind of corpus used before: lance / pandas / airflow / django / k8s / next /
-playwright / prisma / tokio / clap / gin / axios). Not a public launch.
+Prove `init → a working repo-local AI reviewer on Pi`, then dogfood it on **big, ambiguous PRs from famous
+repositories** (lance / pandas / airflow / django / k8s / next / playwright / prisma / tokio / clap / gin /
+axios). Not a public launch.
 
-1. **`squarewright init`** — scaffolds the safe two-phase workflows, `.squarewright.yml` (provider + model +
-   one persona), a `.review-rules/` seed, and provider-secret instructions. Generated files are **thin** and
-   reference the versioned harness.
-2. **Pi-driven review harness** — diff + persona system-prompt → findings via a **schema'd tool call** (not
-   freeform-JSON salvage). Uses Pi as a library (`createAgentSession`).
-3. **The safe workflow spine** — `workflow_run` gather/post split, secrets only in the post phase, artifact
-   head-SHA cross-check. Non-negotiable.
-4. **Output — sticky AND inline comments** (inline is in v0.1 by decision): sticky summary + inline line
-   comments with correct diff-hunk line mapping, dedup, and markdown-injection defanging.
-5. **Feedback loop (local, v0.1 set)** — 👍/👎 on findings (collaborator-weighted), flagged-line-changed-in-a-
-   later-commit, suggestion-accepted, rolled up into a per-rule/persona accept-rate. See
-   [`design/feedback-and-data.md`](design/feedback-and-data.md).
-6. **Provider config** — delegate the mechanism to Pi; own the policy (which provider/model). Covers the
-   beginner + provider-swap heights for free.
+The AI **engine** (two-pass Pi worker, personas, routing, aggregation, sticky/inline rendering, the eval
+harness) already works — validated end-to-end by the eval harness, with unit tests on the output rendering and
+diff-line mapping. The current bet is the **plumbing** that makes a real review *reachable* and *safely
+postable*, then the depth that makes it good.
 
-## v0.x — depth on the assembly
+### Milestones
 
-- Multi-persona routing/pairing/batching engine (correlated-pair batching, solo personas, docs-only gating).
-- Rules memory with human-gated learning (rule suggestions → proposed PR, never auto-commit).
-- @mention conversation + re-review-on-new-commit via Pi session fork/resume.
+| | Milestone | Notes |
+|---|---|---|
+| **M1** | **Reachable review** — wire the working engine into `squarewright review` | the biggest single lever; the engine is proven in `scripts/eval.ts` and just isn't reachable from the command |
+| **M2** | **Safe posting** — a `Poster` interface (behind which `gh api` is the first impl, swappable to Octokit) + the artifact **head-SHA trust check** + sticky & inline comments | the trust-boundary half; the head-SHA cross-check is **non-negotiable** and currently unimplemented |
+| **M3** | **Re-review on new commit** — re-run on a new push and update the sticky comment in place (no spam) | early because a reviewer that reviews once is barely a reviewer |
+| **M4** | **Onboarding — two first-class paths** | (a) **low-friction GitHub Action + config** (drop a workflow + `.squarewright.yml` pointing at the versioned harness); (b) **CLI binary + `init`**. Plus `doctor` + config loading. `init`+binary is **not** the only path. |
+| **M5** | **Multi-persona routing / pairing / batching engine** | glob routing and solo/batched passes already exist and drive the eval; this milestone wires them to the `.squarewright.yml` config (today's routing is hardcoded) and adds richer correlated-pair batching. Moved ahead of the other depth work: lands *after* the review → post → re-review path works. |
+| **M6** | **Local feedback loop** — 👍/👎 (collaborator-weighted), flagged-line-changed-later, suggestion-accepted → per-rule/persona accept-rate | see [`design/feedback-and-data.md`](design/feedback-and-data.md); blocked on a signal-storage decision |
+| **M7** | **Honest measurement** — eval hardening + the cheap-model rank on the locked setup | ranking deferred until the setup is good (see `eval/RESULTS.md`) |
+
+The low-friction Action/config path from M4 is also the vehicle that runs M1–M3 in CI for dogfooding, so a
+minimal version of it lands alongside M1–M2; M4 is the polish that makes **both** onboarding paths first-class.
+
+## Later bets — v0.x depth
+
+- **@mention conversation** + threaded follow-ups via Pi session fork/resume.
+- **Rules memory with human-gated learning** — rule suggestions → proposed PR, never auto-commit.
 - Dedicated react-to-tune command; resolve/unresolve + minimized-comment signals.
 - Repeated-dismissal → auto-proposed `.squarewright.yml` suppression diff.
 - Optional deterministic **Grounder** plugin (polyglot, via the JSON contract).
-- Verifiers (compile/test/grep confirmation of AI findings).
+- **Verifiers** (compile/test/grep confirmation of AI findings) — only where they earn their cost.
 
 ## Later — opt-in aggregate (improve the shipped tool)
 
 - Anonymized, k-anonymized, numbers-and-enums-only telemetry (never code/diffs) to curate shipped default
   personas/prompts/routing. Opt-in, auditable schema. See the feedback design doc for the privacy design.
+
+## Parking lot (explicitly not committed)
+
+- GitHub **Marketplace Action / published-binary** distribution (the review template references a not-yet-
+  published `@v1`).
+- **Final model ranking** — current numbers are directional; run-to-run variance is large.
+- **Grounding "rescue"** on stronger analysis models (as first wired it hurt precision; see `eval/RESULTS.md`).
+- **Verify-by-default** on noisy models (measured; not worth it at the current operating point).
+- Anything **Rust/WASM** — dropped.
 
 ## Non-goals
 
