@@ -55,4 +55,24 @@ describe("runReviewPost preflight", () => {
     // no worker was constructed → worker.run was never reached → no z.ai spend on a doomed run
     expect(made).toBe(false);
   });
+
+  test("constructs the worker with the resolved keys and returns output when all are present", async () => {
+    process.env.ZAI_API_KEY = "z";
+    process.env.OPENROUTER_API_KEY = "or";
+    let received: Record<string, string> | undefined;
+    const makeWorker = (apiKeys: Record<string, string>): PiWorker => {
+      received = apiKeys;
+      return {
+        run: () =>
+          Promise.resolve({
+            findings: [],
+            usage: { submitted: true, toolCalls: 0 },
+          }),
+      };
+    };
+
+    const out = await runReviewPost(ZAI_CONFIG, CONTEXT, makeWorker);
+    expect(received).toEqual({ openrouter: "or", zai: "z" });
+    expect(out.sticky).toContain("No blocking issues found");
+  });
 });
