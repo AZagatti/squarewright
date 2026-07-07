@@ -1,5 +1,16 @@
 # Setup-development results
 
+> **⚠️ Correction (2026-07-06, later): the numbers below were measured on a BROKEN harness and an inflating
+> metric — treat them as superseded.** A four-angle investigation found: (1) a **silent tool-drop bug** — the
+> worker returned empty findings (scored as "clean") when the model reasoned but never called the tool, worse
+> at higher reasoning effort; (2) **file-level scoring over-credits** — a finding on the right *file* counted as
+> a hit even if it described a different bug. Both are now fixed: the worker is **two-pass** (reason → structure)
+> so it can't silently drop, and a **defect-match judge** (`scripts/judge.ts`) scores real root-cause matches.
+> On the same personas-off run, the judge corrected **file-recall 5/12 → defect-recall 3/12** (~25%, in line
+> with trimwire's ~27% reality). Also: Pi's reported cost badly undercounts reasoning tokens — real spend is now
+> read from OpenRouter's credits balance. Re-runs on the fixed harness are the real numbers; the table below is
+> kept only as the record of what led to the fixes.
+
 Measurements from tuning the review *setup* against the golden corpus (not a model ranking — that comes once
 the setup is locked). All runs: `glm-5.2` via z.ai, grounded (repo read at PR revision). Scoring is loci-level
 (a finding on an expected-locus file counts as a hit) — deliberately simple; a judge pass is a later refinement.
