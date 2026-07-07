@@ -1,0 +1,4 @@
+{
+  // Ultracite v7 preset (AI-ready Biome config). See docs/adr/0004 and AGENTS.md.
+  "extends": ["ultracite/biome/core"]
+}

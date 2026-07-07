@@ -15,7 +15,6 @@ export const DEFAULT_PERSONAS: Persona[] = [
     id: "sentinel",
     lane: "strong",
     needsCode: true,
-    thinking: "medium",
     prompt:
       "You are a correctness & behavioral-diff reviewer. Catch control-flow, ordering, and stdlib/platform-semantics regressions hiding inside 'safe' refactors. Hunt for:\n" +
       "- A removed/reordered guard or early-return — trace old vs new control flow for the same inputs.\n" +
@@ -28,12 +27,12 @@ export const DEFAULT_PERSONAS: Persona[] = [
       "- Does the diff change ONLY its stated intent, or also unrelated observable behavior?\n" +
       "Grounding: read the full pre-existing function/file (not just the hunk) plus its direct callers, to compare old vs new behavior and confirm what depended on the previous order/behavior." +
       CLEAN_TAIL,
+    thinking: "medium",
   },
   {
     id: "warden",
     lane: "strong",
     needsCode: true,
-    thinking: "medium",
     prompt:
       "You are a security reviewer covering CWE Top-25 classes plus supply-chain-in-app-code. Hunt for:\n" +
       "- Injection: CWE-89 SQL, CWE-78 OS command, CWE-79 XSS, CWE-94 code/eval, CWE-611 XXE — new string-built query/command/template with user input.\n" +
@@ -46,14 +45,12 @@ export const DEFAULT_PERSONAS: Persona[] = [
       "- Dependency/pin bump that reintroduces a previously-patched CVE.\n" +
       "Grounding: read the consuming function end-to-end to confirm user input actually reaches a sink, and check whether an existing sanitizer/guard already covers it (this is where false positives come from)." +
       CLEAN_TAIL,
+    thinking: "medium",
   },
   {
     id: "chromatic",
     lane: "strong",
-    solo: true,
     needsCode: true,
-    thinking: "low",
-    when: ["**/*.css", "**/*.scss", "**/*.less", "**/*.styl", "**/tailwindcss/**/*.ts", "**/postcss/**/*.ts"],
     prompt:
       "You are a CSS/styling & browser-compat semantics reviewer. Hunt for:\n" +
       "- A new relative-color/color-space function (oklab(from …), oklch(), color-mix(), lab(), lch()) — check the project's browser-support baseline; flag if it silently drops support the old approach had.\n" +
@@ -65,12 +62,32 @@ export const DEFAULT_PERSONAS: Persona[] = [
       "- Pseudo-element rules (::placeholder, ::before) have different property support than the base selector — check the fix was mirrored there.\n" +
       "Grounding: read the project's declared browser-support target (browserslist/docs) and sibling rules in the file, then hand-trace computed value old vs new for one concrete input." +
       CLEAN_TAIL,
+    solo: true,
+    thinking: "low",
+    when: [
+      "**/*.css",
+      "**/*.scss",
+      "**/*.less",
+      "**/*.styl",
+      "**/tailwindcss/**/*.ts",
+      "**/postcss/**/*.ts",
+    ],
   },
   {
     id: "foreman",
     lane: "cheap",
-    solo: true,
     needsCode: false,
+    prompt:
+      "You are a build & config side-effects reviewer — catch changes to the build/publish surface disguised as 'just config'. Hunt for:\n" +
+      "- include/exclude/files/exports changes in tsconfig/package.json — does the new scope pull test files into the emitted build, or DROP something previously emitted (.d.ts, a subpath export)?\n" +
+      "- A shared/base config now extended/merged from a test-only config — is the merge target the one used for the PUBLISHED build, not just dev/test?\n" +
+      "- package.json files/exports/main/types vs the build tool's outDir/declaration — do they still agree?\n" +
+      "- Lockfile/dependency bump that changes the resolved API surface used elsewhere in the diff.\n" +
+      "- Linter/formatter/test config loosened (rule disabled, threshold lowered, path excluded) — does it silently stop enforcing something?\n" +
+      "- Any change motivated as 'just reduces diff noise' / 'just consistency' — treat as an unverified behavior claim.\n" +
+      "Grounding: read the full resulting config file plus the package's files/exports and the build tool's output settings; reason about what the build/publish command emits before vs after." +
+      CLEAN_TAIL,
+    solo: true,
     thinking: "low",
     when: [
       "**/tsconfig*.json",
@@ -82,24 +99,11 @@ export const DEFAULT_PERSONAS: Persona[] = [
       "**/tsup.config.*",
       "**/turbo.json",
     ],
-    prompt:
-      "You are a build & config side-effects reviewer — catch changes to the build/publish surface disguised as 'just config'. Hunt for:\n" +
-      "- include/exclude/files/exports changes in tsconfig/package.json — does the new scope pull test files into the emitted build, or DROP something previously emitted (.d.ts, a subpath export)?\n" +
-      "- A shared/base config now extended/merged from a test-only config — is the merge target the one used for the PUBLISHED build, not just dev/test?\n" +
-      "- package.json files/exports/main/types vs the build tool's outDir/declaration — do they still agree?\n" +
-      "- Lockfile/dependency bump that changes the resolved API surface used elsewhere in the diff.\n" +
-      "- Linter/formatter/test config loosened (rule disabled, threshold lowered, path excluded) — does it silently stop enforcing something?\n" +
-      "- Any change motivated as 'just reduces diff noise' / 'just consistency' — treat as an unverified behavior claim.\n" +
-      "Grounding: read the full resulting config file plus the package's files/exports and the build tool's output settings; reason about what the build/publish command emits before vs after." +
-      CLEAN_TAIL,
   },
   {
     id: "stevedore",
     lane: "cheap",
-    solo: true,
     needsCode: false,
-    thinking: "low",
-    when: ["**/Dockerfile*", "**/docker-compose*.yml", "**/docker-compose*.yaml", "**/.dockerignore"],
     prompt:
       "You are a Docker/container build-stage reviewer. Hunt for:\n" +
       "- For every chown/chmod/permission fix, check every LATER COPY/ADD/stage touching the same path — a later copy resets ownership/perms unless --chown= is applied there too.\n" +
@@ -110,14 +114,19 @@ export const DEFAULT_PERSONAS: Persona[] = [
       "- ARG/ENV scoping across stages (an ARG before FROM is not available after unless redeclared).\n" +
       "Grounding: read the ENTIRE Dockerfile (all stages) at the PR revision, not just the hunk, and trace the changed instruction's path/user through every subsequent stage to the final image." +
       CLEAN_TAIL,
+    solo: true,
+    thinking: "low",
+    when: [
+      "**/Dockerfile*",
+      "**/docker-compose*.yml",
+      "**/docker-compose*.yaml",
+      "**/.dockerignore",
+    ],
   },
   {
     id: "marshal",
     lane: "cheap",
-    solo: true,
     needsCode: false,
-    thinking: "off",
-    when: ["**/.github/workflows/**", "**/.gitlab-ci.yml", "**/.circleci/**", "**/Jenkinsfile", "**/action.yml", "**/action.yaml"],
     prompt:
       "You are a CI-workflow & supply-chain reviewer. Hunt for:\n" +
       "- permissions block — is an elevated scope (e.g. id-token: write) actually grantable under this repo/org policy? Cross-check sibling workflows for the baseline before assuming it works.\n" +
@@ -128,18 +137,35 @@ export const DEFAULT_PERSONAS: Persona[] = [
       "- Cache keys/artifacts a fork PR could poison for a later trusted job.\n" +
       "Grounding: read sibling workflow files in .github/workflows/** to establish the repo's actual permission baseline before flagging or clearing a scope request." +
       CLEAN_TAIL,
+    solo: true,
+    thinking: "off",
+    when: [
+      "**/.github/workflows/**",
+      "**/.gitlab-ci.yml",
+      "**/.circleci/**",
+      "**/Jenkinsfile",
+      "**/action.yml",
+      "**/action.yaml",
+    ],
   },
 ];
 
 /** A single Worker invocation: one or more personas' prompts, a thinking level, and the persona ids it covers. */
 export interface ReviewPass {
   id: string;
+  personaIds: string[];
   prompt: string;
   thinking: ThinkingLevel;
-  personaIds: string[];
 }
 
-const THINK_RANK: Record<ThinkingLevel, number> = { off: 0, minimal: 1, low: 2, medium: 3, high: 4, xhigh: 5 };
+const THINK_RANK: Record<ThinkingLevel, number> = {
+  high: 4,
+  low: 2,
+  medium: 3,
+  minimal: 1,
+  off: 0,
+  xhigh: 5,
+};
 
 /** Build the Worker passes for a set of selected personas: batch the non-solo ones, keep solos separate. */
 export function buildPasses(selected: Persona[]): ReviewPass[] {
@@ -148,14 +174,27 @@ export function buildPasses(selected: Persona[]): ReviewPass[] {
   if (batched.length > 0) {
     const thinking = batched
       .map((p) => p.thinking ?? "off")
-      .reduce((a, b) => (THINK_RANK[b] > THINK_RANK[a] ? b : a), "off" as ThinkingLevel);
+      .reduce(
+        (a, b) => (THINK_RANK[b] > THINK_RANK[a] ? b : a),
+        "off" as ThinkingLevel
+      );
     const prompt =
       "You are a code reviewer applying multiple review lenses to one pull request. Apply ALL of the following checklists.\n\n" +
       batched.map((p) => `### Lens: ${p.id}\n${p.prompt}`).join("\n\n");
-    passes.push({ id: "baseline", prompt, thinking, personaIds: batched.map((p) => p.id) });
+    passes.push({
+      id: "baseline",
+      personaIds: batched.map((p) => p.id),
+      prompt,
+      thinking,
+    });
   }
-  for (const p of selected.filter((p) => p.solo)) {
-    passes.push({ id: p.id, prompt: p.prompt, thinking: p.thinking ?? "off", personaIds: [p.id] });
+  for (const p of selected.filter((persona) => persona.solo)) {
+    passes.push({
+      id: p.id,
+      personaIds: [p.id],
+      prompt: p.prompt,
+      thinking: p.thinking ?? "off",
+    });
   }
   return passes;
 }

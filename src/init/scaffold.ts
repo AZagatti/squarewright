@@ -2,11 +2,13 @@
  * `squarewright init` — scaffolds a working reviewer assembly into a repo. Generated files are THIN and
  * reference the versioned squarewright harness/Action; the heavy logic stays upstream, upgradable (ADR-0001).
  */
-import { cp, mkdir, access } from "node:fs/promises";
+import { access, cp, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const TEMPLATES_DIR = fileURLToPath(new URL("../../templates/", import.meta.url));
+const TEMPLATES_DIR = fileURLToPath(
+  new URL("../../templates/", import.meta.url)
+);
 
 interface CopySpec {
   from: string; // relative to templates/
@@ -14,8 +16,14 @@ interface CopySpec {
 }
 
 const SCAFFOLD: CopySpec[] = [
-  { from: "workflows/squarewright-gather.yml", to: ".github/workflows/squarewright-gather.yml" },
-  { from: "workflows/squarewright-review.yml", to: ".github/workflows/squarewright-review.yml" },
+  {
+    from: "workflows/squarewright-gather.yml",
+    to: ".github/workflows/squarewright-gather.yml",
+  },
+  {
+    from: "workflows/squarewright-review.yml",
+    to: ".github/workflows/squarewright-review.yml",
+  },
   { from: ".squarewright.yml", to: ".squarewright.yml" },
   { from: "review-rules/README.md", to: ".review-rules/README.md" },
 ];
@@ -33,6 +41,7 @@ export async function scaffold(repoRoot: string): Promise<void> {
   console.log("squarewright init — scaffolding a reviewer assembly\n");
   for (const spec of SCAFFOLD) {
     const dest = join(repoRoot, spec.to);
+    // biome-ignore lint/performance/noAwaitInLoops: sequential by design — scaffolding copies files in declared order, one at a time, to keep console output ordered and deterministic
     if (await exists(dest)) {
       console.log(`  skip (exists)  ${spec.to}`);
       continue;

@@ -8,8 +8,12 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { parse as parseYaml } from "yaml";
-import { createJudge, type DefectLocus, type JudgedFinding } from "../src/eval/judge.js";
 import type { ModelLane } from "../src/core/types.js";
+import {
+  createJudge,
+  type DefectLocus,
+  type JudgedFinding,
+} from "../src/eval/judge.js";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 
@@ -33,28 +37,37 @@ function readKeys(): Record<string, string> {
 }
 
 interface Case {
+  expect_loci?: DefectLocus[];
   id: string;
   label: string;
-  expect_loci?: DefectLocus[];
 }
 interface ReportResult {
-  id: string;
-  hitLoci?: number;
   findings?: JudgedFinding[];
+  hitLoci?: number;
+  id: string;
 }
 
 async function main() {
   const reportPath = arg("report");
-  if (!reportPath) throw new Error("provide --report <path to eval/reports/*.json>");
-  const report = JSON.parse(readFileSync(reportPath, "utf8")) as { results: ReportResult[]; config?: unknown };
-  const manifest = (parseYaml(readFileSync(`${ROOT}eval/golden/manifest.yaml`, "utf8")) as { cases: Case[] }).cases;
+  if (!reportPath) {
+    throw new Error("provide --report <path to eval/reports/*.json>");
+  }
+  const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
+    results: ReportResult[];
+    config?: unknown;
+  };
+  const manifest = (
+    parseYaml(readFileSync(`${ROOT}eval/golden/manifest.yaml`, "utf8")) as {
+      cases: Case[];
+    }
+  ).cases;
   const byId = new Map(manifest.map((c) => [c.id, c]));
 
   const judgeArg = arg("model") ?? "zai:glm-5.2";
   const lane: ModelLane = {
     id: "judge",
-    provider: judgeArg.slice(0, judgeArg.indexOf(":")),
     model: judgeArg.slice(judgeArg.indexOf(":") + 1),
+    provider: judgeArg.slice(0, judgeArg.indexOf(":")),
     thinking: "off",
   };
   const judge = createJudge({ apiKeys: readKeys() });
@@ -68,20 +81,27 @@ async function main() {
   let total = 0;
   for (const r of report.results) {
     const c = byId.get(r.id);
-    if (!c || c.label !== "has-issue" || !c.expect_loci?.length) continue;
+    if (c?.label !== "has-issue" || !c.expect_loci?.length) {
+      continue;
+    }
     const n = c.expect_loci.length;
     total += n;
     fileHits += r.hitLoci ?? 0;
+    // biome-ignore lint/performance/noAwaitInLoops: sequential by design — respects the judge model's concurrency limits across offline-report cases
     const grades = await judge.judge(c.expect_loci, r.findings ?? [], lane);
     const matched = grades.filter((g) => g.matched).length;
     defectHits += matched;
-    console.log(`  ${r.id.padEnd(28)} file=${r.hitLoci ?? 0}/${n}  defect=${matched}/${n}`);
+    console.log(
+      `  ${r.id.padEnd(28)} file=${r.hitLoci ?? 0}/${n}  defect=${matched}/${n}`
+    );
   }
 
-  console.log(`\n── recall ──`);
+  console.log("\n── recall ──");
   console.log(`  FILE-level (eval metric): ${fileHits}/${total}`);
   console.log(`  DEFECT-level (judge):     ${defectHits}/${total}`);
-  console.log(`  → the file metric over-credited by ${fileHits - defectHits} loci\n`);
+  console.log(
+    `  → the file metric over-credited by ${fileHits - defectHits} loci\n`
+  );
 }
 
 main().catch((e) => {

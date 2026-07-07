@@ -48,9 +48,8 @@ single maintainer, **public** repo.
 
 ## Dev loop
 - Install: `bun install`
-- Verify a change: `bun run verify:pr` — the single gate (typecheck + tests today; lint joins once
-  Biome/Ultracite lands, per [ADR-0004](docs/adr/0004-agent-development-workflow.md)). See `docs/WORKFLOW.md`.
-- Individually: `bun run typecheck` · `bun test`
+- Verify a change: `bun run verify:pr` — the single gate (typecheck + tests + lint); CI runs it on every PR.
+- Individually: `bun run typecheck` · `bun test` · `bun run check` (Biome via Ultracite; `bun run format` to fix)
 - Run the CLI locally: `bun run dev -- <args>`
 - Eval (free z.ai default): see the ai-memory ops page for the exact command + the pre-spend check.
 

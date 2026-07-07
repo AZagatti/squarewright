@@ -4,21 +4,28 @@
  */
 import type { ChangedFile } from "./types.js";
 
+const FILE_SPLIT_RE = /^diff --git /m;
+const NEW_PATH_RE = /^\+\+\+ b\/(.+)$/m;
+const OLD_PATH_RE = /^--- a\/(.+)$/m;
+
 /** Split a unified diff into per-file ChangedFile entries keyed by new-side path. */
 export function splitUnifiedDiff(diff: string): ChangedFile[] {
   const files: ChangedFile[] = [];
-  const chunks = diff.split(/^diff --git /m).filter((c) => c.trim());
+  const chunks = diff.split(FILE_SPLIT_RE).filter((c) => c.trim());
   for (const chunk of chunks) {
     const body = `diff --git ${chunk}`;
-    const plus = body.match(/^\+\+\+ b\/(.+)$/m);
-    const minus = body.match(/^--- a\/(.+)$/m);
+    const plus = body.match(NEW_PATH_RE);
+    const minus = body.match(OLD_PATH_RE);
     const path = plus?.[1] ?? minus?.[1] ?? "(unknown)";
-    const status: ChangedFile["status"] = body.includes("new file mode")
-      ? "added"
-      : body.includes("deleted file mode")
-        ? "removed"
-        : "modified";
-    files.push({ path, status, patch: body });
+    let status: ChangedFile["status"];
+    if (body.includes("new file mode")) {
+      status = "added";
+    } else if (body.includes("deleted file mode")) {
+      status = "removed";
+    } else {
+      status = "modified";
+    }
+    files.push({ patch: body, path, status });
   }
   return files;
 }

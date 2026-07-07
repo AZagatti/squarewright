@@ -19,7 +19,9 @@ program
 
 program
   .command("init")
-  .description("Scaffold a reviewer assembly (workflows + .squarewright.yml + rules) into this repo.")
+  .description(
+    "Scaffold a reviewer assembly (workflows + .squarewright.yml + rules) into this repo."
+  )
   .option("-C, --cwd <dir>", "repo root to scaffold into", process.cwd())
   .action(async (opts: { cwd: string }) => {
     await scaffold(opts.cwd);
@@ -32,16 +34,20 @@ program
   .action((opts: { phase: string }) => {
     console.error(
       `squarewright review (--phase ${opts.phase}) is not implemented yet.\n` +
-        `The Pi-driven harness is the v0.1 build — see docs/ROADMAP.md.`,
+        "The Pi-driven harness is the v0.1 build — see docs/ROADMAP.md."
     );
     process.exitCode = 2;
   });
 
 program
   .command("doctor")
-  .description("Check assembly config + provider setup. v0.1 — in construction.")
+  .description(
+    "Check assembly config + provider setup. v0.1 — in construction."
+  )
   .action(() => {
-    console.error("squarewright doctor is not implemented yet — see docs/ROADMAP.md.");
+    console.error(
+      "squarewright doctor is not implemented yet — see docs/ROADMAP.md."
+    );
     process.exitCode = 2;
   });
 
