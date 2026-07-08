@@ -15,7 +15,7 @@
 - **Brick kinds:**
   - **Worker** — an LLM (any provider, via Pi) that reasons over a change with Tools. **The spine.**
   - **Persona** — a named checklist/lens a Worker applies (security, correctness, accessibility, …).
-  - **Router** — maps changed files → which Personas apply (glob-based), plus pairing/batching policy.
+  - **Router** — maps changed files → which Personas apply (glob-based), plus batching policy via the `pass` group-key (co-firing personas sharing a `pass` batch into one call; a group-aware cap never splits a declared group). No default pairing ships — `pass` is opt-in.
   - **Tool** — a capability the Worker can call (repo-inspect, ci-signal, post-comment); registered into Pi.
   - **Grounder** *(optional)* — produces *facts* about a change (changed symbols, call-graph, coverage-diff,
     linter/CI output). No LLM. Feeds the Worker as context or a Tool result.

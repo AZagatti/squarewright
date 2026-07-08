@@ -29,6 +29,8 @@ const persona = z.object({
   label: z.string().optional(),
   lane: z.string(),
   needsCode: z.boolean().optional(),
+  // explicit pass-group key: co-firing personas sharing a `pass` are batched into one Worker call (takes precedence over solo)
+  pass: z.string().optional(),
   prompt: z.string(),
   solo: z.boolean().optional(),
   // reasoning depth for this lens; without it a tuned persona would silently run at "off" after config load

@@ -30,6 +30,26 @@ describe("loadAssemblyConfig", () => {
     expect(config.personas[0]?.label).toBeUndefined();
   });
 
+  test("parses an explicit persona `pass` group-key from YAML", () => {
+    const withPass = `
+lanes:
+  - id: cheap
+    provider: zai
+    model: glm-5-turbo
+personas:
+  - id: dock
+    lane: cheap
+    prompt: docker
+    pass: infra
+  - id: ci
+    lane: cheap
+    prompt: ci
+    pass: infra
+`;
+    const config = loadAssemblyConfig(configDir(withPass));
+    expect(config.personas.map((p) => p.pass)).toEqual(["infra", "infra"]);
+  });
+
   test("accepts an optional structurer lane", () => {
     const config = loadAssemblyConfig(
       configDir(

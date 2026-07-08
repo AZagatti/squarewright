@@ -3,7 +3,10 @@
  * domain lenses that target the reasoning classes a generic reviewer misses (CSS/browser-compat,
  * build/config side-effects, Docker build-stage ownership, CI permissions/supply-chain).
  *
- * Non-solo personas are batched into one "baseline" pass; each solo persona runs as its own pass.
+ * Personas are grouped into Worker passes by their pass-key (see {@link buildPasses}): non-solo personas
+ * share the "baseline" pass, solos run alone, and personas sharing an explicit `pass` are batched together
+ * when they co-fire. The `pass` grouping is an opt-in config primitive — NO default pairing ships (batching a
+ * specific correlated pair is not corpus-validated; see eval/RESULTS.md "M5 batching intensity").
  */
 import type { Persona, ThinkingLevel } from "../core/types.js";
 
@@ -173,33 +176,60 @@ const THINK_RANK: Record<ThinkingLevel, number> = {
   xhigh: 5,
 };
 
-/** Build the Worker passes for a set of selected personas: batch the non-solo ones, keep solos separate. */
+/**
+ * The pass-group key for a persona: explicit `pass` wins; else `solo` → its own dedicated pass; else the
+ * shared "baseline" batch. Personas sharing a key are reviewed together in one Worker call.
+ *
+ * The key space is shared with two implicit keys: `"baseline"` (the non-solo batch) and each solo persona's
+ * `id`. A config author who sets `pass: "baseline"`, or a `pass` value equal to some persona's id, deliberately
+ * joins that group — so treat those as reserved when naming a custom `pass`.
+ */
+export function passGroup(p: Persona): string {
+  return p.pass ?? (p.solo ? p.id : "baseline");
+}
+
+/**
+ * Build the Worker passes for a set of selected personas by grouping them on {@link passGroup}. A group with
+ * more than one member becomes a single batched multi-lens call (the lenses review the PR together); a lone
+ * member runs its own bare prompt.
+ *
+ * With no `pass` set anywhere, non-solo personas share the "baseline" group and solos get singleton passes; an
+ * explicit shared `pass` batches those personas into one call when they co-fire (e.g. a config that pairs Docker
+ * and CI lenses).
+ *
+ * A >1-member group uses the multi-lens preamble; a lone member uses its bare prompt (a single lens needs no
+ * "apply ALL these lenses" wrapper).
+ */
 export function buildPasses(selected: Persona[]): ReviewPass[] {
+  const groups = new Map<string, Persona[]>();
+  for (const p of selected) {
+    const key = passGroup(p);
+    const members = groups.get(key);
+    if (members) {
+      members.push(p);
+    } else {
+      groups.set(key, [p]);
+    }
+  }
+
   const passes: ReviewPass[] = [];
-  const batched = selected.filter((p) => !p.solo);
-  if (batched.length > 0) {
-    const thinking = batched
+  for (const [id, members] of groups) {
+    const thinking = members
       .map((p) => p.thinking ?? "off")
       .reduce(
         (a, b) => (THINK_RANK[b] > THINK_RANK[a] ? b : a),
         "off" as ThinkingLevel
       );
     const prompt =
-      "You are a code reviewer applying multiple review lenses to one pull request. Apply ALL of the following checklists.\n\n" +
-      batched.map((p) => `### Lens: ${p.id}\n${p.prompt}`).join("\n\n");
+      members.length > 1
+        ? "You are a code reviewer applying multiple review lenses to one pull request. Apply ALL of the following checklists.\n\n" +
+          members.map((p) => `### Lens: ${p.id}\n${p.prompt}`).join("\n\n")
+        : (members[0]?.prompt ?? "");
     passes.push({
-      id: "baseline",
-      personaIds: batched.map((p) => p.id),
+      id,
+      personaIds: members.map((p) => p.id),
       prompt,
       thinking,
-    });
-  }
-  for (const p of selected.filter((persona) => persona.solo)) {
-    passes.push({
-      id: p.id,
-      personaIds: [p.id],
-      prompt: p.prompt,
-      thinking: p.thinking ?? "off",
     });
   }
   return passes;
