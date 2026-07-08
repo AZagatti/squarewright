@@ -143,3 +143,19 @@ that can stay selective under scope discipline instead of going silent.
   glm-5-turbo ungrounded is already clean, so verify bought ~0 precision at **~2× wall time with a bad tail**
   (per-finding passes serialize within a case; one case took 28 min). Keep it OFF by default; reach for it
   only on a *noisy* model (where there's real noise to prune) rather than the already-clean value pick.
+
+## First multi-run range — `eval --repeat 3`, glm-5-turbo (2026-07-08)
+
+The eval now runs N passes per config (`--repeat N`) and reports **ranges**, not a single number — the harness's
+own run-to-run variance made every prior point estimate unfalsifiable (this doc already warned "treat any single
+recall number as ±2"). First honest 3-run measurement of the value pick (glm-5-turbo free analysis + glm-5-turbo
+structurer, personas on, thinking off, ungrounded), 12 loci / 9 clean cases, free z.ai:
+
+- **locus recall: 1–2/12 (median 1)** — the three runs scored 1, 2, 1.
+- **false positives (raw): 0–3 (median 2)** — the three runs scored 0, 3, 2.
+
+The range corrects an over-optimistic single-run figure: the **FP median (2) is higher than the "0–1 FP"** number
+above, which came from one lucky run; recall sits at the low end of the prior "1–3" band. So glm-5-turbo's "clean"
+reputation is softer once replicated, and the recall/precision tradeoff is noisier than any single run showed —
+exactly why the North Star refuses a single flattering number. From here, every quality comparison (model ranking,
+M5 batching) must be **range-vs-range over ≥3 runs**, which `--repeat` now makes first-class.

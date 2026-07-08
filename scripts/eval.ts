@@ -397,6 +397,9 @@ async function main() {
       return null;
     }
     const creditsBefore = usesOR ? openrouterCredits() : null;
+    if (creditsBefore !== null) {
+      console.log(`  OpenRouter credits before: $${creditsBefore.toFixed(4)}`);
+    }
     // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: the per-case review+verify+score body, unchanged
     const rawResults = await pool(cases, concurrency, async (c) => {
       spendGuard();
@@ -610,7 +613,12 @@ async function main() {
     return { cleanFP, cost, issueHits, issueTotal };
   }
 
-  const repeat = Math.max(1, Number(arg("repeat") ?? 1));
+  const repeatRaw = arg("repeat");
+  const repeat = repeatRaw === undefined ? 1 : Number(repeatRaw);
+  if (!Number.isInteger(repeat) || repeat < 1) {
+    console.error(`--repeat must be a positive integer (got "${repeatRaw}").`);
+    process.exit(1);
+  }
   const runs: RunSummary[] = [];
   for (let i = 0; i < repeat; i += 1) {
     if (repeat > 1) {
