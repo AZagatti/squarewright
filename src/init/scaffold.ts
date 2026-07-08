@@ -37,28 +37,36 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
+/** Write `dest` via `produce` unless it already exists (idempotent); log which happened. */
+async function placeFile(
+  dest: string,
+  label: string,
+  produce: () => Promise<void>
+): Promise<void> {
+  if (await exists(dest)) {
+    console.log(`  skip (exists)  ${label}`);
+    return;
+  }
+  await mkdir(dirname(dest), { recursive: true });
+  await produce();
+  console.log(`  created        ${label}`);
+}
+
 export async function scaffold(repoRoot: string): Promise<void> {
   console.log("squarewright init — scaffolding a reviewer assembly\n");
   for (const spec of SCAFFOLD) {
     const dest = join(repoRoot, spec.to);
-    // biome-ignore lint/performance/noAwaitInLoops: sequential by design — scaffolding copies files in declared order, one at a time, to keep console output ordered and deterministic
-    if (await exists(dest)) {
-      console.log(`  skip (exists)  ${spec.to}`);
-      continue;
-    }
-    await mkdir(dirname(dest), { recursive: true });
-    await cp(join(TEMPLATES_DIR, spec.from), dest);
-    console.log(`  created        ${spec.to}`);
+    // biome-ignore lint/performance/noAwaitInLoops: sequential by design — scaffolding places files in declared order, one at a time, to keep console output ordered and deterministic
+    await placeFile(dest, spec.to, () =>
+      cp(join(TEMPLATES_DIR, spec.from), dest)
+    );
   }
 
   // The config is generated (not copied) so its personas stay in sync with DEFAULT_PERSONAS.
   const configDest = join(repoRoot, ".squarewright.yml");
-  if (await exists(configDest)) {
-    console.log("  skip (exists)  .squarewright.yml");
-  } else {
-    await writeFile(configDest, renderDefaultConfig());
-    console.log("  created        .squarewright.yml");
-  }
+  await placeFile(configDest, ".squarewright.yml", () =>
+    writeFile(configDest, renderDefaultConfig())
+  );
 
   console.log(`
 Next steps:
