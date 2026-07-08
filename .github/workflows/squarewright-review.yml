@@ -20,7 +20,6 @@ on:
 permissions:
   contents: read # checkout trusted base only
   actions: read # download the gather artifact
-  checks: read # read CI signals for grounding
   pull-requests: write # post the review
 
 concurrency:
@@ -31,6 +30,7 @@ jobs:
   review:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # bound a stuck model call / agent loop (default is 6h)
     steps:
       - name: Checkout base repo (trusted; never PR head)
         uses: actions/checkout@v4

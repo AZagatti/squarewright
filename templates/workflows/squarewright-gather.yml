@@ -21,9 +21,12 @@ concurrency:
 
 jobs:
   gather:
-    # Skip drafts, bots, and opt-out label. (Author-association gating for untrusted authors is added by the
-    # harness; see docs/design/feedback-and-data.md for the reasoning.)
+    # Only trusted authors (owner/member/collaborator), non-draft, non-bot, without the skip-ai-review label.
+    # Gating the opener here stops a stranger from triggering the secrets-bearing Review phase (and provider
+    # spend) via workflow_run. To review external contributions too, drop the author_association check AND turn
+    # on the repo's "Require approval for all outside collaborators" Actions setting.
     if: >-
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) &&
       github.event.pull_request.draft == false &&
       !endsWith(github.event.pull_request.user.login, '[bot]') &&
       !contains(github.event.pull_request.labels.*.name, 'skip-ai-review')
