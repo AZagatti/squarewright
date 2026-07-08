@@ -1,13 +1,14 @@
 /**
  * Orchestrate a `review --phase post` run. Preflight EVERY required provider key — the config's lanes plus the
- * openrouter structurer (src/pi/worker.ts) — before any model call, so a run can't spend on pass 1 and then
- * fail on pass 2's missing key. Key resolution and worker construction are injected so the flow is testable
- * without Pi (and so the preflight provably precedes the worker).
+ * structurer (the config's, else the built-in default) — before any model call, so a run can't spend on pass 1
+ * and then fail on pass 2's missing key. Key resolution and worker construction are injected so the flow is
+ * testable without Pi (and so the preflight provably precedes the worker).
  */
-import type { ReviewContext } from "../core/types.js";
+import type { ModelLane, ReviewContext } from "../core/types.js";
 import type { Poster } from "../github/poster.js";
 import type { ResolvedKeys } from "../pi/keys.js";
 import type { PiWorker } from "../pi/session.js";
+import { DEFAULT_STRUCTURER } from "../pi/worker.js";
 import type {
   LookupPullsForCommit,
   TrustedRunSignal,
@@ -18,14 +19,17 @@ import type { AssemblyConfig } from "./config.js";
 import { type ReviewOutput, runReview } from "./review.js";
 
 interface ReviewPostDeps {
-  makeWorker: (apiKeys: Record<string, string>) => PiWorker;
+  makeWorker: (
+    apiKeys: Record<string, string>,
+    structurerLane?: ModelLane
+  ) => PiWorker;
   resolveKeys: (providers: Iterable<string>) => Promise<ResolvedKeys>;
 }
 
-/** Providers whose keys the review needs: the config's lanes plus the openrouter structurer. */
+/** Providers whose keys the review needs: the config's lanes plus the structurer (config's, else the default). */
 export function requiredProviders(config: AssemblyConfig): Set<string> {
   const providers = new Set(config.lanes.map((l) => l.provider));
-  providers.add("openrouter");
+  providers.add(config.structurer?.provider ?? DEFAULT_STRUCTURER.provider);
   return providers;
 }
 
@@ -44,7 +48,11 @@ export async function runReviewPost(
         "no model runs until every required key is present."
     );
   }
-  return await runReview(context, config, deps.makeWorker(apiKeys));
+  return await runReview(
+    context,
+    config,
+    deps.makeWorker(apiKeys, config.structurer)
+  );
 }
 
 /** Read the trusted `workflow_run` signals the Review workflow exports; throw (fail closed) if either is absent. */
