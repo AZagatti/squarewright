@@ -40,11 +40,13 @@ export function mdSafe(text: string): string {
   );
 }
 
-/** Render one inline PR-comment body: `mdSafe`-neutralized like the sticky (so all comment rendering and
- * injection defense live in one layer), then tagged with the hidden `INLINE_MARKER` so a re-review can find and
- * replace it. The marker is appended after `mdSafe`, so an untrusted message can't forge it. */
+/** Render one inline PR-comment body: the hidden `INLINE_MARKER` on line 1 (so a re-review can find and replace
+ * our prior comments), then the `mdSafe`-neutralized message (so all comment rendering and injection defense
+ * live in one layer). Marker-first + `startsWith` matching (like the sticky) means a human "Quote reply" — which
+ * prefixes every quoted line with `> ` — can never be mistaken for one of ours; the message is neutralized
+ * before the marker is prepended, so an untrusted message can't forge it either. */
 export function renderInlineBody(message: string): string {
-  return `${mdSafe(message)}\n\n${INLINE_MARKER}`;
+  return `${INLINE_MARKER}\n\n${mdSafe(message)}`;
 }
 
 export interface StickyInput {

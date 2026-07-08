@@ -80,7 +80,8 @@ async function clearPriorInline(
   const endpoint = `repos/${target.repo}/pulls/${target.prNumber}/comments`;
   const stdout = await ghApi(run, [endpoint, "--paginate"]);
   const comments = parseJson<{ body: string; id: number }[]>(stdout, endpoint);
-  const ours = comments.filter((c) => c.body.includes(INLINE_MARKER));
+  // startsWith (not includes): a human "Quote reply" prefixes the quoted marker with `> `, so it won't match
+  const ours = comments.filter((c) => c.body.startsWith(INLINE_MARKER));
   await Promise.all(
     ours.map((c) =>
       ghApi(run, [

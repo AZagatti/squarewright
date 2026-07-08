@@ -43,7 +43,10 @@ function fakeRunner(responder: (args: string[], input?: string) => Reply): {
 const isWrite = (args: string[]) => args.includes("--method");
 const isInlineList = (args: string[]) =>
   args.includes("repos/o/r/pulls/7/comments") && args.includes("--paginate");
-const marked = (body: string) => `${body}\n\n${INLINE_MARKER}`;
+const marked = (body: string) => `${INLINE_MARKER}\n\n${body}`;
+// a human "Quote reply" prefixes every quoted line with "> ", including our hidden marker
+const quotedReply = (quoted: string, reply: string) =>
+  `> ${INLINE_MARKER}\n> \n> ${quoted}\n\n${reply}`;
 
 describe("createGhPoster.postReview", () => {
   test("clears prior inline comments (none), then posts one review", async () => {
@@ -82,10 +85,15 @@ describe("createGhPoster.postReview", () => {
     });
   });
 
-  test("deletes our prior inline comments, leaves others, then posts", async () => {
+  test("deletes only our prior inline comments — leaves plain and quote-reply human comments — then posts", async () => {
     const prior = JSON.stringify([
       { body: marked("old finding"), id: 55 },
       { body: "a human review comment", id: 66 },
+      // a human quote-reply to one of our comments: contains the marker, but not at the start
+      {
+        body: quotedReply("old finding", "actually this is intentional"),
+        id: 88,
+      },
     ]);
     const { run, calls } = fakeRunner((args) =>
       isInlineList(args) ? { stdout: prior } : { stdout: "{}" }
@@ -103,9 +111,12 @@ describe("createGhPoster.postReview", () => {
       "--method",
       "DELETE",
     ]);
-    // the human comment (66) is never deleted; the fresh review is still posted
+    // neither the plain human comment (66) nor the quote-reply (88) is deleted
     expect(
       calls.some((c) => c.args.includes("repos/o/r/pulls/comments/66"))
+    ).toBe(false);
+    expect(
+      calls.some((c) => c.args.includes("repos/o/r/pulls/comments/88"))
     ).toBe(false);
     expect(
       calls.some((c) => c.args.includes("repos/o/r/pulls/7/reviews"))
