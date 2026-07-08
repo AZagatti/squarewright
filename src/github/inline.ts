@@ -4,6 +4,7 @@
  * findings to commentable positions and drop (or reroute to the sticky summary) the ones that don't land.
  */
 import type { ChangedFile, Finding } from "../core/types.js";
+import { renderInlineBody } from "../output/render.js";
 
 const HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
@@ -64,7 +65,11 @@ export function mapToInlineComments(
   for (const f of findings) {
     const lines = commentable.get(f.path);
     if (lines?.has(f.line)) {
-      inline.push({ body: f.message, line: f.line, path: f.path });
+      inline.push({
+        body: renderInlineBody(f.message),
+        line: f.line,
+        path: f.path,
+      });
     } else {
       unplaceable.push(f);
     }
