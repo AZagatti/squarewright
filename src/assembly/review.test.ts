@@ -110,6 +110,23 @@ describe("runReview", () => {
     expect(received?.budget).toEqual({ maxToolCalls: 30 });
   });
 
+  test("forwards no budget when the config has none", async () => {
+    let received: WorkerRequest | undefined;
+    const worker: PiWorker = {
+      run: (req) => {
+        received = req;
+        return Promise.resolve({
+          findings: [],
+          usage: { submitted: true, toolCalls: 0 },
+        });
+      },
+    };
+
+    await runReview(CONTEXT, CONFIG, worker);
+
+    expect(received?.budget).toBeUndefined();
+  });
+
   test("fails fast when a persona's lane is not defined (no silent fallback)", () => {
     const badConfig: AssemblyConfig = {
       grounders: [],
