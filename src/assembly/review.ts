@@ -85,13 +85,25 @@ export async function runReview(
   });
   const passes = buildPasses(selected);
 
+  // A finding's `source` is its PASS id; attribute it to the pass's persona label(s) for the review output.
+  const lensLabel = (id: string) =>
+    selected.find((p) => p.id === id)?.label ?? id;
+  const lenses = passes.map((pass) => ({
+    id: pass.id,
+    label: [...new Set(pass.personaIds.map(lensLabel))].join(", "),
+  }));
+  const labelFor = (source: string) =>
+    lenses.find((l) => l.id === source)?.label ?? source;
+
   const all: Finding[] = [];
   const summaries: string[] = [];
+  const modelsUsed = new Set<string>();
   for (const pass of passes) {
     const lane: ModelLane = {
       ...laneForPass(pass, personas, config),
       thinking: pass.thinking,
     };
+    modelsUsed.add(lane.model);
     // biome-ignore lint/performance/noAwaitInLoops: passes run sequentially by design — bounded (≤MAX_PERSONAS) and keeps provider concurrency low
     const result = await worker.run({
       context,
@@ -106,7 +118,14 @@ export async function runReview(
   }
 
   const findings = aggregateFindings(all);
-  const { inline, unplaceable } = mapToInlineComments(findings, context.files);
-  const sticky = renderSticky({ findings, summary: summaries.join("\n\n") });
+  const { inline, unplaceable } = mapToInlineComments(findings, context.files, {
+    labelFor,
+  });
+  const sticky = renderSticky({
+    findings,
+    lenses,
+    model: [...modelsUsed].join(", "),
+    summary: summaries.join("\n\n"),
+  });
   return { findings, inline, sticky, unplaceable };
 }

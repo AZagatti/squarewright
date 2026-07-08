@@ -84,7 +84,7 @@ describe("runReview", () => {
 
     expect(out.findings).toHaveLength(0);
     expect(out.inline).toHaveLength(0);
-    expect(out.sticky).toContain("No blocking issues found");
+    expect(out.sticky).toContain("No issues flagged by");
   });
 
   test("fails fast when a persona's lane is not defined (no silent fallback)", () => {
@@ -180,6 +180,6 @@ describe("runReview", () => {
     };
     const out = await runReview(docsContext, config, worker);
     expect(calls).toBe(0);
-    expect(out.sticky).toContain("No blocking issues found");
+    expect(out.sticky).toContain("No issues flagged by");
   });
 });

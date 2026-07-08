@@ -13,6 +13,7 @@ const CLEAN_TAIL =
 export const DEFAULT_PERSONAS: Persona[] = [
   {
     id: "sentinel",
+    label: "Correctness",
     lane: "strong",
     needsCode: true,
     prompt:
@@ -31,6 +32,7 @@ export const DEFAULT_PERSONAS: Persona[] = [
   },
   {
     id: "warden",
+    label: "Security",
     lane: "strong",
     needsCode: true,
     prompt:
@@ -49,6 +51,7 @@ export const DEFAULT_PERSONAS: Persona[] = [
   },
   {
     id: "chromatic",
+    label: "CSS",
     lane: "strong",
     needsCode: true,
     prompt:
@@ -75,6 +78,7 @@ export const DEFAULT_PERSONAS: Persona[] = [
   },
   {
     id: "foreman",
+    label: "Build/Config",
     lane: "cheap",
     needsCode: false,
     prompt:
@@ -102,6 +106,7 @@ export const DEFAULT_PERSONAS: Persona[] = [
   },
   {
     id: "stevedore",
+    label: "Docker",
     lane: "cheap",
     needsCode: false,
     prompt:
@@ -125,6 +130,7 @@ export const DEFAULT_PERSONAS: Persona[] = [
   },
   {
     id: "marshal",
+    label: "CI",
     lane: "cheap",
     needsCode: false,
     prompt:

@@ -52,7 +52,7 @@ export interface InlineComment {
 export function mapToInlineComments(
   findings: Finding[],
   files: ChangedFile[],
-  opts: { cap?: number } = {}
+  opts: { cap?: number; labelFor?: (source: string) => string } = {}
 ): { inline: InlineComment[]; unplaceable: Finding[] } {
   const commentable = new Map<string, Set<number>>();
   for (const f of files) {
@@ -65,8 +65,9 @@ export function mapToInlineComments(
   for (const f of findings) {
     const lines = commentable.get(f.path);
     if (lines?.has(f.line)) {
+      const lens = f.source ? opts.labelFor?.(f.source) : undefined;
       inline.push({
-        body: renderInlineBody(f.message),
+        body: renderInlineBody(f.message, lens),
         line: f.line,
         path: f.path,
       });

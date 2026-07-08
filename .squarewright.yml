@@ -21,6 +21,7 @@ lanes:
     thinking: off
 personas:
   - id: sentinel
+    label: Correctness
     lane: strong
     needsCode: true
     prompt: >-
@@ -63,6 +64,7 @@ personas:
       assumptions. Submit an empty findings array if the change is sound.
     thinking: medium
   - id: warden
+    label: Security
     lane: strong
     needsCode: true
     prompt: >-
@@ -97,6 +99,7 @@ personas:
       assumptions. Submit an empty findings array if the change is sound.
     thinking: medium
   - id: chromatic
+    label: CSS
     lane: strong
     needsCode: true
     prompt: >-
@@ -139,6 +142,7 @@ personas:
       - "**/tailwindcss/**/*.ts"
       - "**/postcss/**/*.ts"
   - id: foreman
+    label: Build/Config
     lane: cheap
     needsCode: false
     prompt: >-
@@ -182,6 +186,7 @@ personas:
       - "**/tsup.config.*"
       - "**/turbo.json"
   - id: stevedore
+    label: Docker
     lane: cheap
     needsCode: false
     prompt: >-
@@ -219,6 +224,7 @@ personas:
       - "**/docker-compose*.yaml"
       - "**/.dockerignore"
   - id: marshal
+    label: CI
     lane: cheap
     needsCode: false
     prompt: >-

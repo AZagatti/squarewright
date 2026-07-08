@@ -26,6 +26,7 @@ const modelLane = z.object({
 
 const persona = z.object({
   id: z.string(),
+  label: z.string().optional(),
   lane: z.string(),
   needsCode: z.boolean().optional(),
   prompt: z.string(),

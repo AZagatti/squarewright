@@ -73,7 +73,7 @@ describe("runReviewPost preflight", () => {
     expect(received).toEqual({ openrouter: "or", zai: "z" });
     // CONFIG sets no structurer, so undefined is forwarded (worker falls back to its default) — not substituted
     expect(receivedStructurer).toBeUndefined();
-    expect(out.sticky).toContain("No blocking issues found");
+    expect(out.sticky).toContain("No issues flagged by");
   });
 
   test("forwards the config's structurer lane to the worker", async () => {
