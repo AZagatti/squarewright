@@ -10,11 +10,7 @@
 import { Command } from "commander";
 import { readGatherArtifact } from "./assembly/artifact.js";
 import { loadAssemblyConfig } from "./assembly/config.js";
-import {
-  postReviewOutput,
-  readTrustedRunSignal,
-  runReviewPost,
-} from "./assembly/review-post.js";
+import { runReviewCommand, runReviewPost } from "./assembly/review-post.js";
 import {
   createGhPoster,
   createGhPullLookup,
@@ -23,7 +19,6 @@ import {
 import { scaffold } from "./init/scaffold.js";
 import { resolveProviderKeys } from "./pi/keys.js";
 import { createPiWorker } from "./pi/worker.js";
-import { verifyPostingTarget } from "./safety/trust.js";
 
 const program = new Command();
 
@@ -71,30 +66,27 @@ program
         return;
       }
       try {
-        const config = loadAssemblyConfig(opts.cwd);
-        const context = readGatherArtifact(opts.input);
-        const output = await runReviewPost(config, context, {
-          makeWorker: (apiKeys) => createPiWorker({ apiKeys }),
-          resolveKeys: resolveProviderKeys,
-        });
-
-        if (opts.post) {
-          const trusted = readTrustedRunSignal(process.env);
-          const target = await postReviewOutput(output, context, trusted, {
+        const result = await runReviewCommand(
+          { cwd: opts.cwd, input: opts.input, post: opts.post },
+          {
+            env: process.env,
+            loadConfig: loadAssemblyConfig,
+            lookup: createGhPullLookup(ghRunner),
             poster: createGhPoster(ghRunner),
-            verifyTarget: (claimed, tr) =>
-              verifyPostingTarget(claimed, tr, createGhPullLookup(ghRunner)),
-          });
-          console.error(
-            `Posted review to ${target.repo}#${target.prNumber} @ ${target.commitSha}.`
-          );
-          return;
-        }
-
-        const { sticky, inline, unplaceable } = output;
-        process.stdout.write(
-          `${JSON.stringify({ inline, sticky, unplaceable }, null, 2)}\n`
+            readArtifact: readGatherArtifact,
+            review: (config, context) =>
+              runReviewPost(config, context, {
+                makeWorker: (apiKeys) => createPiWorker({ apiKeys }),
+                resolveKeys: resolveProviderKeys,
+              }),
+          }
         );
+        if (result.posted) {
+          const { repo, prNumber, commitSha } = result.posted;
+          console.error(`Posted review to ${repo}#${prNumber} @ ${commitSha}.`);
+        } else if (result.json) {
+          process.stdout.write(result.json);
+        }
       } catch (e) {
         console.error(e instanceof Error ? e.message : String(e));
         process.exitCode = 2;
