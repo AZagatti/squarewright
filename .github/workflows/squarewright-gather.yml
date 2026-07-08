@@ -1,0 +1,50 @@
+# Squarewright — Gather (UNTRUSTED phase)
+#
+# Runs in the PR's own context (possibly a fork). It has NO secrets and only read permissions, so malicious
+# PR code can do nothing valuable here. It only collects the diff + metadata as data and uploads an artifact.
+# The trusted Review workflow (secrets, posting) is triggered separately via workflow_run.
+#
+# Dogfood: this repo reviews its own PRs. The trusted Review phase runs the repo's own squarewright via bun.
+name: Squarewright - Gather
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: squarewright-gather-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gather:
+    # Skip drafts, bots, and opt-out label. (Author-association gating for untrusted authors is added by the
+    # harness; see docs/design/feedback-and-data.md for the reasoning.)
+    if: >-
+      github.event.pull_request.draft == false &&
+      !endsWith(github.event.pull_request.user.login, '[bot]') &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-ai-review')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect PR diff + metadata (no secrets, no PR-code execution)
+        env:
+          # PR-controlled strings are passed via env, NEVER interpolated into the shell (injection guard).
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir -p artifacts
+          gh api "repos/$REPO/pulls/$PR/files" --paginate > artifacts/pr-files.json
+          gh api "repos/$REPO/pulls/$PR" \
+            --jq '{number:.number,title:.title,author:.user.login,base_sha:.base.sha,head_sha:.head.sha,repo:.base.repo.full_name,body:.body}' \
+            > artifacts/pr-meta.json
+
+      - name: Upload gather artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: squarewright-input
+          path: artifacts/
+          retention-days: 1
