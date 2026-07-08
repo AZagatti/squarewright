@@ -4,7 +4,7 @@
 # PR code can do nothing valuable here. It only collects the diff + metadata as data and uploads an artifact.
 # The trusted Review workflow (secrets, posting) is triggered separately via workflow_run.
 #
-# Scaffolded by `squarewright init`. The harness it will call is pre-v0.1 (see squarewright ROADMAP).
+# Dogfood: this repo reviews its own PRs. The trusted Review phase runs the repo's own squarewright via bun.
 name: Squarewright - Gather
 
 on:

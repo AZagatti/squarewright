@@ -1,0 +1,62 @@
+# Squarewright — Review (TRUSTED phase). Dogfood: Squarewright reviews its OWN pull requests.
+#
+# Triggered by the Gather workflow completing (workflow_run). Runs with the base repo's permissions and the
+# z.ai secret, regardless of which branch/fork opened the PR — and NEVER checks out or executes PR head code.
+# The only PR-derived input is the text artifact from Gather, treated purely as data fed to the model. Unlike
+# the scaffolded template, this runs the repo's own squarewright via bun (the CLI isn't published yet).
+#
+# Security notes baked in:
+#   - the z.ai key exists ONLY in this workflow, never in Gather.
+#   - least-privilege permissions, each justified below.
+#   - `review --post` cross-checks the artifact's claimed PR/head-sha against the workflow_run event's trusted
+#     head_sha + base repo before it trusts them to decide WHERE to post (a poisoned artifact can't redirect).
+name: Squarewright - Review
+
+on:
+  workflow_run:
+    workflows: ["Squarewright - Gather"]
+    types: [completed]
+
+permissions:
+  contents: read # checkout trusted base only
+  actions: read # download the gather artifact
+  pull-requests: write # post the review
+
+concurrency:
+  group: squarewright-review-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15 # bound a stuck model call / agent loop (default is 6h)
+    steps:
+      - name: Checkout base repo (trusted; never PR head)
+        uses: actions/checkout@v4
+
+      - name: Download gather artifact (by run-id)
+        uses: actions/download-artifact@v4
+        with:
+          name: squarewright-input
+          path: artifacts
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install (base repo, trusted)
+        run: bun install --frozen-lockfile
+
+      - name: Run Squarewright review and post (safe posting)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Trusted workflow_run signals — the ONLY inputs trusted to decide WHERE to post.
+          EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT_REPO: ${{ github.event.workflow_run.repository.full_name }}
+          # Provider key lives ONLY in this trusted phase. Default lanes are z.ai's free glm-5-turbo.
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+        run: bun run src/cli.ts review --phase post --post --input artifacts
