@@ -106,6 +106,9 @@ export async function runReview(
     modelsUsed.add(lane.model);
     // biome-ignore lint/performance/noAwaitInLoops: passes run sequentially by design — bounded (≤MAX_PERSONAS) and keeps provider concurrency low
     const result = await worker.run({
+      // budget flows to the worker so a future enforcer can honor it; today it's ADVISORY — a hard mid-run
+      // tool-call/token cap needs a Pi abort primitive we don't have (see the spend-guard mid-run-abort gap).
+      budget: config.budget,
       context,
       lane,
       persona: pass.id,

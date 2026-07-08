@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Finding, ReviewContext } from "../core/types.js";
 import { STICKY_MARKER } from "../output/render.js";
-import type { PiWorker, WorkerResult } from "../pi/session.js";
+import type { PiWorker, WorkerRequest, WorkerResult } from "../pi/session.js";
 import type { AssemblyConfig } from "./config.js";
 import { runReview } from "./review.js";
 
@@ -87,6 +87,27 @@ describe("runReview", () => {
     expect(out.sticky).toContain("No issues flagged by");
     // the persona has no `label`, so attribution falls back to its id (guards the `?? id` in runReview)
     expect(out.sticky).toContain("Reviewed by: gen");
+  });
+
+  test("forwards config.budget to the worker", async () => {
+    let received: WorkerRequest | undefined;
+    const worker: PiWorker = {
+      run: (req) => {
+        received = req;
+        return Promise.resolve({
+          findings: [],
+          usage: { submitted: true, toolCalls: 0 },
+        });
+      },
+    };
+
+    await runReview(
+      CONTEXT,
+      { ...CONFIG, budget: { maxToolCalls: 30 } },
+      worker
+    );
+
+    expect(received?.budget).toEqual({ maxToolCalls: 30 });
   });
 
   test("fails fast when a persona's lane is not defined (no silent fallback)", () => {
