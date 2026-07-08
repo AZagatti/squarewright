@@ -5,16 +5,18 @@
  * Commands:
  *   init     scaffold a reviewer assembly into the current repo   [implemented]
  *   review   run a review over a gathered PR                      [--phase post implemented; --post posts to GitHub]
- *   doctor   check config + provider setup                        [not implemented]
+ *   doctor   check config + provider setup                        [implemented]
  */
 import { Command } from "commander";
 import { readGatherArtifact } from "./assembly/artifact.js";
 import { loadAssemblyConfig } from "./assembly/config.js";
+import { doctorProblems, renderDoctor, runDoctor } from "./assembly/doctor.js";
 import { runReviewCommand, runReviewPost } from "./assembly/review-post.js";
 import {
   createGhPoster,
   createGhPullLookup,
   ghRunner,
+  spawnRunner,
 } from "./github/poster.js";
 import { scaffold } from "./init/scaffold.js";
 import { resolveProviderKeys } from "./pi/keys.js";
@@ -96,14 +98,25 @@ program
 
 program
   .command("doctor")
-  .description(
-    "Check assembly config + provider setup. v0.1 — in construction."
+  .description("Check assembly config + provider setup.")
+  .option(
+    "-C, --cwd <dir>",
+    "repo root holding .squarewright.yml",
+    process.cwd()
   )
-  .action(() => {
-    console.error(
-      "squarewright doctor is not implemented yet — see docs/ROADMAP.md."
-    );
-    process.exitCode = 2;
+  .action(async (opts: { cwd: string }) => {
+    const report = await runDoctor(opts.cwd, {
+      hasGh: () =>
+        spawnRunner("gh")(["--version"])
+          .then((r) => r.code === 0)
+          .catch(() => false),
+      loadConfig: loadAssemblyConfig,
+      resolveKeys: resolveProviderKeys,
+    });
+    process.stdout.write(`${renderDoctor(report)}\n`);
+    if (doctorProblems(report) > 0) {
+      process.exitCode = 2;
+    }
   });
 
 program.parseAsync();
