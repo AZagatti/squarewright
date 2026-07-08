@@ -179,6 +179,10 @@ const THINK_RANK: Record<ThinkingLevel, number> = {
 /**
  * The pass-group key for a persona: explicit `pass` wins; else `solo` → its own dedicated pass; else the
  * shared "baseline" batch. Personas sharing a key are reviewed together in one Worker call.
+ *
+ * The key space is shared with two implicit keys: `"baseline"` (the non-solo batch) and each solo persona's
+ * `id`. A config author who sets `pass: "baseline"`, or a `pass` value equal to some persona's id, deliberately
+ * joins that group — so treat those as reserved when naming a custom `pass`.
  */
 export function passGroup(p: Persona): string {
   return p.pass ?? (p.solo ? p.id : "baseline");
@@ -189,13 +193,12 @@ export function passGroup(p: Persona): string {
  * more than one member becomes a single batched multi-lens call (the lenses review the PR together); a lone
  * member runs its own bare prompt.
  *
- * This subsumes the previous "batch every non-solo / split every solo" rule — with no `pass` set anywhere,
- * non-solo personas still share the "baseline" group and solos still get singleton passes — and adds explicit
- * correlated-pair batching via `pass` (e.g. Docker + CI reviewed as one lens when both co-fire).
+ * With no `pass` set anywhere, non-solo personas share the "baseline" group and solos get singleton passes; an
+ * explicit shared `pass` batches those personas into one call when they co-fire (e.g. a config that pairs Docker
+ * and CI lenses).
  *
- * Note: a >1-member group uses the multi-lens preamble; a 1-member group uses the persona's bare prompt. This
- * differs from the old code only in the (default-unreachable) case of a lone non-solo persona, which now skips
- * the "apply ALL these lenses" preamble it doesn't need.
+ * A >1-member group uses the multi-lens preamble; a lone member uses its bare prompt (a single lens needs no
+ * "apply ALL these lenses" wrapper).
  */
 export function buildPasses(selected: Persona[]): ReviewPass[] {
   const groups = new Map<string, Persona[]>();

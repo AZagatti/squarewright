@@ -305,7 +305,7 @@ async function main() {
   const doPersonas = flag("personas");
   // --batching split|current|batched — how the selected personas are grouped into Worker calls.
   //   split   = every persona its own call (max fragmentation)
-  //   current = correctness+security batched, domain lenses solo (today's default, pre-#39)
+  //   current = correctness+security batched, domain lenses solo (matches the shipped default routing)
   //   batched = ALL fired personas in ONE call (trimwire's winner — tests whether one coherent review wins)
   // Independent of DEFAULT_PERSONAS' own solo/pass fields so the 3 modes are a clean apples-to-apples control.
   const batching = (arg("batching") ?? "current") as

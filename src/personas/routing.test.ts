@@ -54,7 +54,7 @@ describe("selectPersonas cap is group-aware", () => {
     expect(ids.includes("g1")).toBe(ids.includes("g2"));
   });
 
-  test("a smaller unit after an over-cap group can still fill the remaining slot", () => {
+  test("a group that fits is kept whole; a later unit that would overflow is skipped", () => {
     // order: a, b, g1, g2, c  → after a,b (2), group g (2) fits → 4; c would be 5, skipped
     const selected = selectPersonas(
       [p("a"), p("b"), p("g1", "g"), p("g2", "g"), p("c")],
@@ -62,5 +62,18 @@ describe("selectPersonas cap is group-aware", () => {
       { cap: 4 }
     );
     expect(selected.map((x) => x.id)).toEqual(["a", "b", "g1", "g2"]);
+  });
+
+  test("a group skipped for overflow does NOT block a later single unit from filling the slot", () => {
+    // order: a, b, c, g1, g2, d — a,b,c fill 3; group g (2) overflows cap 4 → skipped; single d fits → 4
+    const selected = selectPersonas(
+      [p("a"), p("b"), p("c"), p("g1", "g"), p("g2", "g"), p("d")],
+      FILES,
+      { cap: 4 }
+    );
+    const ids = selected.map((x) => x.id);
+    expect(ids).toEqual(["a", "b", "c", "d"]);
+    expect(ids).not.toContain("g1");
+    expect(ids).not.toContain("g2");
   });
 });
