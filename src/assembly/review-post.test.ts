@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ReviewContext } from "../core/types.js";
+import type { ModelLane, ReviewContext } from "../core/types.js";
 import type { Poster } from "../github/poster.js";
 import type { PiWorker } from "../pi/session.js";
 import type { LookupPullsForCommit, VerifiedTarget } from "../safety/trust.js";
@@ -52,11 +52,13 @@ describe("runReviewPost preflight", () => {
     expect(made).toBe(false);
   });
 
-  test("constructs the worker with the resolved keys when none are missing", async () => {
+  test("constructs the worker with the resolved keys, forwarding no structurer when unset", async () => {
     let received: Record<string, string> | undefined;
+    let receivedStructurer: ModelLane | undefined;
     const deps = {
-      makeWorker: (apiKeys: Record<string, string>) => {
+      makeWorker: (apiKeys: Record<string, string>, structurer?: ModelLane) => {
         received = apiKeys;
+        receivedStructurer = structurer;
         return STUB_WORKER;
       },
       resolveKeys: () =>
@@ -69,7 +71,30 @@ describe("runReviewPost preflight", () => {
     const out = await runReviewPost(CONFIG, CONTEXT, deps);
 
     expect(received).toEqual({ openrouter: "or", zai: "z" });
+    // CONFIG sets no structurer, so undefined is forwarded (worker falls back to its default) — not substituted
+    expect(receivedStructurer).toBeUndefined();
     expect(out.sticky).toContain("No blocking issues found");
+  });
+
+  test("forwards the config's structurer lane to the worker", async () => {
+    const structurer: ModelLane = {
+      id: "struct",
+      model: "glm-5-turbo",
+      provider: "zai",
+    };
+    let receivedStructurer: ModelLane | undefined;
+    const deps = {
+      makeWorker: (_apiKeys: Record<string, string>, lane?: ModelLane) => {
+        receivedStructurer = lane;
+        return STUB_WORKER;
+      },
+      resolveKeys: () =>
+        Promise.resolve({ apiKeys: { zai: "z" }, missing: [] }),
+    };
+
+    await runReviewPost({ ...CONFIG, structurer }, CONTEXT, deps);
+
+    expect(receivedStructurer).toEqual(structurer);
   });
 });
 

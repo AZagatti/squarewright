@@ -1,8 +1,8 @@
 /**
  * Orchestrate a `review --phase post` run. Preflight EVERY required provider key — the config's lanes plus the
- * openrouter structurer (src/pi/worker.ts) — before any model call, so a run can't spend on pass 1 and then
- * fail on pass 2's missing key. Key resolution and worker construction are injected so the flow is testable
- * without Pi (and so the preflight provably precedes the worker).
+ * structurer (the config's, else the built-in default) — before any model call, so a run can't spend on pass 1
+ * and then fail on pass 2's missing key. Key resolution and worker construction are injected so the flow is
+ * testable without Pi (and so the preflight provably precedes the worker).
  */
 import type { ModelLane, ReviewContext } from "../core/types.js";
 import type { Poster } from "../github/poster.js";
