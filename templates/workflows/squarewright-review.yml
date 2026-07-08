@@ -44,17 +44,22 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
 
-      # Placeholder for the versioned squarewright harness. When published this becomes e.g.
-      #   uses: AZagatti/squarewright-action@v1
-      # which runs `squarewright review --phase post`, cross-checks the artifact head_sha against
-      # `${{ github.event.workflow_run.head_sha }}`, drives Pi, and posts sticky + inline comments.
-      - name: Run Squarewright review (pre-v0.1 — harness in construction)
+      # Put the `squarewright` CLI on the runner. Publishing it (a pinned action or an npm/bun package) is the
+      # v0.1 distribution work (ROADMAP M4); until then, point this at your own build. This is the only
+      # onboarding gap — the review + safe-posting command below is the real, shipped path.
+      - name: Install Squarewright (pending v0.1 publish — see ROADMAP M4)
+        run: |
+          echo "Install the squarewright CLI here once v0.1 is published (e.g. bunx squarewright@<pinned>)."
+
+      - name: Run Squarewright review and post (safe posting)
         env:
           GH_TOKEN: ${{ github.token }}
+          # Trusted workflow_run signals — the ONLY inputs trusted to decide WHERE to post. The gather
+          # artifact is untrusted; `--post` cross-checks its claims against these and refuses on any mismatch.
           EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          # Provider key lives ONLY here. Set the one matching your .squarewright.yml lanes:
+          EVENT_REPO: ${{ github.event.workflow_run.repository.full_name }}
+          # Provider keys live ONLY in this trusted phase. Set the ones matching your .squarewright.yml lanes
+          # (ZAI_API_KEY for the default z.ai lanes) plus OPENROUTER_API_KEY for the structurer pass.
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          echo "Squarewright review harness is pre-v0.1. This workflow encodes the safe two-phase"
-          echo "structure; the posting harness is being built. See docs/ROADMAP.md."
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+        run: squarewright review --phase post --post --input artifacts
