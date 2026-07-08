@@ -52,8 +52,6 @@ export function renderInlineBody(message: string): string {
 export interface StickyInput {
   findings: AggregatedFinding[];
   summary: string;
-  /** findings that couldn't be placed inline, to list in the summary body */
-  unplaceable?: AggregatedFinding[];
 }
 
 /** Render the sticky summary comment (markdown). Safe to post as-is. */
