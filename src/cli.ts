@@ -105,16 +105,22 @@ program
     process.cwd()
   )
   .action(async (opts: { cwd: string }) => {
-    const report = await runDoctor(opts.cwd, {
-      hasGh: () =>
-        spawnRunner("gh")(["--version"])
-          .then((r) => r.code === 0)
-          .catch(() => false),
-      loadConfig: loadAssemblyConfig,
-      resolveKeys: resolveProviderKeys,
-    });
-    process.stdout.write(`${renderDoctor(report)}\n`);
-    if (doctorProblems(report) > 0) {
+    try {
+      const report = await runDoctor(opts.cwd, {
+        hasGh: () =>
+          spawnRunner("gh")(["--version"])
+            .then((r) => r.code === 0)
+            .catch(() => false),
+        loadConfig: loadAssemblyConfig,
+        resolveKeys: resolveProviderKeys,
+      });
+      process.stdout.write(`${renderDoctor(report)}\n`);
+      if (doctorProblems(report) > 0) {
+        process.exitCode = 2;
+      }
+    } catch (e) {
+      // a diagnostic must never crash ungracefully — report and fail
+      console.error(e instanceof Error ? e.message : String(e));
       process.exitCode = 2;
     }
   });

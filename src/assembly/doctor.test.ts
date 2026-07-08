@@ -110,5 +110,7 @@ describe("renderDoctor", () => {
     expect(out).toContain("✗ No .squarewright.yml");
     expect(out).toContain("⚠ gh CLI not found");
     expect(out).toContain("1 problem(s) found");
+    // no Providers section when the config didn't load
+    expect(out).not.toContain("Providers");
   });
 });
