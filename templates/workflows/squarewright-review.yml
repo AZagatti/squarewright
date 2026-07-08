@@ -21,7 +21,6 @@ on:
 permissions:
   contents: read # checkout trusted base only
   actions: read # download the gather artifact
-  checks: read # read CI signals for grounding
   pull-requests: write # post the review
 
 concurrency:
