@@ -37,6 +37,12 @@ export function mdSafe(text: string): string {
   );
 }
 
+/** Render one inline PR-comment body: `mdSafe`-neutralized like the sticky, so all comment rendering and
+ * injection defense live in one layer. */
+export function renderInlineBody(message: string): string {
+  return mdSafe(message);
+}
+
 export interface StickyInput {
   findings: AggregatedFinding[];
   summary: string;

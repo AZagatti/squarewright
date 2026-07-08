@@ -52,6 +52,29 @@ test("mapToInlineComments: places on commentable lines, flags the rest", () => {
   expect(unplaceable.map((f) => f.line).sort((a, b) => a - b)).toEqual([1, 99]);
 });
 
+test("mapToInlineComments: neutralizes markdown injection in the finding body", () => {
+  const files: ChangedFile[] = [
+    { patch: PATCH, path: "foo.ts", status: "modified" },
+  ];
+  const findings: Finding[] = [
+    {
+      line: 2,
+      message: "<!-- forged --> see [click](http://evil) </details>",
+      path: "foo.ts",
+      rule: "r",
+      severity: "warning",
+    },
+  ];
+
+  const { inline } = mapToInlineComments(findings, files);
+
+  const [comment] = inline;
+  expect(comment?.body).not.toContain("<!--");
+  expect(comment?.body).not.toContain("</details>");
+  // the link paren is defanged so it can't render as a clickable link
+  expect(comment?.body).not.toContain("](http");
+});
+
 test("commentableLines: multiple hunks track new-side numbering", () => {
   const patch = `--- a/x
 +++ b/x
