@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 import type { AggregatedFinding } from "./aggregate.js";
-import { mdSafe, renderSticky, STICKY_MARKER } from "./render.js";
+import {
+  INLINE_MARKER,
+  mdSafe,
+  renderInlineBody,
+  renderSticky,
+  STICKY_MARKER,
+} from "./render.js";
 
 test("mdSafe neutralizes marker forgery, layout breaks, and dangerous tags", () => {
   expect(mdSafe("<!-- squarewright:review -->")).not.toContain("<!--");
@@ -12,6 +18,15 @@ test("mdSafe neutralizes marker forgery, layout breaks, and dangerous tags", () 
 test("mdSafe breaks fences and defangs raw links", () => {
   expect(mdSafe("```js\nalert(1)\n```")).not.toContain("```");
   expect(mdSafe("[click](javascript:alert(1))")).not.toContain("](");
+});
+
+test("renderInlineBody: neutralizes the message, then tags with its own marker", () => {
+  const out = renderInlineBody("<!-- forged --> [x](http://evil)");
+  // the forged marker + link in the message are neutralized
+  expect(out).not.toContain("<!-- forged");
+  expect(out).not.toContain("](http");
+  // our own marker is appended intact (added after mdSafe, so the message can't forge it)
+  expect(out).toContain(INLINE_MARKER);
 });
 
 test("renderSticky: marker first, clean verdict when empty", () => {

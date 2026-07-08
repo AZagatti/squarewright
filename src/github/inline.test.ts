@@ -69,7 +69,8 @@ test("mapToInlineComments: neutralizes markdown injection in the finding body", 
   const { inline } = mapToInlineComments(findings, files);
 
   const [comment] = inline;
-  expect(comment?.body).not.toContain("<!--");
+  // the forged marker + tags in the message are neutralized (our own hidden marker is added separately)
+  expect(comment?.body).not.toContain("<!-- forged");
   expect(comment?.body).not.toContain("</details>");
   // the link paren is defanged so it can't render as a clickable link
   expect(comment?.body).not.toContain("](http");
