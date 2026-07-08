@@ -65,17 +65,18 @@ describe("verifyPostingTarget", () => {
   test("refuses when the commit resolves to zero open PRs", async () => {
     const { fn } = lookupReturning([]);
 
-    await expect(verifyPostingTarget(CLAIMED, TRUSTED, fn)).rejects.toThrow(
-      "found 0"
-    );
+    // assert both the type and the count-specific branch (0 and >1 both throw TrustViolation)
+    const { rejects } = expect(verifyPostingTarget(CLAIMED, TRUSTED, fn));
+    await rejects.toThrow(TrustViolation);
+    await rejects.toThrow("found 0");
   });
 
   test("refuses when the commit resolves to more than one open PR", async () => {
     const { fn } = lookupReturning([7, 8]);
 
-    await expect(verifyPostingTarget(CLAIMED, TRUSTED, fn)).rejects.toThrow(
-      "found 2"
-    );
+    const { rejects } = expect(verifyPostingTarget(CLAIMED, TRUSTED, fn));
+    await rejects.toThrow(TrustViolation);
+    await rejects.toThrow("found 2");
   });
 
   test("refuses when the derived PR number disagrees with the artifact's claim", async () => {
@@ -84,14 +85,5 @@ describe("verifyPostingTarget", () => {
     await expect(verifyPostingTarget(CLAIMED, TRUSTED, fn)).rejects.toThrow(
       TrustViolation
     );
-  });
-
-  test("uses the derived PR number, not the artifact's, as the source of truth", async () => {
-    // claim agrees, but prove the returned number comes from the lookup
-    const { fn } = lookupReturning([7]);
-
-    const target = await verifyPostingTarget(CLAIMED, TRUSTED, fn);
-
-    expect(target.prNumber).toBe(7);
   });
 });

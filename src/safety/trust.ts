@@ -8,13 +8,13 @@
  * one. The artifact's claims are cross-checked and must agree; any disagreement is a `TrustViolation` and
  * nothing is posted (fail closed).
  */
+import type { ReviewContext } from "../core/types.js";
 
 /** The artifact's self-reported identity — untrusted; used only to cross-check, never as a source of truth. */
-export interface ClaimedTarget {
-  headSha: string;
-  prNumber: number;
-  repo: string;
-}
+export type ClaimedTarget = Pick<
+  ReviewContext,
+  "headSha" | "prNumber" | "repo"
+>;
 
 /** Signals GitHub sets on the `workflow_run` event; trusted because the review workflow runs from the base repo. */
 export interface TrustedRunSignal {
