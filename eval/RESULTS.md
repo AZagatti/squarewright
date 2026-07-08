@@ -159,3 +159,40 @@ above, which came from one lucky run; recall sits at the low end of the prior "1
 reputation is softer once replicated, and the recall/precision tradeoff is noisier than any single run showed —
 exactly why the North Star refuses a single flattering number. From here, every quality comparison (model ranking,
 M5 batching) must be **range-vs-range over ≥3 runs**, which `--repeat` now makes first-class.
+
+## M5 batching intensity — `eval --batching split|current|batched`, glm-5-turbo (2026-07-08)
+
+Added `--batching split|current|batched` to the eval (persisted to `runs.jsonl` so runs are auditable by mode) and
+ran all three at `--repeat 3` on the 18-case corpus (12 loci / 9 clean), free z.ai, `thinking off`:
+
+| mode | grouping | locus recall /12 (range, median) | clean false-positives (range, median) |
+|---|---|---|---|
+| **split** | every lens its own call | 2–3 (median 2) | 2–3 (median 2) |
+| **current** | correctness+security batched, domains solo | 0–1 (median 0) | 0–4 (median 2) |
+| **batched** | ALL fired lenses in one call | 0–2 (median 2) | 0–3 (median **1**) |
+
+(Numbers are the auditable re-run persisted to `runs.jsonl` — three rows per mode, `"batching"` field set.)
+
+**What this does and does NOT show (read before citing these numbers):**
+
+- **Directional signal — precision, within noise:** full batching had the lowest false-positive median (1 vs 2) with no
+  recall cost, but the FP ranges overlap heavily (batched 0–3, split 2–3, current 0–4) — 12 loci / 9 clean at N=3 is
+  squarely inside this harness's known noise floor (see the variance section above). Read it as "batching does not hurt
+  and may modestly help precision," **not** as a measured precision win. Replication softened an earlier single, un-persisted
+  run that looked cleaner — the exact pattern the North Star exists to catch.
+- **It measures batching *intensity* (compose-all vs compose-none), NOT a specific correlated pair.** The `batched`
+  mode forces every fired persona into one call; it is not evidence about pairing two particular lenses.
+- **Single model.** This is glm-5-turbo only. A prompt/harness change can help one model and hurt another, so this
+  is not a general result — multi-model runs are required before any batching default changes.
+- **The corpus cannot exercise the Docker+CI pairing at all:** it has separate Docker and CI cases but **no case that
+  co-touches both**, so stevedore+marshal never co-fire on any of the 18 cases. A separate hand-built joint-defect
+  probe (a Docker stage rename + a stale CI `--target` reference, needing both files to catch) scored **paired 3/3 vs
+  unpaired 3/3** — i.e. pairing gave **no** advantage, because every persona already receives the *full multi-file
+  diff* (`src/pi/worker.ts` `renderAnalysisPrompt` appends all files). The `when` globs pick *which* lenses fire, never
+  *what* they see — so no lens is ever "blind" to another's files.
+
+**Decision (#39):** ship the `pass` grouping primitive (a backward-compatible generalization of `solo`, opt-in via
+`.squarewright.yml`) and the `--batching` eval knob, but **do NOT enable any default pairing** — the specific pairing
+is not corpus-validated, precision is not the current bottleneck (recall is: still low, ~0–2/12), and precision/recall are
+coupled (tuning one moves the other — that balancing act *is* calibration, and must be done across models, not by
+optimizing one number on one model). The primitive is ready; a default pairing has not earned its place yet.
