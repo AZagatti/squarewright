@@ -76,6 +76,28 @@ test("mapToInlineComments: neutralizes markdown injection in the finding body", 
   expect(comment?.body).not.toContain("](http");
 });
 
+test("mapToInlineComments: prefixes the lens label from labelFor", () => {
+  const files: ChangedFile[] = [
+    { patch: PATCH, path: "foo.ts", status: "modified" },
+  ];
+  const findings: Finding[] = [
+    {
+      line: 2,
+      message: "unsafe",
+      path: "foo.ts",
+      rule: "warden",
+      severity: "warning",
+      source: "warden",
+    },
+  ];
+
+  const { inline } = mapToInlineComments(findings, files, {
+    labelFor: (s) => (s === "warden" ? "Security" : s),
+  });
+
+  expect(inline[0]?.body).toContain("**Security** —");
+});
+
 test("commentableLines: multiple hunks track new-side numbering", () => {
   const patch = `--- a/x
 +++ b/x

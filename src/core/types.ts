@@ -43,6 +43,8 @@ export interface ModelLane {
 /** A review lens the Worker applies. */
 export interface Persona {
   id: string;
+  /** friendly name shown to users for attribution (e.g. "Security"); defaults to `id` when unset */
+  label?: string;
   /** default model lane for this persona (label; the concrete model is resolved by the assembly) */
   lane: string;
   /** skip on docs-only PRs */

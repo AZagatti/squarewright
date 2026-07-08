@@ -26,6 +26,8 @@ describe("loadAssemblyConfig", () => {
     const config = loadAssemblyConfig(configDir(MINIMAL));
     expect(config.lanes[0]?.id).toBe("cheap");
     expect(config.personas[0]?.lane).toBe("cheap");
+    // an optional `label` is absent when unset (attribution falls back to the id)
+    expect(config.personas[0]?.label).toBeUndefined();
   });
 
   test("accepts an optional structurer lane", () => {

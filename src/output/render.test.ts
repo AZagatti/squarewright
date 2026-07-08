@@ -29,13 +29,28 @@ test("renderInlineBody: neutralizes the message, then tags with its own marker",
   expect(out).toContain(INLINE_MARKER);
 });
 
-test("renderSticky: marker first, clean verdict when empty", () => {
-  const out = renderSticky({ findings: [], summary: "Looks good." });
-  expect(out.startsWith(STICKY_MARKER)).toBe(true);
-  expect(out).toContain("No blocking issues found");
+test("renderInlineBody: prefixes the lens label when given", () => {
+  expect(renderInlineBody("watch out", "Security")).toContain("**Security** —");
 });
 
-test("renderSticky: lists findings with location and consensus", () => {
+test("renderSticky: marker first, honest (not overclaiming) clean verdict", () => {
+  const out = renderSticky({
+    findings: [],
+    lenses: [{ id: "baseline", label: "Correctness, Security" }],
+    model: "glm-5-turbo",
+    summary: "Looks good.",
+  });
+  expect(out.startsWith(STICKY_MARKER)).toBe(true);
+  // names the enabled lenses + model, and does NOT claim the change is verified correct
+  expect(out).toContain("No issues flagged by Correctness, Security");
+  expect(out).toContain("glm-5-turbo");
+  expect(out).toContain("not that the change is verified correct");
+  // honesty footer
+  expect(out).toContain("Reviewed by: Correctness, Security");
+  expect(out).toContain("findings reflect the enabled lenses only");
+});
+
+test("renderSticky: attributes findings to their lens(es) and names the agreeing lenses", () => {
   const findings: AggregatedFinding[] = [
     {
       consensus: 2,
@@ -44,11 +59,61 @@ test("renderSticky: lists findings with location and consensus", () => {
       path: "src/a.ts",
       rule: "warden",
       severity: "error",
-      sources: ["warden", "sentinel"],
+      sources: ["baseline"],
     },
   ];
-  const out = renderSticky({ findings, summary: "1 issue." });
+  const out = renderSticky({
+    findings,
+    lenses: [{ id: "baseline", label: "Correctness, Security" }],
+    summary: "1 issue.",
+  });
   expect(out).toContain("`src/a.ts:12`");
-  expect(out).toContain("×2");
   expect(out).toContain("🔴");
+  // consensus count + which lens(es) flagged it, resolved to the friendly label
+  expect(out).toContain("×2: Correctness, Security");
+});
+
+test("renderSticky: resolves + de-dupes labels across two distinct sources", () => {
+  const findings: AggregatedFinding[] = [
+    {
+      consensus: 2,
+      line: 5,
+      message: "same issue seen by two passes",
+      path: "a.ts",
+      rule: "baseline",
+      severity: "warning",
+      sources: ["baseline", "chromatic"],
+    },
+  ];
+  const out = renderSticky({
+    findings,
+    lenses: [
+      { id: "baseline", label: "Correctness" },
+      { id: "chromatic", label: "CSS" },
+    ],
+    summary: "",
+  });
+  // both distinct pass ids resolve to their labels
+  expect(out).toContain("×2: Correctness, CSS");
+});
+
+test("renderSticky: a single-lens finding shows a bare lens tag, not a consensus count", () => {
+  const findings: AggregatedFinding[] = [
+    {
+      consensus: 1,
+      line: 3,
+      message: "unpinned action",
+      path: ".github/w.yml",
+      rule: "marshal",
+      severity: "warning",
+      sources: ["marshal"],
+    },
+  ];
+  const out = renderSticky({
+    findings,
+    lenses: [{ id: "marshal", label: "CI" }],
+    summary: "",
+  });
+  expect(out).toContain("_[CI]_");
+  expect(out).not.toContain("×1");
 });

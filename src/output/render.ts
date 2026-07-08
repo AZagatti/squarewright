@@ -41,22 +41,70 @@ export function mdSafe(text: string): string {
 }
 
 /** Render one inline PR-comment body: the hidden `INLINE_MARKER` on line 1 (so a re-review can find and replace
- * our prior comments), then the `mdSafe`-neutralized message (so all comment rendering and injection defense
- * live in one layer). Marker-first + `startsWith` matching (like the sticky) means a human "Quote reply" — which
- * prefixes every quoted line with `> ` — can never be mistaken for one of ours; the message is neutralized
- * before the marker is prepended, so an untrusted message can't forge it either. */
-export function renderInlineBody(message: string): string {
-  return `${INLINE_MARKER}\n\n${mdSafe(message)}`;
+ * our prior comments), then an optional lens label (which review persona flagged it — "posts like a good
+ * colleague"), then the `mdSafe`-neutralized message (so all comment rendering and injection defense live in one
+ * layer). Marker-first + `startsWith` matching (like the sticky) means a human "Quote reply" — which prefixes
+ * every quoted line with `> ` — can never be mistaken for one of ours; the message is neutralized before the
+ * marker is prepended, so an untrusted message can't forge it either. */
+export function renderInlineBody(message: string, lens?: string): string {
+  const tag = lens ? `**${mdSafe(lens)}** — ` : "";
+  return `${INLINE_MARKER}\n\n${tag}${mdSafe(message)}`;
+}
+
+/** A review lens (persona) that ran, for attribution + the honesty footer. */
+export interface Lens {
+  id: string;
+  label: string;
 }
 
 export interface StickyInput {
   findings: AggregatedFinding[];
+  /** the lenses (personas) that ran — for per-finding attribution and the honesty footer roster */
+  lenses?: Lens[];
+  /** model(s)/lane label for the honesty footer, e.g. "glm-5-turbo" */
+  model?: string;
   summary: string;
+}
+
+/** Resolve a finding's source id to its friendly lens label (falling back to the raw source). */
+function labelResolver(lenses: Lens[]): (source: string) => string {
+  const map = new Map(lenses.map((l) => [l.id, l.label]));
+  return (source) => map.get(source) ?? source;
+}
+
+/** The distinct lens labels behind a finding, e.g. "Correctness, Security". */
+function provenance(
+  f: AggregatedFinding,
+  labelFor: (s: string) => string
+): string {
+  const labels = [...new Set(f.sources.map(labelFor))];
+  if (labels.length === 0) {
+    return "";
+  }
+  const who = mdSafe(labels.join(", "));
+  return f.consensus > 1 ? ` _(×${f.consensus}: ${who})_` : ` _[${who}]_`;
+}
+
+/** The honesty footer: which lenses ran, on which model, and that a clean/short result reflects only those. */
+function honestyFooter(lenses: Lens[], model?: string): string[] {
+  if (lenses.length === 0 && !model) {
+    return [];
+  }
+  const parts: string[] = [];
+  if (lenses.length > 0) {
+    parts.push(`Reviewed by: ${mdSafe(lenses.map((l) => l.label).join(", "))}`);
+  }
+  if (model) {
+    parts.push(mdSafe(model));
+  }
+  parts.push("findings reflect the enabled lenses only");
+  return ["", "---", `_${parts.join(" · ")}_`];
 }
 
 /** Render the sticky summary comment (markdown). Safe to post as-is. */
 export function renderSticky(input: StickyInput): string {
-  const { summary, findings } = input;
+  const { summary, findings, lenses = [], model } = input;
+  const labelFor = labelResolver(lenses);
   const lines: string[] = [STICKY_MARKER, "", "## Squarewright review", ""];
 
   if (summary.trim()) {
@@ -64,7 +112,15 @@ export function renderSticky(input: StickyInput): string {
   }
 
   if (findings.length === 0) {
-    lines.push("No blocking issues found. ✅");
+    const roster =
+      lenses.length > 0
+        ? lenses.map((l) => l.label).join(", ")
+        : "the enabled lenses";
+    lines.push(
+      `No issues flagged by ${mdSafe(roster)}${model ? ` on ${mdSafe(model)}` : ""} — it means nothing obvious ` +
+        "was found, not that the change is verified correct."
+    );
+    lines.push(...honestyFooter(lenses, model));
     return lines.join("\n");
   }
 
@@ -79,13 +135,13 @@ export function renderSticky(input: StickyInput): string {
 
   for (const f of findings) {
     const loc = `\`${mdSafe(f.path)}:${f.line}\``;
-    const consensus = f.consensus > 1 ? ` _(×${f.consensus})_` : "";
     lines.push(
-      `- ${SEV_EMOJI[f.severity]} ${loc}${consensus} — ${mdSafe(f.message)}`
+      `- ${SEV_EMOJI[f.severity]} ${loc}${provenance(f, labelFor)} — ${mdSafe(f.message)}`
     );
     if (f.suggestion) {
       lines.push("", "  ```suggestion", `  ${mdSafe(f.suggestion)}`, "  ```");
     }
   }
+  lines.push(...honestyFooter(lenses, model));
   return lines.join("\n");
 }
