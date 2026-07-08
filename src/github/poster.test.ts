@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { VerifiedTarget } from "../safety/trust.js";
-import { createGhPoster, createGhPullLookup, type GhRunner } from "./poster.js";
+import {
+  createGhPoster,
+  createGhPullLookup,
+  type GhRunner,
+  spawnRunner,
+} from "./poster.js";
 
 const TARGET: VerifiedTarget = {
   commitSha: "cafe1234",
@@ -130,6 +135,28 @@ describe("createGhPoster.upsertSticky", () => {
       "--input",
       "-",
     ]);
+  });
+});
+
+describe("spawnRunner (real subprocess contract)", () => {
+  test("writes input to stdin, captures stdout, and reports a zero exit", async () => {
+    // `cat` with no args echoes stdin to stdout
+    const res = await spawnRunner("cat")([], "hello stdin");
+
+    expect(res).toEqual({ code: 0, stderr: "", stdout: "hello stdin" });
+  });
+
+  test("captures a non-zero exit and stderr", async () => {
+    const res = await spawnRunner("cat")(["/no/such/path/sqw-xyz"]);
+
+    expect(res.code).not.toBe(0);
+    expect(res.stderr).toContain("sqw-xyz");
+  });
+
+  test("rejects when the binary is missing", async () => {
+    await expect(
+      spawnRunner("sqw-definitely-not-a-real-binary")([])
+    ).rejects.toThrow();
   });
 });
 

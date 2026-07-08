@@ -44,16 +44,26 @@ async function ghApi(
   return stdout;
 }
 
+/** Parse `gh` JSON output, rethrowing with the endpoint so a malformed response isn't an unattributed error. */
+function parseJson<T>(stdout: string, endpoint: string): T {
+  try {
+    return JSON.parse(stdout) as T;
+  } catch (e) {
+    throw new Error(
+      `gh api ${endpoint} returned unparseable JSON: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e }
+    );
+  }
+}
+
 /** The id of the existing sticky comment on the PR, or null if none has been posted yet. */
 async function findStickyId(
   run: GhRunner,
   target: VerifiedTarget
 ): Promise<number | null> {
-  const stdout = await ghApi(run, [
-    `repos/${target.repo}/issues/${target.prNumber}/comments`,
-    "--paginate",
-  ]);
-  const comments = JSON.parse(stdout) as { body: string; id: number }[];
+  const endpoint = `repos/${target.repo}/issues/${target.prNumber}/comments`;
+  const stdout = await ghApi(run, [endpoint, "--paginate"]);
+  const comments = parseJson<{ body: string; id: number }[]>(stdout, endpoint);
   const found = comments.find((c) => c.body.startsWith(STICKY_MARKER));
   return found ? found.id : null;
 }
@@ -111,39 +121,45 @@ export function createGhPoster(run: GhRunner): Poster {
 
 /**
  * A `LookupPullsForCommit` (the trust check's injected dependency) backed by `gh`. Lists OPEN PRs whose head
- * commit is `sha` in `repo`, authenticated against that trusted repo+sha.
+ * commit is `sha` in `repo`, queried using the trusted repo+sha (auth is ambient via `gh`'s own token).
  */
 export function createGhPullLookup(run: GhRunner): LookupPullsForCommit {
   return async (repo, sha) => {
-    const stdout = await ghApi(run, [
-      `repos/${repo}/commits/${sha}/pulls`,
-      "--paginate",
-    ]);
-    const pulls = JSON.parse(stdout) as { number: number; state: string }[];
+    const endpoint = `repos/${repo}/commits/${sha}/pulls`;
+    const stdout = await ghApi(run, [endpoint, "--paginate"]);
+    const pulls = parseJson<{ number: number; state: string }[]>(
+      stdout,
+      endpoint
+    );
     return pulls
       .filter((p) => p.state === "open")
-      .map((p) => ({
-        number: p.number,
-      }));
+      .map((p) => ({ number: p.number }));
   };
 }
 
-/** The real subprocess runner: portable across Node and Bun; used by the CLI to construct the gh-backed Poster. */
-export const ghRunner: GhRunner = (args, input) =>
-  new Promise((resolve, reject) => {
-    const child = spawn("gh", args, { stdio: ["pipe", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d) => {
-      stdout += d;
+/** Build a `GhRunner` that shells out to `bin`. Portable across Node and Bun; `bin` is a fixed binary, never
+ * PR-derived, so there is no injection surface. Parameterized by binary so the subprocess contract can be
+ * exercised in tests with a trivial command. */
+export function spawnRunner(bin: string): GhRunner {
+  return (args, input) =>
+    new Promise((resolve, reject) => {
+      const child = spawn(bin, args, { stdio: ["pipe", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (d) => {
+        stdout += d;
+      });
+      child.stderr.on("data", (d) => {
+        stderr += d;
+      });
+      child.on("error", reject);
+      child.on("close", (code) => resolve({ code: code ?? 1, stderr, stdout }));
+      if (input !== undefined) {
+        child.stdin.write(input);
+      }
+      child.stdin.end();
     });
-    child.stderr.on("data", (d) => {
-      stderr += d;
-    });
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ code: code ?? 1, stderr, stdout }));
-    if (input !== undefined) {
-      child.stdin.write(input);
-    }
-    child.stdin.end();
-  });
+}
+
+/** The real subprocess runner used by the CLI to construct the gh-backed Poster. */
+export const ghRunner: GhRunner = spawnRunner("gh");
