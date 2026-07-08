@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { INLINE_MARKER } from "../output/render.js";
 import type { VerifiedTarget } from "../safety/trust.js";
 import {
   createGhPoster,
@@ -40,19 +41,29 @@ function fakeRunner(responder: (args: string[], input?: string) => Reply): {
 }
 
 const isWrite = (args: string[]) => args.includes("--method");
+const isInlineList = (args: string[]) =>
+  args.includes("repos/o/r/pulls/7/comments") && args.includes("--paginate");
+const marked = (body: string) => `${body}\n\n${INLINE_MARKER}`;
 
 describe("createGhPoster.postReview", () => {
-  test("posts one review with commit_id and RIGHT-side inline comments", async () => {
-    const { run, calls } = fakeRunner(() => ({ stdout: "{}" }));
+  test("clears prior inline comments (none), then posts one review", async () => {
+    const { run, calls } = fakeRunner((args) =>
+      isInlineList(args) ? { stdout: "[]" } : { stdout: "{}" }
+    );
 
     await createGhPoster(run).postReview(TARGET, [
-      { body: "b1", line: 10, path: "a.ts" },
-      { body: "b2", line: 20, path: "b.ts" },
+      { body: marked("b1"), line: 10, path: "a.ts" },
+      { body: marked("b2"), line: 20, path: "b.ts" },
     ]);
 
-    expect(calls).toHaveLength(1);
-    const [call] = calls;
-    expect(call?.args).toEqual([
+    // first lists our prior inline comments (clear), then posts the fresh review
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.args).toEqual([
+      "api",
+      "repos/o/r/pulls/7/comments",
+      "--paginate",
+    ]);
+    expect(calls[1]?.args).toEqual([
       "api",
       "repos/o/r/pulls/7/reviews",
       "--method",
@@ -60,32 +71,77 @@ describe("createGhPoster.postReview", () => {
       "--input",
       "-",
     ]);
-    const payload = JSON.parse(call?.input ?? "{}");
+    const payload = JSON.parse(calls[1]?.input ?? "{}");
     expect(payload.event).toBe("COMMENT");
     expect(payload.commit_id).toBe("cafe1234");
-    expect(payload.comments).toEqual([
-      { body: "b1", line: 10, path: "a.ts", side: "RIGHT" },
-      { body: "b2", line: 20, path: "b.ts", side: "RIGHT" },
-    ]);
+    expect(payload.comments).toHaveLength(2);
+    expect(payload.comments[0]).toMatchObject({
+      line: 10,
+      path: "a.ts",
+      side: "RIGHT",
+    });
   });
 
-  test("no-ops (no gh call) when there are no inline comments", async () => {
-    const { run, calls } = fakeRunner(() => ({ stdout: "{}" }));
+  test("deletes our prior inline comments, leaves others, then posts", async () => {
+    const prior = JSON.stringify([
+      { body: marked("old finding"), id: 55 },
+      { body: "a human review comment", id: 66 },
+    ]);
+    const { run, calls } = fakeRunner((args) =>
+      isInlineList(args) ? { stdout: prior } : { stdout: "{}" }
+    );
+
+    await createGhPoster(run).postReview(TARGET, [
+      { body: marked("b"), line: 1, path: "a.ts" },
+    ]);
+
+    const deletes = calls.filter((c) => c.args.includes("DELETE"));
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0]?.args).toEqual([
+      "api",
+      "repos/o/r/pulls/comments/55",
+      "--method",
+      "DELETE",
+    ]);
+    // the human comment (66) is never deleted; the fresh review is still posted
+    expect(
+      calls.some((c) => c.args.includes("repos/o/r/pulls/comments/66"))
+    ).toBe(false);
+    expect(
+      calls.some((c) => c.args.includes("repos/o/r/pulls/7/reviews"))
+    ).toBe(true);
+  });
+
+  test("clears stale inline comments even when the new set is empty (no review posted)", async () => {
+    const prior = JSON.stringify([{ body: marked("stale"), id: 77 }]);
+    const { run, calls } = fakeRunner((args) =>
+      isInlineList(args) ? { stdout: prior } : { stdout: "{}" }
+    );
 
     await createGhPoster(run).postReview(TARGET, []);
 
-    expect(calls).toEqual([]);
+    expect(
+      calls.some(
+        (c) =>
+          c.args.includes("repos/o/r/pulls/comments/77") &&
+          c.args.includes("DELETE")
+      )
+    ).toBe(true);
+    expect(
+      calls.some((c) => c.args.includes("repos/o/r/pulls/7/reviews"))
+    ).toBe(false);
   });
 
   test("surfaces a non-zero exit as a thrown error", async () => {
-    const { run } = fakeRunner(() => ({
-      code: 1,
-      stderr: "422 Unprocessable",
-    }));
+    const { run } = fakeRunner((args) =>
+      isInlineList(args)
+        ? { stdout: "[]" }
+        : { code: 1, stderr: "422 Unprocessable" }
+    );
 
     await expect(
       createGhPoster(run).postReview(TARGET, [
-        { body: "b", line: 1, path: "a.ts" },
+        { body: marked("b"), line: 1, path: "a.ts" },
       ])
     ).rejects.toThrow("422 Unprocessable");
   });

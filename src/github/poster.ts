@@ -9,7 +9,7 @@
  * argument — `spawn` uses no shell, and `JSON.stringify` encodes the payload, so there is no injection surface.
  */
 import { spawn } from "node:child_process";
-import { STICKY_MARKER } from "../output/render.js";
+import { INLINE_MARKER, STICKY_MARKER } from "../output/render.js";
 import type { LookupPullsForCommit, VerifiedTarget } from "../safety/trust.js";
 import type { InlineComment } from "./inline.js";
 
@@ -21,7 +21,11 @@ export type GhRunner = (
 
 /** Every GitHub write goes through here; the location is always a trust-checked `VerifiedTarget`. */
 export interface Poster {
-  /** Post the inline findings as one atomic PR review (no-op when there are none). */
+  /**
+   * Make the PR's inline review reflect exactly `inline`: delete our prior inline comments (so a re-review
+   * replaces, never accumulates), then post the current set as one atomic review. Clears even when `inline` is
+   * empty, so a now-clean PR drops its stale inline comments.
+   */
   postReview: (
     target: VerifiedTarget,
     inline: InlineComment[]
@@ -68,10 +72,32 @@ async function findStickyId(
   return found ? found.id : null;
 }
 
+/** Delete our prior inline comments (the ones carrying `INLINE_MARKER`), leaving any human/other comments. */
+async function clearPriorInline(
+  run: GhRunner,
+  target: VerifiedTarget
+): Promise<void> {
+  const endpoint = `repos/${target.repo}/pulls/${target.prNumber}/comments`;
+  const stdout = await ghApi(run, [endpoint, "--paginate"]);
+  const comments = parseJson<{ body: string; id: number }[]>(stdout, endpoint);
+  const ours = comments.filter((c) => c.body.includes(INLINE_MARKER));
+  await Promise.all(
+    ours.map((c) =>
+      ghApi(run, [
+        `repos/${target.repo}/pulls/comments/${c.id}`,
+        "--method",
+        "DELETE",
+      ])
+    )
+  );
+}
+
 /** A `Poster` backed by the `gh` CLI, driven through the injected `run`. */
 export function createGhPoster(run: GhRunner): Poster {
   return {
     postReview: async (target, inline) => {
+      // replace, never accumulate: drop our prior inline comments before posting the current set
+      await clearPriorInline(run, target);
       if (inline.length === 0) {
         return;
       }

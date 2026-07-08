@@ -9,6 +9,9 @@ import type { AggregatedFinding } from "./aggregate.js";
 /** Hidden marker on line 1 of the sticky comment, so we can find + update it in place (never duplicate). */
 export const STICKY_MARKER = "<!-- squarewright:review -->";
 
+/** Hidden marker on every inline comment, so a re-review can find + delete our prior ones (never accumulate). */
+export const INLINE_MARKER = "<!-- squarewright:inline -->";
+
 const SEV_EMOJI: Record<Severity, string> = {
   error: "🔴",
   info: "🔵",
@@ -37,10 +40,11 @@ export function mdSafe(text: string): string {
   );
 }
 
-/** Render one inline PR-comment body: `mdSafe`-neutralized like the sticky, so all comment rendering and
- * injection defense live in one layer. */
+/** Render one inline PR-comment body: `mdSafe`-neutralized like the sticky (so all comment rendering and
+ * injection defense live in one layer), then tagged with the hidden `INLINE_MARKER` so a re-review can find and
+ * replace it. The marker is appended after `mdSafe`, so an untrusted message can't forge it. */
 export function renderInlineBody(message: string): string {
-  return mdSafe(message);
+  return `${mdSafe(message)}\n\n${INLINE_MARKER}`;
 }
 
 export interface StickyInput {
