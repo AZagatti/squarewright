@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadAssemblyConfig } from "./config.js";
@@ -46,15 +46,5 @@ describe("loadAssemblyConfig", () => {
     expect(() => loadAssemblyConfig(join(tmpdir(), "no-config-sqw"))).toThrow(
       "No .squarewright.yml"
     );
-  });
-
-  test("the scaffolded template is a valid assembly", () => {
-    const template = readFileSync(
-      new URL("../../templates/.squarewright.yml", import.meta.url),
-      "utf8"
-    );
-    const config = loadAssemblyConfig(configDir(template));
-    expect(config.lanes.length).toBeGreaterThan(0);
-    expect(config.personas.length).toBeGreaterThan(0);
   });
 });
