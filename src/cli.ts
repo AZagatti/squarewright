@@ -78,7 +78,8 @@ program
             readArtifact: readGatherArtifact,
             review: (config, context) =>
               runReviewPost(config, context, {
-                makeWorker: (apiKeys) => createPiWorker({ apiKeys }),
+                makeWorker: (apiKeys, structurerLane) =>
+                  createPiWorker({ apiKeys, structurerLane }),
                 resolveKeys: resolveProviderKeys,
               }),
           }

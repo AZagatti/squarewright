@@ -35,8 +35,8 @@ import type {
   WorkerResult,
 } from "./session.js";
 
-/** Fixed pass-2 extractor: no reasoning, reliably calls tools, cheap. */
-const DEFAULT_STRUCTURER: ModelLane = {
+/** Fixed pass-2 extractor: no reasoning, reliably calls tools, cheap. Used when the config sets no structurer. */
+export const DEFAULT_STRUCTURER: ModelLane = {
   id: "structurer",
   model: "qwen/qwen3-coder-30b-a3b-instruct",
   provider: "openrouter",

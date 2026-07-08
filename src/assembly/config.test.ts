@@ -28,6 +28,20 @@ describe("loadAssemblyConfig", () => {
     expect(config.personas[0]?.lane).toBe("cheap");
   });
 
+  test("accepts an optional structurer lane", () => {
+    const config = loadAssemblyConfig(
+      configDir(
+        `${MINIMAL}structurer:\n  id: struct\n  provider: zai\n  model: glm-5-turbo\n`
+      )
+    );
+    expect(config.structurer?.provider).toBe("zai");
+  });
+
+  test("structurer is optional", () => {
+    const config = loadAssemblyConfig(configDir(MINIMAL));
+    expect(config.structurer).toBeUndefined();
+  });
+
   test("throws a helpful error when the config is missing", () => {
     expect(() => loadAssemblyConfig(join(tmpdir(), "no-config-sqw"))).toThrow(
       "No .squarewright.yml"

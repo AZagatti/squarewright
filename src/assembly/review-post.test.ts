@@ -7,6 +7,7 @@ import type { AssemblyConfig } from "./config.js";
 import type { ReviewOutput } from "./review.js";
 import {
   readTrustedRunSignal,
+  requiredProviders,
   runReviewCommand,
   runReviewPost,
 } from "./review-post.js";
@@ -69,6 +70,24 @@ describe("runReviewPost preflight", () => {
 
     expect(received).toEqual({ openrouter: "or", zai: "z" });
     expect(out.sticky).toContain("No blocking issues found");
+  });
+});
+
+describe("requiredProviders", () => {
+  test("adds the default (openrouter) structurer provider when none is set", () => {
+    // CONFIG's only lane is zai
+    expect([...requiredProviders(CONFIG)].sort()).toEqual([
+      "openrouter",
+      "zai",
+    ]);
+  });
+
+  test("follows a config-specified structurer — no forced openrouter", () => {
+    const config: AssemblyConfig = {
+      ...CONFIG,
+      structurer: { id: "struct", model: "glm-5-turbo", provider: "zai" },
+    };
+    expect([...requiredProviders(config)]).toEqual(["zai"]);
   });
 });
 

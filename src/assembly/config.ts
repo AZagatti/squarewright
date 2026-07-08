@@ -50,6 +50,12 @@ export const assemblyConfigSchema = z.object({
   lanes: z.array(modelLane).min(1),
   /** review lenses */
   personas: z.array(persona).min(1),
+  /**
+   * The fixed pass-2 extractor lane (turns the analysis prose into structured findings). Optional; when
+   * omitted the worker uses its built-in default (an OpenRouter model). Set this to a lane on your own provider
+   * to avoid requiring an OpenRouter key — e.g. a z.ai model when your review lanes are z.ai.
+   */
+  structurer: modelLane.optional(),
 });
 
 export type AssemblyConfig = z.infer<typeof assemblyConfigSchema>;
