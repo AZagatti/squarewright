@@ -17,6 +17,12 @@ import { splitUnifiedDiff } from "../src/core/diff.js";
 import type { ReviewContext, ThinkingLevel } from "../src/core/types.js";
 import { createVerifier } from "../src/pi/verifier.js";
 import { createPiWorker } from "../src/pi/worker.js";
+import {
+  estimatePassSpend,
+  makeSpendGuard,
+  openrouterPrice,
+  openrouterReasoningRisk,
+} from "./spend-guard.js";
 
 const THINKING = (process.env.SW_THINKING ?? "off") as ThinkingLevel;
 
@@ -86,6 +92,32 @@ async function main() {
     `  diff: ${rawDiff.length} chars${truncated ? ` (truncated to ${MAX_DIFF_CHARS})` : ""}, ${files.length} file(s)\n`
   );
 
+  // Local spend guard: paid runs are capped by --max-spend (default $0.50). Some reasoning models can't disable
+  // reasoning and burn far more than Pi's usage.cost reports, so we estimate from tokens against real prices.
+  const maxSpend = Number(arg("max-spend") ?? 0.5);
+  const analysisPrice = openrouterPrice(model);
+  const structPrice = openrouterPrice("qwen/qwen3-coder-30b-a3b-instruct");
+  const guard = makeSpendGuard(maxSpend);
+
+  // Pre-spend guardrail: refuse a model whose reasoning can't be disabled cheaply (it bills expensive reasoning
+  // tokens even at off — the ~$5 trap). The circuit breaker only acts AFTER a pass, so it can't stop a single
+  // runaway pass; this pre-check is the real defense. Override with --allow-reasoning-burn.
+  if (
+    THINKING !== "high" &&
+    THINKING !== "xhigh" &&
+    !process.argv.includes("--allow-reasoning-burn")
+  ) {
+    const risk = openrouterReasoningRisk(model);
+    if (risk.block) {
+      console.error(
+        `\n✋ ABORT: ${model} — ${risk.detail}.\n` +
+          "   Use a model whose reasoning disables cheaply (e.g. deepseek/deepseek-v3.2), run it with\n" +
+          "   --thinking high, or pass --allow-reasoning-burn to override."
+      );
+      process.exit(2);
+    }
+  }
+
   const worker = createPiWorker({ apiKeys: { openrouter: readKey() } });
   const t0 = Date.now();
   const result = await worker.run({
@@ -105,8 +137,12 @@ async function main() {
       console.log(`  suggestion: ${f.suggestion}`);
     }
   }
+  guard.add(estimatePassSpend(result.usage, analysisPrice, structPrice));
   console.log(
     `\n── worker cost/latency ──\n  tool calls: ${result.usage?.toolCalls}  ·  cost: $${(result.usage?.costUsd ?? 0).toFixed(5)}  ·  wall: ${(ms / 1000).toFixed(1)}s`
+  );
+  console.log(
+    `  est. spend (token-based): ~$${guard.spent().toFixed(4)}  ·  cap --max-spend $${maxSpend}${guard.tripped() ? "  🛑 OVER CAP" : ""}`
   );
 
   if (process.argv.includes("--verify") && result.findings.length > 0) {
@@ -118,6 +154,12 @@ async function main() {
     let confirmed = 0;
     let verifyCost = 0;
     for (const f of result.findings) {
+      if (guard.tripped()) {
+        console.error(
+          `\n🛑 CIRCUIT BREAKER: est. spend ~$${guard.spent().toFixed(4)} > --max-spend $${maxSpend}. Skipping remaining verifies.`
+        );
+        break;
+      }
       // biome-ignore lint/performance/noAwaitInLoops: sequential by design — respects the provider's concurrency limits for one-off verify runs
       const v = await verifier.verify(f, context, {
         id: "verify",
@@ -126,6 +168,7 @@ async function main() {
         thinking: THINKING,
       });
       verifyCost += v.usage?.costUsd ?? 0;
+      guard.add(v.usage?.costUsd ?? 0);
       if (v.verdict === "confirmed") {
         confirmed += 1;
       }

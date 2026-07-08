@@ -31,6 +31,11 @@ import { selectPersonas } from "../src/personas/routing.js";
 import type { RepoReader } from "../src/pi/session.js";
 import { createVerifier } from "../src/pi/verifier.js";
 import { createPiWorker } from "../src/pi/worker.js";
+import {
+  estimatePassSpend,
+  openrouterPrice,
+  openrouterReasoningRisk,
+} from "./spend-guard.js";
 
 const PERSONA = `You are a careful senior code reviewer reviewing a single pull request.
 Review ONLY the changes in the diff. Flag correctness bugs, security issues, and clear regressions.
@@ -116,85 +121,6 @@ function openrouterCredits(): number | null {
  *    default "high"): "none" is unsupported → OpenRouter falls back to default_effort → full reasoning ($0.96 burn).
  * A true disable would need `reasoning:{enabled:false}` (Pi can't send it) or the model's native provider.
  */
-function openrouterReasoningRisk(model: string): {
-  block: boolean;
-  detail: string;
-} {
-  try {
-    const out = execFileSync(
-      "curl",
-      ["-s", "https://openrouter.ai/api/v1/models"],
-      {
-        encoding: "utf8",
-        maxBuffer: 50 * 1024 * 1024,
-        stdio: ["ignore", "pipe", "ignore"],
-      }
-    );
-    const m = (
-      JSON.parse(out).data as Array<{ id: string; reasoning?: unknown }>
-    ).find((x) => x.id === model);
-    if (!m) {
-      return { block: false, detail: "model not found in OpenRouter catalog" };
-    }
-    const r = m.reasoning as
-      | {
-          mandatory?: boolean;
-          supported_efforts?: string[];
-          default_effort?: string;
-        }
-      | undefined;
-    if (!r || typeof r !== "object") {
-      return { block: false, detail: "no reasoning (safe)" };
-    }
-    if (r.mandatory) {
-      return {
-        block: true,
-        detail: "reasoning.mandatory=true — reasoning cannot be disabled",
-      };
-    }
-    const efforts = r.supported_efforts ?? [];
-    const cheap = efforts.some((e) =>
-      ["none", "minimal", "low", "medium"].includes(e)
-    );
-    if (efforts.length > 0 && !cheap) {
-      return {
-        block: true,
-        detail: `only supports efforts [${efforts.join(", ")}] (default ${r.default_effort}) — 'off' falls back to expensive reasoning`,
-      };
-    }
-    return { block: false, detail: "reasoning disableable at off (safe)" };
-  } catch {
-    return { block: false, detail: "reasoning-risk check failed (proceeding)" };
-  }
-}
-
-/** Per-token price ($/token) for an OpenRouter model — used for the immediate, lag-free local spend guard. */
-function openrouterPrice(model: string): { in: number; out: number } {
-  try {
-    const out = execFileSync(
-      "curl",
-      ["-s", "https://openrouter.ai/api/v1/models"],
-      {
-        encoding: "utf8",
-        maxBuffer: 50 * 1024 * 1024,
-        stdio: ["ignore", "pipe", "ignore"],
-      }
-    );
-    const m = (
-      JSON.parse(out).data as Array<{
-        id: string;
-        pricing?: { prompt?: string; completion?: string };
-      }>
-    ).find((x) => x.id === model);
-    return {
-      in: Number(m?.pricing?.prompt) || 0,
-      out: Number(m?.pricing?.completion) || 0,
-    };
-  } catch {
-    return { in: 0, out: 0 };
-  }
-}
-
 const headShaCache = new Map<string, string>();
 function headSha(repo: string, pr: number): string {
   const k = `${repo}#${pr}`;
@@ -427,16 +353,7 @@ async function main() {
   const passSpend = (u?: {
     analysisTokens?: { input: number; output: number };
     structTokens?: { input: number; output: number };
-  }) => {
-    const a = u?.analysisTokens ?? { input: 0, output: 0 };
-    const s = u?.structTokens ?? { input: 0, output: 0 };
-    return (
-      a.input * analysisPrice.in +
-      a.output * analysisPrice.out +
-      s.input * structPrice.in +
-      s.output * structPrice.out
-    );
-  };
+  }) => estimatePassSpend(u, analysisPrice, structPrice);
   let localSpend = 0;
   let aborted = false;
   const spendGuard = () => {
