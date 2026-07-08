@@ -37,11 +37,8 @@ export function mdSafe(text: string): string {
   );
 }
 
-/**
- * Render one inline PR-comment body from a finding's (untrusted, model-authored) message. `mdSafe`-neutralized,
- * so a finding body can't forge our markers, break layout, or inject links/HTML — the same defense the sticky
- * applies. Kept here so all comment rendering + injection defense lives in one layer.
- */
+/** Render one inline PR-comment body: `mdSafe`-neutralized like the sticky, so all comment rendering and
+ * injection defense live in one layer. */
 export function renderInlineBody(message: string): string {
   return mdSafe(message);
 }
