@@ -124,7 +124,7 @@ export async function runReview(
   const sticky = renderSticky({
     findings,
     lenses,
-    model: [...modelsUsed].join(", "),
+    model: modelsUsed.size > 0 ? [...modelsUsed].join(", ") : undefined,
     summary: summaries.join("\n\n"),
   });
   return { findings, inline, sticky, unplaceable };

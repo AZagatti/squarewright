@@ -73,6 +73,30 @@ test("renderSticky: attributes findings to their lens(es) and names the agreeing
   expect(out).toContain("×2: Correctness, Security");
 });
 
+test("renderSticky: resolves + de-dupes labels across two distinct sources", () => {
+  const findings: AggregatedFinding[] = [
+    {
+      consensus: 2,
+      line: 5,
+      message: "same issue seen by two passes",
+      path: "a.ts",
+      rule: "baseline",
+      severity: "warning",
+      sources: ["baseline", "chromatic"],
+    },
+  ];
+  const out = renderSticky({
+    findings,
+    lenses: [
+      { id: "baseline", label: "Correctness" },
+      { id: "chromatic", label: "CSS" },
+    ],
+    summary: "",
+  });
+  // both distinct pass ids resolve to their labels
+  expect(out).toContain("×2: Correctness, CSS");
+});
+
 test("renderSticky: a single-lens finding shows a bare lens tag, not a consensus count", () => {
   const findings: AggregatedFinding[] = [
     {

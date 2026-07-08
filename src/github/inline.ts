@@ -65,6 +65,8 @@ export function mapToInlineComments(
   for (const f of findings) {
     const lines = commentable.get(f.path);
     if (lines?.has(f.line)) {
+      // inline tags the finding's primary source only (the singular `source`); the sticky shows the full
+      // multi-lens set via `sources`, so inline attribution can be less complete than the summary's.
       const lens = f.source ? opts.labelFor?.(f.source) : undefined;
       inline.push({
         body: renderInlineBody(f.message, lens),

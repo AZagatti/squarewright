@@ -117,8 +117,8 @@ export function renderSticky(input: StickyInput): string {
         ? lenses.map((l) => l.label).join(", ")
         : "the enabled lenses";
     lines.push(
-      `No issues flagged by ${mdSafe(roster)}${model ? ` on ${mdSafe(model)}` : ""} — this means nothing obvious ` +
-        "was found by the enabled lenses, not that the change is verified correct."
+      `No issues flagged by ${mdSafe(roster)}${model ? ` on ${mdSafe(model)}` : ""} — it means nothing obvious ` +
+        "was found, not that the change is verified correct."
     );
     lines.push(...honestyFooter(lenses, model));
     return lines.join("\n");
