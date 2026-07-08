@@ -23,7 +23,7 @@ interface ReviewPostDeps {
 }
 
 /** Providers whose keys the review needs: the config's lanes plus the openrouter structurer. */
-function requiredProviders(config: AssemblyConfig): Set<string> {
+export function requiredProviders(config: AssemblyConfig): Set<string> {
   const providers = new Set(config.lanes.map((l) => l.provider));
   providers.add("openrouter");
   return providers;
