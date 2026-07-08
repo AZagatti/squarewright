@@ -8,13 +8,20 @@ import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
+const thinkingLevel = z.enum([
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+]);
+
 const modelLane = z.object({
   id: z.string(),
   model: z.string(),
   provider: z.string(),
-  thinking: z
-    .enum(["off", "minimal", "low", "medium", "high", "xhigh"])
-    .optional(),
+  thinking: thinkingLevel.optional(),
 });
 
 const persona = z.object({
@@ -23,6 +30,8 @@ const persona = z.object({
   needsCode: z.boolean().optional(),
   prompt: z.string(),
   solo: z.boolean().optional(),
+  // reasoning depth for this lens; without it a tuned persona would silently run at "off" after config load
+  thinking: thinkingLevel.optional(),
   when: z.array(z.string()).optional(),
 });
 
