@@ -17,6 +17,12 @@ import { splitUnifiedDiff } from "../src/core/diff.js";
 import type { ReviewContext, ThinkingLevel } from "../src/core/types.js";
 import { createVerifier } from "../src/pi/verifier.js";
 import { createPiWorker } from "../src/pi/worker.js";
+import {
+  estimatePassSpend,
+  makeSpendGuard,
+  openrouterPrice,
+  openrouterReasoningRisk,
+} from "./lib/spend-guard.js";
 
 const THINKING = (process.env.SW_THINKING ?? "off") as ThinkingLevel;
 
@@ -62,7 +68,14 @@ function getDiff(): { diff: string; label: string } {
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: refactor tracked separately — behavior-preserving change out of scope for the tooling PR
 async function main() {
-  const model = process.env.SW_MODEL ?? "anthropic/claude-haiku-4.5";
+  // No silent paid default: require an explicit model so `spike` can never bill OpenRouter by accident.
+  const model = arg("model") ?? process.env.SW_MODEL;
+  if (!model) {
+    console.error(
+      "spike needs an explicit paid model — pass --model <id> or set SW_MODEL (no default, to avoid silent OpenRouter spend)."
+    );
+    process.exit(1);
+  }
   const { diff: rawDiff, label } = getDiff();
   const diff =
     rawDiff.length > MAX_DIFF_CHARS
@@ -86,6 +99,40 @@ async function main() {
     `  diff: ${rawDiff.length} chars${truncated ? ` (truncated to ${MAX_DIFF_CHARS})` : ""}, ${files.length} file(s)\n`
   );
 
+  // Local spend guard: paid runs are capped by --max-spend (default $0.50). Some reasoning models can't disable
+  // reasoning and burn far more than Pi's usage.cost reports, so we estimate from tokens against real prices.
+  const maxSpend = Number(arg("max-spend") ?? 0.5);
+  const analysisPrice = openrouterPrice(model);
+  const structPrice = openrouterPrice("qwen/qwen3-coder-30b-a3b-instruct");
+  const guard = makeSpendGuard(maxSpend);
+
+  // Pre-spend guardrail: refuse a model whose reasoning can't be disabled cheaply (it bills expensive reasoning
+  // tokens even at off — the ~$5 trap). The circuit breaker only acts AFTER a pass, so it can't stop a single
+  // runaway pass; this pre-check is the real defense. Covers the verify model too. Override --allow-reasoning-burn.
+  const verifyRequested = process.argv.includes("--verify");
+  const verifyModel = verifyRequested
+    ? (process.env.SW_VERIFY_MODEL ?? model)
+    : null;
+  if (
+    THINKING !== "high" &&
+    THINKING !== "xhigh" &&
+    !process.argv.includes("--allow-reasoning-burn")
+  ) {
+    const toCheck =
+      verifyModel && verifyModel !== model ? [model, verifyModel] : [model];
+    for (const mdl of toCheck) {
+      const risk = openrouterReasoningRisk(mdl);
+      if (risk.block) {
+        console.error(
+          `\n✋ ABORT: ${mdl} — ${risk.detail}.\n` +
+            "   Use a model whose reasoning disables cheaply (e.g. deepseek/deepseek-v3.2), run it with\n" +
+            "   --thinking high, or pass --allow-reasoning-burn to override."
+        );
+        process.exit(2);
+      }
+    }
+  }
+
   const worker = createPiWorker({ apiKeys: { openrouter: readKey() } });
   const t0 = Date.now();
   const result = await worker.run({
@@ -105,12 +152,15 @@ async function main() {
       console.log(`  suggestion: ${f.suggestion}`);
     }
   }
+  guard.add(estimatePassSpend(result.usage, analysisPrice, structPrice));
   console.log(
     `\n── worker cost/latency ──\n  tool calls: ${result.usage?.toolCalls}  ·  cost: $${(result.usage?.costUsd ?? 0).toFixed(5)}  ·  wall: ${(ms / 1000).toFixed(1)}s`
   );
+  console.log(
+    `  est. spend (token-based): ~$${guard.spent().toFixed(4)}  ·  cap --max-spend $${maxSpend}${guard.tripped() ? "  🛑 OVER CAP" : ""}`
+  );
 
-  if (process.argv.includes("--verify") && result.findings.length > 0) {
-    const verifyModel = process.env.SW_VERIFY_MODEL ?? model;
+  if (verifyRequested && verifyModel && result.findings.length > 0) {
     console.log(
       `\n══ adversarial verify (model: openrouter/${verifyModel}) ══`
     );
@@ -118,6 +168,12 @@ async function main() {
     let confirmed = 0;
     let verifyCost = 0;
     for (const f of result.findings) {
+      if (guard.tripped()) {
+        console.error(
+          `\n🛑 CIRCUIT BREAKER: est. spend ~$${guard.spent().toFixed(4)} > --max-spend $${maxSpend}. Skipping remaining verifies.`
+        );
+        break;
+      }
       // biome-ignore lint/performance/noAwaitInLoops: sequential by design — respects the provider's concurrency limits for one-off verify runs
       const v = await verifier.verify(f, context, {
         id: "verify",
@@ -126,6 +182,10 @@ async function main() {
         thinking: THINKING,
       });
       verifyCost += v.usage?.costUsd ?? 0;
+      // best-effort: the verifier exposes only Pi's costUsd (no tokens), which undercounts reasoning — so the
+      // verify-loop cap is looser than the token-based main-pass estimate. The pre-check refusing reasoning
+      // models (incl. the verify model above) is what keeps that undercount from mattering.
+      guard.add(v.usage?.costUsd ?? 0);
       if (v.verdict === "confirmed") {
         confirmed += 1;
       }
