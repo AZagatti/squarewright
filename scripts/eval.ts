@@ -387,7 +387,6 @@ async function main() {
   console.log(
     `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cases=${cases.length}  conc=${concurrency}`
   );
-  console.log();
 
   // One full pass over the corpus. Repeated N times (--repeat) through the SHARED spend guard, so the cap holds
   // across repeats and per-run reports/runs.jsonl accumulate the replicates the honest-measurement rule needs.
@@ -400,6 +399,7 @@ async function main() {
     if (creditsBefore !== null) {
       console.log(`  OpenRouter credits before: $${creditsBefore.toFixed(4)}`);
     }
+    console.log();
     // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: the per-case review+verify+score body, unchanged
     const rawResults = await pool(cases, concurrency, async (c) => {
       spendGuard();
