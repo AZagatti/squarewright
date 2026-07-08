@@ -4,13 +4,18 @@
  *
  * Commands:
  *   init     scaffold a reviewer assembly into the current repo   [implemented]
- *   review   run a review over a gathered PR                      [--phase post implemented; gather runs in the workflow]
+ *   review   run a review over a gathered PR                      [--phase post implemented; --post posts to GitHub]
  *   doctor   check config + provider setup                        [not implemented]
  */
 import { Command } from "commander";
 import { readGatherArtifact } from "./assembly/artifact.js";
 import { loadAssemblyConfig } from "./assembly/config.js";
-import { runReviewPost } from "./assembly/review-post.js";
+import { runReviewCommand, runReviewPost } from "./assembly/review-post.js";
+import {
+  createGhPoster,
+  createGhPullLookup,
+  ghRunner,
+} from "./github/poster.js";
 import { scaffold } from "./init/scaffold.js";
 import { resolveProviderKeys } from "./pi/keys.js";
 import { createPiWorker } from "./pi/worker.js";
@@ -38,37 +43,56 @@ program
   .option("--phase <phase>", "gather | post", "post")
   .option("--input <dir>", "gather-artifact directory", "artifacts")
   .option(
+    "--post",
+    "post the review to the PR (requires the Review workflow's trusted EVENT_HEAD_SHA + EVENT_REPO); without it, prints the review as JSON"
+  )
+  .option(
     "-C, --cwd <dir>",
     "repo root holding .squarewright.yml",
     process.cwd()
   )
-  .action(async (opts: { phase: string; input: string; cwd: string }) => {
-    if (opts.phase !== "post") {
-      console.error(
-        `squarewright review --phase ${opts.phase} is not implemented yet — only --phase post. See docs/ROADMAP.md.`
-      );
-      process.exitCode = 2;
-      return;
-    }
-    try {
-      const config = loadAssemblyConfig(opts.cwd);
-      const context = readGatherArtifact(opts.input);
-      const { sticky, inline, unplaceable } = await runReviewPost(
-        config,
-        context,
-        {
-          makeWorker: (apiKeys) => createPiWorker({ apiKeys }),
-          resolveKeys: resolveProviderKeys,
+  .action(
+    async (opts: {
+      phase: string;
+      input: string;
+      post?: boolean;
+      cwd: string;
+    }) => {
+      if (opts.phase !== "post") {
+        console.error(
+          `squarewright review --phase ${opts.phase} is not implemented yet — only --phase post. See docs/ROADMAP.md.`
+        );
+        process.exitCode = 2;
+        return;
+      }
+      try {
+        const result = await runReviewCommand(
+          { cwd: opts.cwd, input: opts.input, post: opts.post },
+          {
+            env: process.env,
+            loadConfig: loadAssemblyConfig,
+            lookup: createGhPullLookup(ghRunner),
+            poster: createGhPoster(ghRunner),
+            readArtifact: readGatherArtifact,
+            review: (config, context) =>
+              runReviewPost(config, context, {
+                makeWorker: (apiKeys) => createPiWorker({ apiKeys }),
+                resolveKeys: resolveProviderKeys,
+              }),
+          }
+        );
+        if (result.posted) {
+          const { repo, prNumber, commitSha } = result.posted;
+          console.error(`Posted review to ${repo}#${prNumber} @ ${commitSha}.`);
+        } else if (result.json) {
+          process.stdout.write(result.json);
         }
-      );
-      process.stdout.write(
-        `${JSON.stringify({ inline, sticky, unplaceable }, null, 2)}\n`
-      );
-    } catch (e) {
-      console.error(e instanceof Error ? e.message : String(e));
-      process.exitCode = 2;
+      } catch (e) {
+        console.error(e instanceof Error ? e.message : String(e));
+        process.exitCode = 2;
+      }
     }
-  });
+  );
 
 program
   .command("doctor")
