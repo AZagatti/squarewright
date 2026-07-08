@@ -35,7 +35,7 @@ import {
   estimatePassSpend,
   openrouterPrice,
   openrouterReasoningRisk,
-} from "./spend-guard.js";
+} from "./lib/spend-guard.js";
 
 const PERSONA = `You are a careful senior code reviewer reviewing a single pull request.
 Review ONLY the changes in the diff. Flag correctness bugs, security issues, and clear regressions.

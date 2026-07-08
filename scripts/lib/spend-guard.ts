@@ -17,6 +17,30 @@ export interface PassUsage {
   structTokens?: { input: number; output: number };
 }
 
+/** An OpenRouter model's `reasoning` metadata (from api/v1/models). */
+export interface ReasoningMeta {
+  default_effort?: string;
+  mandatory?: boolean;
+  supported_efforts?: string[];
+}
+
+function orModels(): Array<{
+  id: string;
+  pricing?: { completion?: string; prompt?: string };
+  reasoning?: unknown;
+}> {
+  const out = execFileSync(
+    "curl",
+    ["-s", "https://openrouter.ai/api/v1/models"],
+    {
+      encoding: "utf8",
+      maxBuffer: 50 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+    }
+  );
+  return JSON.parse(out).data;
+}
+
 /**
  * Per-token price for an OpenRouter model. Returns `{in:0,out:0}` for a model not found or on any error — a
  * price lookup failure must not block a run, so it fails open on price (the cap still applies once real prices
@@ -24,21 +48,7 @@ export interface PassUsage {
  */
 export function openrouterPrice(model: string): TokenPrice {
   try {
-    const out = execFileSync(
-      "curl",
-      ["-s", "https://openrouter.ai/api/v1/models"],
-      {
-        encoding: "utf8",
-        maxBuffer: 50 * 1024 * 1024,
-        stdio: ["ignore", "pipe", "ignore"],
-      }
-    );
-    const m = (
-      JSON.parse(out).data as Array<{
-        id: string;
-        pricing?: { completion?: string; prompt?: string };
-      }>
-    ).find((x) => x.id === model);
+    const m = orModels().find((x) => x.id === model);
     return {
       in: Number(m?.pricing?.prompt) || 0,
       out: Number(m?.pricing?.completion) || 0,
@@ -49,59 +59,53 @@ export function openrouterPrice(model: string): TokenPrice {
 }
 
 /**
- * Whether an OpenRouter model's reasoning can be disabled cheaply. Reasoning models that are `mandatory` or only
- * support high/xhigh effort still bill expensive reasoning tokens even at `off` — the exact trap that burned
- * ~$5 on a random model. `block: true` means "refuse to run this at low/off effort". Fails open (never blocks)
- * on a lookup error or an unknown model. Check `supported_parameters`/`reasoning` at api/v1/models to see the
- * disable-ability directly.
+ * Classify whether a model's reasoning can be disabled cheaply — the pure decision, split out for testing. A
+ * `mandatory` model, or one whose `supported_efforts` offer no cheap tier (none/minimal/low/medium), still bills
+ * expensive reasoning tokens even at `off` (the ~$5 trap). `block: true` means "refuse at low/off effort".
+ */
+export function classifyReasoningRisk(
+  reasoning: ReasoningMeta | null | undefined
+): {
+  block: boolean;
+  detail: string;
+} {
+  if (!reasoning || typeof reasoning !== "object") {
+    return { block: false, detail: "no reasoning (safe)" };
+  }
+  if (reasoning.mandatory) {
+    return {
+      block: true,
+      detail: "reasoning.mandatory=true — reasoning cannot be disabled",
+    };
+  }
+  const efforts = reasoning.supported_efforts ?? [];
+  const cheap = efforts.some((e) =>
+    ["none", "minimal", "low", "medium"].includes(e)
+  );
+  if (efforts.length > 0 && !cheap) {
+    return {
+      block: true,
+      detail: `only supports efforts [${efforts.join(", ")}] (default ${reasoning.default_effort}) — 'off' falls back to expensive reasoning`,
+    };
+  }
+  return { block: false, detail: "reasoning disableable at off (safe)" };
+}
+
+/**
+ * Whether an OpenRouter model's reasoning can be disabled cheaply. Fetches the catalog and classifies; fails
+ * open (never blocks) on a lookup error or unknown model. Inspect `supported_parameters`/`reasoning` at
+ * api/v1/models to see the disable-ability directly.
  */
 export function openrouterReasoningRisk(model: string): {
   block: boolean;
   detail: string;
 } {
   try {
-    const out = execFileSync(
-      "curl",
-      ["-s", "https://openrouter.ai/api/v1/models"],
-      {
-        encoding: "utf8",
-        maxBuffer: 50 * 1024 * 1024,
-        stdio: ["ignore", "pipe", "ignore"],
-      }
-    );
-    const m = (
-      JSON.parse(out).data as Array<{ id: string; reasoning?: unknown }>
-    ).find((x) => x.id === model);
+    const m = orModels().find((x) => x.id === model);
     if (!m) {
       return { block: false, detail: "model not found in OpenRouter catalog" };
     }
-    const r = m.reasoning as
-      | {
-          default_effort?: string;
-          mandatory?: boolean;
-          supported_efforts?: string[];
-        }
-      | undefined;
-    if (!r || typeof r !== "object") {
-      return { block: false, detail: "no reasoning (safe)" };
-    }
-    if (r.mandatory) {
-      return {
-        block: true,
-        detail: "reasoning.mandatory=true — reasoning cannot be disabled",
-      };
-    }
-    const efforts = r.supported_efforts ?? [];
-    const cheap = efforts.some((e) =>
-      ["none", "minimal", "low", "medium"].includes(e)
-    );
-    if (efforts.length > 0 && !cheap) {
-      return {
-        block: true,
-        detail: `only supports efforts [${efforts.join(", ")}] (default ${r.default_effort}) — 'off' falls back to expensive reasoning`,
-      };
-    }
-    return { block: false, detail: "reasoning disableable at off (safe)" };
+    return classifyReasoningRisk(m.reasoning as ReasoningMeta);
   } catch {
     return { block: false, detail: "reasoning-risk check failed (proceeding)" };
   }

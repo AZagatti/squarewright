@@ -22,7 +22,7 @@ import {
   makeSpendGuard,
   openrouterPrice,
   openrouterReasoningRisk,
-} from "./spend-guard.js";
+} from "./lib/spend-guard.js";
 
 const THINKING = (process.env.SW_THINKING ?? "off") as ThinkingLevel;
 
@@ -68,7 +68,14 @@ function getDiff(): { diff: string; label: string } {
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: refactor tracked separately — behavior-preserving change out of scope for the tooling PR
 async function main() {
-  const model = process.env.SW_MODEL ?? "anthropic/claude-haiku-4.5";
+  // No silent paid default: require an explicit model so `spike` can never bill OpenRouter by accident.
+  const model = arg("model") ?? process.env.SW_MODEL;
+  if (!model) {
+    console.error(
+      "spike needs an explicit paid model — pass --model <id> or set SW_MODEL (no default, to avoid silent OpenRouter spend)."
+    );
+    process.exit(1);
+  }
   const { diff: rawDiff, label } = getDiff();
   const diff =
     rawDiff.length > MAX_DIFF_CHARS
@@ -101,20 +108,28 @@ async function main() {
 
   // Pre-spend guardrail: refuse a model whose reasoning can't be disabled cheaply (it bills expensive reasoning
   // tokens even at off — the ~$5 trap). The circuit breaker only acts AFTER a pass, so it can't stop a single
-  // runaway pass; this pre-check is the real defense. Override with --allow-reasoning-burn.
+  // runaway pass; this pre-check is the real defense. Covers the verify model too. Override --allow-reasoning-burn.
+  const verifyRequested = process.argv.includes("--verify");
+  const verifyModel = verifyRequested
+    ? (process.env.SW_VERIFY_MODEL ?? model)
+    : null;
   if (
     THINKING !== "high" &&
     THINKING !== "xhigh" &&
     !process.argv.includes("--allow-reasoning-burn")
   ) {
-    const risk = openrouterReasoningRisk(model);
-    if (risk.block) {
-      console.error(
-        `\n✋ ABORT: ${model} — ${risk.detail}.\n` +
-          "   Use a model whose reasoning disables cheaply (e.g. deepseek/deepseek-v3.2), run it with\n" +
-          "   --thinking high, or pass --allow-reasoning-burn to override."
-      );
-      process.exit(2);
+    const toCheck =
+      verifyModel && verifyModel !== model ? [model, verifyModel] : [model];
+    for (const mdl of toCheck) {
+      const risk = openrouterReasoningRisk(mdl);
+      if (risk.block) {
+        console.error(
+          `\n✋ ABORT: ${mdl} — ${risk.detail}.\n` +
+            "   Use a model whose reasoning disables cheaply (e.g. deepseek/deepseek-v3.2), run it with\n" +
+            "   --thinking high, or pass --allow-reasoning-burn to override."
+        );
+        process.exit(2);
+      }
     }
   }
 
@@ -145,8 +160,7 @@ async function main() {
     `  est. spend (token-based): ~$${guard.spent().toFixed(4)}  ·  cap --max-spend $${maxSpend}${guard.tripped() ? "  🛑 OVER CAP" : ""}`
   );
 
-  if (process.argv.includes("--verify") && result.findings.length > 0) {
-    const verifyModel = process.env.SW_VERIFY_MODEL ?? model;
+  if (verifyRequested && verifyModel && result.findings.length > 0) {
     console.log(
       `\n══ adversarial verify (model: openrouter/${verifyModel}) ══`
     );
@@ -168,6 +182,9 @@ async function main() {
         thinking: THINKING,
       });
       verifyCost += v.usage?.costUsd ?? 0;
+      // best-effort: the verifier exposes only Pi's costUsd (no tokens), which undercounts reasoning — so the
+      // verify-loop cap is looser than the token-based main-pass estimate. The pre-check refusing reasoning
+      // models (incl. the verify model above) is what keeps that undercount from mattering.
       guard.add(v.usage?.costUsd ?? 0);
       if (v.verdict === "confirmed") {
         confirmed += 1;
