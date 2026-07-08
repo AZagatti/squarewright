@@ -22,6 +22,7 @@ import { parse as parseYaml } from "yaml";
 import { splitUnifiedDiff } from "../src/core/diff.js";
 import type {
   Finding,
+  Persona,
   ReviewContext,
   ThinkingLevel,
 } from "../src/core/types.js";
@@ -302,6 +303,29 @@ async function main() {
   const doVerify = flag("verify");
   const doGround = flag("ground");
   const doPersonas = flag("personas");
+  // --batching split|current|batched — how the selected personas are grouped into Worker calls.
+  //   split   = every persona its own call (max fragmentation)
+  //   current = correctness+security batched, domain lenses solo (today's default, pre-#39)
+  //   batched = ALL fired personas in ONE call (trimwire's winner — tests whether one coherent review wins)
+  // Independent of DEFAULT_PERSONAS' own solo/pass fields so the 3 modes are a clean apples-to-apples control.
+  const batching = (arg("batching") ?? "current") as
+    | "split"
+    | "current"
+    | "batched";
+  const CONVERGENT_CORE = new Set(["sentinel", "warden"]);
+  const applyBatching = (ps: Persona[]): Persona[] => {
+    const base = ps.map((p) => ({ ...p, pass: undefined, solo: undefined }));
+    if (batching === "split") {
+      return base.map((p) => ({ ...p, solo: true }));
+    }
+    if (batching === "batched") {
+      return base.map((p) => ({ ...p, pass: "all" }));
+    }
+    // current: convergent core batched (non-solo → "baseline"); every domain lens solo
+    return base.map((p) =>
+      CONVERGENT_CORE.has(p.id) ? p : { ...p, solo: true }
+    );
+  };
   const thinkingSet = arg("thinking") !== undefined;
   const concurrency = Number(arg("concurrency") ?? 3);
   const keys = readKeys();
@@ -385,7 +409,7 @@ async function main() {
     ? `${structurerLane.provider}/${structurerLane.model}`
     : "openrouter/qwen3-coder-30b";
   console.log(
-    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cases=${cases.length}  conc=${concurrency}`
+    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}${doPersonas ? ` batching=${batching}` : ""}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cases=${cases.length}  conc=${concurrency}`
   );
 
   // One full pass over the corpus. Repeated N times (--repeat) through the SHARED spend guard, so the cap holds
@@ -422,9 +446,11 @@ async function main() {
       let workerCost = 0;
       let noSubmit = 0; // passes where the model never called submit_findings (NOT a clean review — a dropped submission)
       if (doPersonas) {
-        const selected = selectPersonas(DEFAULT_PERSONAS, context.files, {
-          cap: 4,
-        });
+        const selected = applyBatching(
+          selectPersonas(DEFAULT_PERSONAS, context.files, {
+            cap: 4,
+          })
+        );
         const passes = buildPasses(selected);
         const all: Finding[] = [];
         for (const pass of passes) {
@@ -539,6 +565,9 @@ async function main() {
 
     const totalNoSubmit = results.reduce((s, r) => s + (r.noSubmit ?? 0), 0);
     const config = {
+      // batching mode is part of what's measured — persist it so split/current/batched runs are
+      // distinguishable in the durable log (runs.jsonl), not just in someone's terminal scrollback.
+      batching: doPersonas ? batching : undefined,
       ground: doGround,
       model,
       personas: doPersonas,

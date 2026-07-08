@@ -123,10 +123,33 @@ export function selectPersonas(
   });
 
   if (opts.cap && selected.length > opts.cap) {
-    // keep always-on personas first, then the most-specific matches, up to the cap
-    const always = selected.filter(isAlways);
-    const scoped = selected.filter((p) => !isAlways(p));
-    return [...always, ...scoped].slice(0, opts.cap);
+    const { cap } = opts;
+    // priority order: always-on personas first, then the most-specific (scoped) matches
+    const ordered = [
+      ...selected.filter(isAlways),
+      ...selected.filter((p) => !isAlways(p)),
+    ];
+    // Group-aware truncation: personas sharing an explicit `pass` are ONE indivisible unit — the cap must
+    // never keep one member of a declared group while dropping its partner (that would silently run a
+    // half-formed pair). Add whole units in priority order until the cap is full; skip a unit that wouldn't
+    // fit rather than splitting it. With no `pass` anywhere, every unit is size 1 and this is a plain prefix.
+    const seenGroups = new Set<string>();
+    const units: Persona[][] = [];
+    for (const p of ordered) {
+      if (p.pass === undefined) {
+        units.push([p]);
+      } else if (!seenGroups.has(p.pass)) {
+        seenGroups.add(p.pass);
+        units.push(ordered.filter((q) => q.pass === p.pass));
+      }
+    }
+    const kept: Persona[] = [];
+    for (const unit of units) {
+      if (kept.length + unit.length <= cap) {
+        kept.push(...unit);
+      }
+    }
+    return kept;
   }
   return selected;
 }

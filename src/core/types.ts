@@ -49,6 +49,12 @@ export interface Persona {
   lane: string;
   /** skip on docs-only PRs */
   needsCode?: boolean;
+  /**
+   * Explicit pass-group key: personas sharing a `pass` are batched into ONE Worker call whenever they
+   * co-fire on a PR (correlated-lens review — e.g. Docker + CI changes reviewed together). Takes precedence
+   * over `solo`. Unset => the persona groups by `solo` (own pass) or into the shared "baseline" batch.
+   */
+  pass?: string;
   /** the checklist / role prompt injected into the Worker */
   prompt: string;
   /** never paired with another persona in one Worker call (own dedicated call) */
