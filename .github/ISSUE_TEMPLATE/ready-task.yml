@@ -1,0 +1,111 @@
+name: "Ready task (for an AI agent)"
+description: >-
+  A fully-specified task an agent can pick up and implement. Every field below is required — this is the
+  Ready-issue gate from docs/WORKFLOW.md: "an issue is not handed to an agent until every field is filled." If
+  you can't fill a field yet, the idea isn't ready — park it in docs/ROADMAP.md's Follow-ups section instead.
+labels:
+  - backlog
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Mirrors the Ready-issue template in
+        [`docs/WORKFLOW.md`](https://github.com/AZagatti/squarewright/blob/main/docs/WORKFLOW.md#ready-issue-template)
+        exactly — same seven sections, same order. See #52 for a real example of a filled-out issue.
+
+        > **Note:** this form only enforces "every field filled" in the GitHub web UI. An issue filed with
+        > `gh issue create --body …` (what an agent/script does) bypasses form validation — so for
+        > agent-authored issues, reproducing these same headings stays a convention the agent self-enforces.
+
+        This issue starts labeled `backlog`. Add `agent-ready` yourself once you've decided it's next in line —
+        completeness (every field filled) and prioritization (do it now) are separate questions.
+  - type: input
+    id: goal
+    attributes:
+      label: Goal
+      description: "One sentence: the outcome, not the steps."
+      placeholder: 'e.g. "squarewright doctor checks provider keys resolve without printing secrets"'
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / background
+      description: >-
+        Why this exists, which doc/ADR it traces to, and the EXACT existing files to reuse (paths) rather than
+        reinvent. Spell out any Squarewright-specific term on first use (Persona, Grounder, Worker, Assembly,
+        Finding, … — see docs/CONTEXT.md).
+      placeholder: |
+        Surfaced by … / traces to docs/adr/000X-….md …
+        Today `<function>` (`src/<path>.ts`) does X. Reuse `<path>` rather than reinvent.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: >-
+        A short, checkable list — concrete function signatures / CLI behavior / file paths, not vibes. Number
+        them (AC1, AC2, …) so a PR or review comment can reference one directly.
+      placeholder: |
+        - AC1: `parseX()` in `src/foo.ts` rejects a non-finite/negative value with a clear error.
+        - AC2: existing tests in `src/foo.test.ts` stay green.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence-checks
+    attributes:
+      label: Evidence / checks
+      description: >-
+        The exact command(s) that prove it's done (`bun run verify:pr`, `bun run scripts/eval.ts --id <case>`, …)
+        and what output counts as pass. Tie to unit tests for pure logic; tie to the eval (free z.ai, ≥3 runs)
+        for changes touching personas/, pi/, or output/.
+      placeholder: |
+        `bun run verify:pr` green.
+        If this touches review quality: `--repeat 3` on <golden case>, recall/precision range in eval/RESULTS.md.
+    validations:
+      required: true
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals
+      description: "What this issue explicitly does NOT do — the most common way agent issues balloon."
+      placeholder: |
+        No DAG/pipeline generalization. No re-measure of the model rank. Not a change to <X>.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-artifact
+    attributes:
+      label: Expected artifact
+      description: "Which files change/are created, and what the PR should contain."
+      placeholder: |
+        A small PR touching `scripts/eval.ts`, `scripts/spike.ts` (+ a test if extracted).
+    validations:
+      required: true
+  - type: checkboxes
+    id: stop-condition-category
+    attributes:
+      label: "Stop condition — category (check any that could apply)"
+      description: >-
+        The four stop conditions from docs/WORKFLOW.md — "ask, don't guess" whenever a task needs one of these.
+        This checklist is a prompt, not the gate; fill in the specific fork(s) in the field below either way.
+      options:
+        - label: "Product or API-shape judgment (a public interface, a CLI flag's behavior, a config schema choice)"
+        - label: "Trust-boundary decision (anything touching gather/review, secrets, permissions, the head-SHA check)"
+        - label: "Work beyond this issue's stated acceptance criteria or non-goals"
+        - label: "Requires a paid model run (OpenRouter)"
+        - label: "None of the above — no stop condition expected for this issue"
+  - type: textarea
+    id: stop-condition-detail
+    attributes:
+      label: "Stop condition — specific fork(s)"
+      description: >-
+        The specific fork(s) where the agent must stop and open a crisp question to the maintainer instead of
+        guessing (see docs/WORKFLOW.md "Stop conditions"). If none, say so and why — e.g. "None expected —
+        mechanical hardening, paid runs not required to validate it."
+      placeholder: >-
+        If X shows a real regression on the corpus, report it honestly and ask before shipping rather than
+        forcing a win.
+    validations:
+      required: true

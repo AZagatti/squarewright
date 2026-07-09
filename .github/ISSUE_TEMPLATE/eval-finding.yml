@@ -1,0 +1,70 @@
+name: "Eval / measurement finding"
+description: >-
+  Report a result from the eval harness or a dogfood run (recall/precision, a model-rank observation, a
+  reproducibility gap). Not a task by itself — file a "Ready task" separately for any follow-up work this
+  surfaces.
+title: "[Eval] "
+labels:
+  - backlog
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        AGENTS.md rule 5: judge on real defect-match (not the file metric — it inflates ~2–4×), report ranges
+        not single points, ≥3 runs before claiming a change, never present a guess as a fact. This template
+        makes that easy to follow — see #45/#47/#49 for real examples of this shape.
+  - type: textarea
+    id: finding
+    attributes:
+      label: Finding
+      description: "One paragraph: what you measured and what it shows."
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Measurement setup
+      description: >-
+        Corpus/case(s), model(s) + provider, `--repeat N`, and the commit/PR this was measured on. Paid-provider
+        runs require the spend guard + maintainer go-ahead (AGENTS.md rule 4) — note if this was free z.ai or
+        paid+approved.
+      placeholder: |
+        Golden corpus, glm-5.2 reasoning-off, free z.ai, --repeat 3, commit <sha>.
+    validations:
+      required: true
+  - type: textarea
+    id: numbers
+    attributes:
+      label: "Result (as a range, not a single point)"
+      description: >-
+        e.g. "recall 2–8/12 across 3 runs" — not "recall was 5". Link the eval/RESULTS.md section if already
+        recorded there.
+    validations:
+      required: true
+  - type: checkboxes
+    id: honesty-check
+    attributes:
+      label: Honesty check
+      description: "AGENTS.md rule 5, as a self-check before filing."
+      options:
+        - label: "Judged on real defect-match, not the file metric"
+        - label: "≥3 runs behind this finding (or explicitly flagged as a single-run lead, not a result)"
+        - label: "Both precision and recall reported together, if either could have moved"
+  - type: textarea
+    id: caveats
+    attributes:
+      label: Caveats / what would change this finding
+      description: >-
+        Known confounds (judge stochasticity, small corpus, single-model result not yet generalized, …). This is
+        what keeps a lead from being mistaken for a settled result.
+    validations:
+      required: true
+  - type: textarea
+    id: follow-up
+    attributes:
+      label: Follow-up
+      description: >-
+        Does this block anything (link the issue #)? Does it need a new "Ready task" issue opened separately once
+        scoped? Optional — leave blank if this is a closed-loop observation.
+    validations:
+      required: false
