@@ -88,3 +88,13 @@ test("summarizeMatrix: empty matrix yields zeros, never NaN", () => {
   expect(m.overall.median).toBe(0);
   expect(Number.isNaN(m.overall.median)).toBe(false);
 });
+
+test("summarizeMatrix: an empty row (spend-cap-aborted report) is dropped, not counted as a 0", () => {
+  // A report whose passes were all cut short must be ABSENT from the interval, not a fabricated 0 in it.
+  const m = summarizeMatrix([[6, 6], [], [7, 8]]);
+  // effective rows are [[6,6],[7,8]] → per-report medians [6, 7.5], flat [6,6,7,8]
+  expect(m.overall).toMatchObject({ max: 8, median: 6.5, min: 6 });
+  expect(m.analysis.min).toBe(6); // NOT 0 — the empty row contributes nothing
+  expect(m.analysis.max).toBe(7.5);
+  expect(m.judge.max).toBe(1); // ranges [0, 1], not [0, 0, 1]
+});

@@ -103,14 +103,16 @@ export interface MatrixStat {
 /**
  * Decompose a matrix of `analysisRuns × judgePasses` defect-recall totals into its two variance sources, so a
  * config's recall is reported as an interval, not a point (issue #49 AC3). `matrix[a]` holds the K judge-pass
- * totals for analysis run `a`.
+ * totals for analysis run `a`. Empty rows (a report whose passes were all cut short by the spend cap) are
+ * dropped, not counted as a fabricated 0 — an un-judged report is absent from the interval, not a zero in it.
  */
 export function summarizeMatrix(matrix: number[][]): MatrixStat {
-  const perReport = matrix.map((row) => summarize(row));
+  const rows = matrix.filter((row) => row.length > 0);
+  const perReport = rows.map((row) => summarize(row));
   return {
     analysis: summarize(perReport.map((s) => s.median)),
     judge: summarize(perReport.map((s) => s.max - s.min)),
-    overall: summarize(matrix.flat()),
+    overall: summarize(rows.flat()),
   };
 }
 

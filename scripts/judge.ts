@@ -280,16 +280,24 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
   );
 
   const configs = new Set<string>();
+  const totals = new Set<number>();
   const matrix: number[][] = [];
-  let total = 0;
+  let excluded = 0;
+  let stoppedEarly = false;
   for (const p of reportPaths) {
+    // Money is guarded across the WHOLE matrix: once the cap trips, don't start another report's passes.
+    if (ctx.guard.tripped()) {
+      stoppedEarly = true;
+      break;
+    }
     const report = JSON.parse(readFileSync(p, "utf8")) as {
       results: ReportResult[];
       config?: unknown;
     };
     configs.add(JSON.stringify(report.config ?? null));
     const scored = selectScored(report.results, ctx.byId);
-    total = scored.reduce((n, { c }) => n + c.expect_loci.length, 0);
+    const total = scored.reduce((n, { c }) => n + c.expect_loci.length, 0);
+    totals.add(total);
     // biome-ignore lint/performance/noAwaitInLoops: sequential by design — the shared spend guard must see each report's cost before the next report's passes fire
     const { perPassRecall } = await runPasses(ctx.judge, ctx.lane, scored, {
       guard: ctx.guard,
@@ -297,6 +305,12 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
       repeats: ctx.repeats,
       total,
     });
+    if (perPassRecall.length === 0) {
+      // No complete pass (spend cap cut this report short) — exclude it, never fold a fake 0 into the interval.
+      excluded += 1;
+      console.log(`  ${basename(p).padEnd(46)} (no complete pass — excluded)`);
+      continue;
+    }
     matrix.push(perPassRecall);
     console.log(
       `  ${basename(p).padEnd(46)} [${perPassRecall.join(", ")}]/${total}`
@@ -308,7 +322,24 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
       `\n⚠️  reports span ${configs.size} different configs — the interval below mixes setups, not one config's recall.`
     );
   }
+  if (excluded > 0 || stoppedEarly) {
+    console.log(
+      `\n⚠️  ${excluded} report(s) excluded (no complete judge pass)${stoppedEarly ? " and remaining report(s) skipped after the spend cap tripped" : ""} — the interval reflects only the ${matrix.length} report(s) actually judged.`
+    );
+  }
+  if (matrix.length === 0) {
+    console.log(
+      "\n── no report produced a complete judge pass — nothing to report ──\n"
+    );
+    return;
+  }
 
+  const total = Math.max(...totals);
+  if (totals.size > 1) {
+    console.log(
+      `\n⚠️  reports have different loci totals ${JSON.stringify([...totals])} — denominator shown is the max.`
+    );
+  }
   const m = summarizeMatrix(matrix);
   console.log("\n── recall interval (defect-level) ──");
   console.log(`  overall (analysis × judge): ${band(m.overall)} / ${total}`);
