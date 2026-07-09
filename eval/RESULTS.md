@@ -317,3 +317,20 @@ Per-report: `[1,1] [0,0] [0,0] [1,2]` / 11.
 - **This confirms the one *robust* rank fact as a proper interval:** glm-5-turbo defect-recall is **0–2/11 (median 0.5)** — reproducibly the worst, now with variance decomposed rather than a single lucky/unlucky point. The bulk of the spread is *analysis* (worker) variance; the judge is stable at this low level.
 - **Methodology validated on real data** — the matrix mode, the spread math, and the honesty guards all work end-to-end. Notably the `--reports` "different loci totals" guard *fired correctly* on a first attempt where two reports shared a `.config` but covered different case subsets → **`.config` does not record the case set; a matrix needs same-*corpus* reports (here, 18-result full-corpus runs), not just same-config.**
 - **This is NOT the full rank re-measure (#49 AC4).** It's one model (the robust-worst). A complete rank needs **≥3 fresh `eval --repeat` analysis runs per candidate model** (a multi-hour z.ai job, quota-sensitive) fed through this same matrix + a deepseek cross-family cross-check. The tooling is ready; the run is the remaining work. Until then, the shipped default (glm-5.2) stays a **provisional** pick, not a measured rank winner.
+
+## Calibration-prompt audit — measured, NOT shipped (2026-07-09, #47)
+
+AC1 audited `CLEAN_TAIL` (appended to every persona prompt): it already carried **empty-findings-is-valid** + **grounded**, but lacked **defer-to-CI** and **truncation-safe** — the two anchors cc-dcp's scout bundled. We added them and measured before/after per AC2/AC3 — clean-case false positives (file-level) + **defect-recall (judged, `--judge-repeats 2`)**, 2 models × `--repeat 3`, free z.ai.
+
+| model | prompt | defect-recall /11 (judged) | clean-FP (file-level) |
+|---|---|---|---|
+| glm-5.2 (default) | before | 4–6 (median **5**) | 8–16 (median **11**) |
+| glm-5.2 (default) | **after** | 4–5 (median **4**) | 8–19 (median **15**) |
+| glm-5-turbo (weak) | before | 0–2 (median **1.5**) | 0–2 (median 1) |
+| glm-5-turbo (weak) | **after** | 0–1 (median **1**) | 0–1 (median 0) |
+
+**Decision: NOT shipped — the current prompt is kept.** AC3's bar is "ship only if precision improves without a recall regression outside noise." The added anchors met neither:
+- On **glm-5.2 (the default)**, precision got *worse* (clean-FP median 11→15) *and* defect-recall dropped (5→4) — both axes worse.
+- On **glm-5-turbo (weak)**, false positives fell (1→0) but defect-recall regressed with them (1.5→1) — the recall-suppression risk the reviewer flagged, a bad trade on a model already at the floor.
+
+Ranges overlap heavily (much is run-to-run noise), but **nothing pointed to a benefit** and the default model regressed on both axes — so cc-dcp's bundled result (+14.7pp precision / −5.2pp recall) does **not** transfer to our corpus/models; here we'd take the recall cost without the precision gain. A negative result is a result: this is exactly why review-quality changes gate on measurement, not faith. (A *different* calibration formulation — e.g. paired with think-first, or narrower anchors — is untested and would be a fresh experiment, not this one.)
