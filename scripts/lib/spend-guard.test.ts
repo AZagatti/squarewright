@@ -3,7 +3,24 @@ import {
   classifyReasoningRisk,
   estimatePassSpend,
   makeSpendGuard,
+  parseMaxSpend,
 } from "./spend-guard.js";
+
+test("parseMaxSpend: uses the fallback when the flag is absent", () => {
+  expect(parseMaxSpend(undefined, 0.5)).toBe(0.5);
+});
+
+test("parseMaxSpend: parses a valid non-negative number (including 0)", () => {
+  expect(parseMaxSpend("0.1", 0.5)).toBe(0.1);
+  expect(parseMaxSpend("0", 0.5)).toBe(0);
+});
+
+test("parseMaxSpend: rejects a malformed value instead of silently disabling the cap", () => {
+  // NaN would make `spent > NaN` always false — the guard would never trip.
+  expect(() => parseMaxSpend("$0.5", 0.5)).toThrow("non-negative number");
+  expect(() => parseMaxSpend("abc", 0.5)).toThrow();
+  expect(() => parseMaxSpend("-1", 0.5)).toThrow();
+});
 
 test("estimatePassSpend sums analysis + structurer tokens at their prices", () => {
   const usage = {

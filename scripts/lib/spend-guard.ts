@@ -1,7 +1,7 @@
 /**
  * Shared local spend guard for paid (OpenRouter) model runs. Pi's `usage.cost` undercounts reasoning tokens and
  * the credits endpoint lags, so the reliable protection is an immediate token-based $ estimate accumulated per
- * pass and compared to a cap. Used by the eval circuit breaker and by `spike.ts` — the single source for both.
+ * pass and compared to a cap. The single source for every spend-guarded script (`eval.ts`, `spike.ts`, `judge.ts`).
  */
 import { execFileSync } from "node:child_process";
 
@@ -146,4 +146,20 @@ export function makeSpendGuard(maxSpend: number): SpendGuard {
     spent: () => spent,
     tripped: () => spent > maxSpend,
   };
+}
+
+/**
+ * Parse a `--max-spend` flag value: `fallback` when the flag is absent, else a non-negative finite number.
+ * Rejects a malformed value — a `NaN` cap makes `spent > NaN` always false, silently disabling the guard,
+ * the one bug class the money rule (AGENTS.md §4) can't tolerate. Shared by every spend-guarded script.
+ */
+export function parseMaxSpend(
+  raw: string | undefined,
+  fallback: number
+): number {
+  const n = raw === undefined ? fallback : Number(raw);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`--max-spend must be a non-negative number (got "${raw}")`);
+  }
+  return n;
 }
