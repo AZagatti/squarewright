@@ -12,8 +12,16 @@ A branch or PR to review, the touched areas, and the issue's acceptance criteria
 ## Ground truth to hold it against
 Read what's relevant before judging: `AGENTS.md` (hard rules + engineering principles), `docs/WORKFLOW.md` (process), `docs/CONTEXT.md` (vocabulary), `docs/ROADMAP.md` / `NORTH_STAR.md` (direction + non-goals), and the relevant `docs/adr/`. Use `git diff main...HEAD` (or the given ref) for the change itself; read whole files when a change's safety depends on code the diff doesn't show.
 
+## Working-tree safety — treat the repo as READ-ONLY (do not corrupt it)
+The branch under review is **already checked out** in the working tree when you are spawned — you do **not** need to switch to it. Inspect the change without ever mutating git state:
+- **NEVER** run `git checkout`, `git switch`, `git worktree add`, `git reset`, `git stash`, `git branch -D`, or `cd` into another working copy. A `cd` persists across Bash calls, and a stray later command can revert or corrupt the primary checkout — this has caused real damage twice. Do not create worktrees.
+- Read the change with commands that never touch the working tree: `gh pr diff <N>`, `git diff main...HEAD` (or the given ref), `git log`, and `git show <ref>:<path>` to read any file at any revision **without** checking it out.
+- Always use absolute paths (and `git -C <abs-path>` if you ever shell out); never rely on the current directory being anywhere in particular.
+- If you truly need an isolated copy, `git clone <primary> /tmp/sqw-review-<n>` and operate **only** with `git -C /tmp/sqw-review-<n>` — never `cd` back toward the primary repo, and never modify it.
+- Before you return, confirm `git status` shows the same branch and a clean tree you started with; if anything moved, say so loudly in your output.
+
 ## Verify the gates yourself
-Run `bun run verify:pr` (typecheck + tests + lint) and paste the tail. Never trust a claim of "green" — confirm it.
+Run `bun run verify:pr` (typecheck + tests + lint) **in place** (the branch is already checked out — no switching needed) and paste the tail. Never trust a claim of "green" — confirm it.
 
 ## What to check
 1. **Correctness** — does it do what the issue asked, with the right edge cases? Trace behavior, don't skim.
