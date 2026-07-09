@@ -35,11 +35,16 @@ import type {
   WorkerResult,
 } from "./session.js";
 
-/** Fixed pass-2 extractor: no reasoning, reliably calls tools, cheap. Used when the config sets no structurer. */
+/**
+ * Fixed pass-2 extractor: no reasoning, reliably calls tools, cheap. Used when the config sets no structurer.
+ * Defaults to z.ai's free glm-5-turbo so structuring never silently costs money — the structurer runs on every
+ * pass of every review, so a paid default is a real cost footgun. (Assumes z.ai auth, consistent with the
+ * default z.ai lanes; a config on another provider should point `structurer` at one of its own cheap models.)
+ */
 export const DEFAULT_STRUCTURER: ModelLane = {
   id: "structurer",
-  model: "qwen/qwen3-coder-30b-a3b-instruct",
-  provider: "openrouter",
+  model: "glm-5-turbo",
+  provider: "zai",
   thinking: "off",
 };
 
@@ -222,7 +227,7 @@ function sumTokens(messages: unknown[]): { input: number; output: number } {
 export interface PiWorkerOptions {
   /** provider -> api key, injected at runtime (never persisted) */
   apiKeys: Record<string, string>;
-  /** fixed pass-2 extractor lane (default: qwen3-coder-30b, thinking off) */
+  /** fixed pass-2 extractor lane (default: free z.ai glm-5-turbo, thinking off) */
   structurerLane?: ModelLane;
 }
 

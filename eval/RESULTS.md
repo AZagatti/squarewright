@@ -196,3 +196,64 @@ ran all three at `--repeat 3` on the 18-case corpus (12 loci / 9 clean), free z.
 is not corpus-validated, precision is not the current bottleneck (recall is: still low, ~0–2/12), and precision/recall are
 coupled (tuning one moves the other — that balancing act *is* calibration, and must be done across models, not by
 optimizing one number on one model). The primitive is ready; a default pairing has not earned its place yet.
+
+## Model rank + reasoning + self-consistency + structurer (2026-07-09)
+
+A full sweep on the golden corpus (personas, `thinking off` unless noted, free z.ai structurer), scored by the
+**defect-match judge** (`scripts/judge.ts`, zai:glm-5.2) — the only trustworthy metric (file-level inflates ~1.5–4×).
+Single judged repeat per config; treat magnitudes as ±1–2 on 12 loci, but the ordering is robust and repeated.
+
+### The headline: our default model was the single worst choice
+
+Reasoning-off, **defect-level recall / 12** (all free z.ai except deepseek):
+
+| model | defect recall | note |
+|---|---|---|
+| **glm-5.2** | **6** | top tier |
+| **glm-4.5** | **6** | top tier — a cheap/fast "4x" model, surprisingly strong at review |
+| **deepseek/deepseek-v3.2** | **6** | paid, but ~$0.05/run with the free structurer |
+| glm-5 | 5 | |
+| glm-4.7 | 5 | |
+| glm-4.6 | 5 | |
+| glm-5.1 | 4 | |
+| glm-4.5-air | 3 | |
+| **glm-5-turbo** (the prior default) | **1** | dead last |
+
+**Switching the default from glm-5-turbo → glm-5.2 / glm-4.5 takes real recall 1 → 6 (6×), for free.** This is the
+biggest quality lever found, and it's just model selection. It also **doubles the project's prior best-ever** (~3/12).
+File-level scoring had hidden this — glm-5-turbo looks "clean" (few findings) but is nearly blind; the judge exposes it.
+
+### Reasoning helps weak models, hurts capable ones
+
+| model | reasoning-off | reasoning-on | reasoning-max |
+|---|---|---|---|
+| glm-5-turbo (weak) | 1 | **3** (high) | — |
+| glm-5.2 (capable) | 6 | 6 (high) | 5 (xhigh) |
+| deepseek-v3.2 (capable) | 6 | **3** (high) | — |
+
+Reasoning **rescues a weak model** (turbo 1→3) but **does nothing or actively hurts capable ones** (glm-5.2 flat/down,
+deepseek **halved** 6→3). The file-level metric lied here — glm-5.2@max looked like 10/12 (best!) but judged to 5/12
+(*below* its reasoning-off 6): max reasoning made it *prolific*, not *correct*. So **reasoning-off on a capable model is
+the operating point**; "max reasoning" is not a quality mode. Reasoning-on also costs 5×+ latency (200s+/case on z.ai).
+
+### Self-consistency sampling — a real recall lever (with a precision cost)
+
+`--samples N` runs each pass N times and unions the findings (`--consensus K` keeps only findings recurring in ≥K
+samples). On glm-5-turbo, N=5 union lifted **defect recall 0 → 2** and on glm-4.7 **3 → 8** — the miss-class map showed
+most misses are "reachable but rare," and union recovers them. Cost: false positives rise with the model's base noise
+(clean on glm-5-turbo, a firehose on noisier models), and `consensus≥2` at N=5 over-prunes (real catches are as rare as
+noise at that N). It's a genuine recall knob for the precision↔recall curve; validate per-model before enabling.
+
+### Structurer default → free z.ai (cost footgun fixed)
+
+Pass-2 structuring ran on a **paid** OpenRouter default (`qwen3-coder-30b`) — it fires on every pass of every review, so
+it quietly dominated cost (a full-corpus sweep spent ~$3 on structuring alone; the eval's own runs racked up thousands of
+calls). Changed `DEFAULT_STRUCTURER` to free **zai/glm-5-turbo**, which our own data shows is also a *better* structurer
+(~1 noise vs qwen's ~24–34). A z.ai config now forces no OpenRouter at all. Follow-up ideas: default the structurer to the
+cheapest configured lane's provider (coherent with any setup), and save the pass-1 analysis text so structurer models can
+be compared **offline** without re-running analysis.
+
+### Honest caveats
+- Single judged repeat per config, 12 loci — directional; the ordering repeated across the session's runs, magnitudes may shift ±1–2.
+- deepseek numbers are one paid model on OpenRouter; the GLM numbers are z.ai free-tier.
+- The reasoning conclusion is defect-judged and consistent across GLM + deepseek, but "capable vs weak" is a coarse axis.

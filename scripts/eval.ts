@@ -312,6 +312,11 @@ async function main() {
     | "split"
     | "current"
     | "batched";
+  // --samples N: run each persona pass N times and union the findings (self-consistency). Recovers catches the
+  // model reaches only intermittently (the miss-class map: most misses are "reachable but rare"). --consensus K:
+  // after unioning, keep only findings that recurred in ≥K samples — the precision dial on the recall gain.
+  const samples = Math.max(1, Math.trunc(Number(arg("samples") ?? 1)));
+  const consensus = Math.max(1, Math.trunc(Number(arg("consensus") ?? 1)));
   const CONVERGENT_CORE = new Set(["sentinel", "warden"]);
   const applyBatching = (ps: Persona[]): Persona[] => {
     const base = ps.map((p) => ({ ...p, pass: undefined, solo: undefined }));
@@ -329,7 +334,7 @@ async function main() {
   const thinkingSet = arg("thinking") !== undefined;
   const concurrency = Number(arg("concurrency") ?? 3);
   const keys = readKeys();
-  // Pass-2 structurer override, e.g. --structurer zai:glm-4.5-air (free) or openrouter:qwen/qwen3-coder-30b-a3b-instruct
+  // Pass-2 structurer override (default is free zai:glm-5-turbo), e.g. --structurer openrouter:qwen/qwen3-coder-30b-a3b-instruct for a paid OR structurer
   const structArg = arg("structurer");
   const structurerLane = structArg
     ? {
@@ -343,10 +348,10 @@ async function main() {
   const verifier = doVerify ? createVerifier({ apiKeys: keys }) : undefined;
   const lane = { id: "eval", model, provider, thinking };
 
-  // real-spend guard: default structurer is OpenRouter (qwen3-coder), so any run touches OR unless overridden to z.ai
+  // real-spend guard: a run touches OpenRouter (and needs the credits check) only if the analysis model OR an
+  // explicitly-overridden structurer is on OpenRouter. The default structurer is now free z.ai glm-5-turbo.
   const usesOR =
-    provider === "openrouter" ||
-    (structurerLane ? structurerLane.provider === "openrouter" : true);
+    provider === "openrouter" || structurerLane?.provider === "openrouter";
 
   // guardrail: refuse OpenRouter reasoning models that can't run cheap at low effort (they fall back to
   // expensive reasoning). Skipped if you explicitly ask for high/xhigh reasoning or pass --allow-reasoning-burn.
@@ -374,10 +379,9 @@ async function main() {
   const maxSpend = Number(arg("max-spend") ?? 0.5);
   const analysisPrice =
     provider === "openrouter" ? openrouterPrice(model) : { in: 0, out: 0 };
-  const structModelId =
-    structurerLane?.model ?? "qwen/qwen3-coder-30b-a3b-instruct";
+  const structModelId = structurerLane?.model ?? "glm-5-turbo";
   const structPrice =
-    (structurerLane?.provider ?? "openrouter") === "openrouter"
+    (structurerLane?.provider ?? "zai") === "openrouter"
       ? openrouterPrice(structModelId)
       : { in: 0, out: 0 };
   /** immediate $ estimate from a worker call's token usage (no credit-endpoint lag) */
@@ -407,9 +411,9 @@ async function main() {
 
   const structDesc = structurerLane
     ? `${structurerLane.provider}/${structurerLane.model}`
-    : "openrouter/qwen3-coder-30b";
+    : "zai/glm-5-turbo";
   console.log(
-    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}${doPersonas ? ` batching=${batching}` : ""}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cases=${cases.length}  conc=${concurrency}`
+    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}${doPersonas ? ` batching=${batching}` : ""}${samples > 1 ? ` samples=${samples}${consensus > 1 ? `/consensus≥${consensus}` : ""}` : ""}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cases=${cases.length}  conc=${concurrency}`
   );
 
   // One full pass over the corpus. Repeated N times (--repeat) through the SHARED spend guard, so the cap holds
@@ -458,26 +462,36 @@ async function main() {
             ...lane,
             thinking: thinkingSet ? thinking : pass.thinking,
           };
-          // biome-ignore lint/performance/noAwaitInLoops: sequential by design — each pass feeds the local spend guard (spendGuard/aborted) checked right after, so later passes must know the running spend before firing
-          const pr = await worker.run({
-            context,
-            lane: passLane,
-            persona: pass.id,
-            repoReader,
-            systemPrompt: pass.prompt,
-          });
-          all.push(...pr.findings);
-          workerCost += pr.usage?.costUsd ?? 0;
-          localSpend += passSpend(pr.usage);
-          if (!pr.usage?.submitted) {
-            noSubmit += 1;
+          for (let s = 0; s < samples; s += 1) {
+            // biome-ignore lint/performance/noAwaitInLoops: sequential by design — each run feeds the local spend guard (spendGuard/aborted) checked right after, so later runs must know the running spend before firing
+            const pr = await worker.run({
+              context,
+              lane: passLane,
+              persona: pass.id,
+              repoReader,
+              systemPrompt: pass.prompt,
+            });
+            all.push(...pr.findings);
+            workerCost += pr.usage?.costUsd ?? 0;
+            localSpend += passSpend(pr.usage);
+            if (!pr.usage?.submitted) {
+              noSubmit += 1;
+            }
+            spendGuard();
+            if (aborted) {
+              break;
+            }
           }
-          spendGuard();
           if (aborted) {
             break;
           }
         }
-        findings = aggregateFindings(all);
+        // union across samples, then (optionally) keep only findings that recurred in ≥`consensus` samples
+        const aggregated = aggregateFindings(all);
+        findings =
+          consensus > 1
+            ? aggregated.filter((f) => f.consensus >= consensus)
+            : aggregated;
       } else {
         const pr = await worker.run({
           context,
@@ -568,10 +582,12 @@ async function main() {
       // batching mode is part of what's measured — persist it so split/current/batched runs are
       // distinguishable in the durable log (runs.jsonl), not just in someone's terminal scrollback.
       batching: doPersonas ? batching : undefined,
+      consensus: doPersonas && samples > 1 ? consensus : undefined,
       ground: doGround,
       model,
       personas: doPersonas,
       provider,
+      samples: doPersonas ? samples : undefined,
       thinking: thinkingSet ? thinking : "per-persona",
       verify: doVerify,
     };

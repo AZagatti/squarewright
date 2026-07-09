@@ -166,7 +166,7 @@ cases:
     note: "Adds PR-review workflows requesting `id-token: write`, but org/repo policy only allows `id-token: none`, so every run fails immediately. Should have verified the OIDC permission was grantable."
     evidence: "Reverted same day by moby/moby#53006: 'the workflow is requesting id-token: write, but is only allowed id-token: none'."
     expect_loci:
-      - path: .github/workflows/pr-review-trigger.yml
+      - path: .github/workflows/pr-review.yml
         about: "Requests id-token: write that policy disallows (id-token: none), failing every run."
   - id: config-astro-15139
     repo: withastro/astro

@@ -13,20 +13,17 @@ describe("runDoctor", () => {
     const report = await runDoctor(".", {
       hasGh: () => Promise.resolve(true),
       loadConfig: () => CONFIG,
-      // the review needs zai (the lane) + openrouter (the structurer)
+      // the review needs only zai (the lane AND the default free z.ai structurer)
       resolveKeys: () =>
         Promise.resolve({
-          apiKeys: { openrouter: "or", zai: "z" },
+          apiKeys: { zai: "z" },
           missing: [],
         }),
     });
 
     expect(report.config).toEqual({ lanes: 1, personas: 1 });
     expect(report.configError).toBeNull();
-    expect(report.providers).toEqual([
-      { present: true, provider: "openrouter" },
-      { present: true, provider: "zai" },
-    ]);
+    expect(report.providers).toEqual([{ present: true, provider: "zai" }]);
     expect(report.gh).toBe(true);
     expect(doctorProblems(report)).toBe(0);
   });
@@ -37,14 +34,14 @@ describe("runDoctor", () => {
       loadConfig: () => CONFIG,
       resolveKeys: () =>
         Promise.resolve({
-          apiKeys: { zai: "z" },
-          missing: ["OPENROUTER_API_KEY"],
+          apiKeys: {},
+          missing: ["ZAI_API_KEY"],
         }),
     });
 
     expect(report.providers).toContainEqual({
       present: false,
-      provider: "openrouter",
+      provider: "zai",
     });
     expect(doctorProblems(report)).toBe(1);
   });
