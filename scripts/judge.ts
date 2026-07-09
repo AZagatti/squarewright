@@ -355,6 +355,12 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
       `\n⚠️  ${why.join("; ")} — interval reflects only the ${matrix.length} report(s) actually judged.`
     );
   }
+  // Print the tool-call-failure warning BEFORE the early return, so an all-empty matrix caused by a broken
+  // judge (not just cost) still says why.
+  const warn = ungradedWarning(ungraded, calls);
+  if (warn) {
+    console.log(`\n${warn}`);
+  }
   if (matrix.length === 0) {
     console.log(
       "\n── no report produced a complete judge pass — nothing to report ──\n"
@@ -373,10 +379,6 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
   console.log(`  overall (analysis × judge): ${band(m.overall)} / ${total}`);
   console.log(`  analysis variance (per-report medians): ${band(m.analysis)}`);
   console.log(`  judge variance (within-report range):   ${band(m.judge)}`);
-  const warn = ungradedWarning(ungraded, calls);
-  if (warn) {
-    console.log(`\n${warn}`);
-  }
   if (ctx.paid) {
     console.log(
       `  judge spend (token estimate): ~$${ctx.guard.spent().toFixed(4)} of $${ctx.maxSpend} cap`

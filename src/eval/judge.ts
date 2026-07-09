@@ -240,6 +240,9 @@ export function createJudge(opts: { apiKeys: Record<string, string> }) {
       }
       const usage = sumUsage(session.messages);
       session.dispose();
+      // `graded` = the model engaged the tool at all. A degenerate call with an empty grades array still
+      // counts as graded — that's a different failure mode than AC2's "never called the tool" and is out of
+      // this guard's scope.
       const grades =
         // biome-ignore lint/suspicious/noUnnecessaryConditions: runtime guard — the model may still not have called submit_grades after the nudge loop exhausts its retries; Biome's flow analysis can't see that the while loop can exit with `captured` still undefined
         captured?.grades ??
