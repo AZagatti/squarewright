@@ -35,6 +35,62 @@ export interface Grade {
   why: string;
 }
 
+/** One judge call's grades plus the token usage it billed, so a paid judge run can be spend-capped. */
+export interface JudgeResult {
+  grades: Grade[];
+  usage: { input: number; output: number };
+}
+
+/**
+ * Sum billable tokens across a session's messages for the spend guard — mirrors `sumTokens` in
+ * src/pi/worker.ts, including its `totalTokens - input` fallback for messages that report only a total. Feeds
+ * a money-safety cap, so it stays byte-compatible with the worker's accounting.
+ */
+export function sumUsage(messages: unknown[]): {
+  input: number;
+  output: number;
+} {
+  let input = 0;
+  let output = 0;
+  for (const m of messages as Array<{
+    usage?: { input?: number; output?: number; totalTokens?: number };
+  }>) {
+    const u = m.usage;
+    if (!u) {
+      continue;
+    }
+    input += u.input ?? 0;
+    output += u.output ?? Math.max(0, (u.totalTokens ?? 0) - (u.input ?? 0));
+  }
+  return { input, output };
+}
+
+export interface RepeatStat {
+  max: number;
+  median: number;
+  min: number;
+  values: number[];
+}
+
+/**
+ * Collapse repeated measurements of the same quantity into a min/median/max spread. The judge is
+ * stochastic — re-scoring a byte-identical report gives different totals (RESULTS.md records 8 then 7) —
+ * so a single judged pass is not a number. This turns K passes into an honest range.
+ */
+export function summarize(values: number[]): RepeatStat {
+  if (values.length === 0) {
+    return { max: 0, median: 0, min: 0, values };
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  // The `?? …` fallbacks are unreachable (the array is non-empty here) but keep strict indexed
+  // access happy without non-null assertions.
+  const hi = sorted[mid] ?? 0;
+  const lo = sorted[mid - 1] ?? hi;
+  const median = sorted.length % 2 === 0 ? (lo + hi) / 2 : hi;
+  return { max: sorted.at(-1) ?? 0, median, min: sorted[0] ?? 0, values };
+}
+
 const SYSTEM = `You grade a code reviewer against known ground-truth defects in a pull request. For each known
 defect, decide whether ANY of the reviewer's findings correctly identifies the SAME underlying problem — same
 root cause and location, not merely the same file or a superficial mention. Be strict: a finding that lands on
@@ -75,7 +131,7 @@ export function createJudge(opts: { apiKeys: Record<string, string> }) {
       loci: DefectLocus[],
       findings: JudgedFinding[],
       lane: ModelLane
-    ): Promise<Grade[]> {
+    ): Promise<JudgeResult> {
       const authStorage = AuthStorage.create();
       for (const [p, k] of Object.entries(opts.apiKeys)) {
         authStorage.setRuntimeApiKey(p, k);
@@ -137,16 +193,17 @@ export function createJudge(opts: { apiKeys: Record<string, string> }) {
           "Call submit_grades now, exactly once, with a grade for each known defect."
         );
       }
+      const usage = sumUsage(session.messages);
       session.dispose();
-      return (
+      const grades =
         // biome-ignore lint/suspicious/noUnnecessaryConditions: runtime guard — the model may still not have called submit_grades after the nudge loop exhausts its retries; Biome's flow analysis can't see that the while loop can exit with `captured` still undefined
         captured?.grades ??
         loci.map((_, i) => ({
           defectIndex: i,
           matched: false,
           why: "judge produced no grade",
-        }))
-      );
+        }));
+      return { grades, usage };
     },
   };
 }
