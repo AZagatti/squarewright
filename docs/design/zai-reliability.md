@@ -1,5 +1,8 @@
 # z.ai (GLM) reliability & latency — what we know, what we do
 
+> See also [`../reference/models-reasoning-and-cost.md`](../reference/models-reasoning-and-cost.md) for the broader
+> provider reference (reasoning control, caching, batch, OpenRouter, cost/process lessons).
+
 GLM models reach squarewright **only through the z.ai Coding Plan** (subscription, flat cost), never
 OpenRouter. That makes them the cheap default for the analysis pass, but the subscription endpoint has an
 **undocumented, real concurrency ceiling** (empirically ~5 in-flight requests before 429s) and ~40s/call

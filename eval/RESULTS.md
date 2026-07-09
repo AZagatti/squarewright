@@ -200,28 +200,35 @@ optimizing one number on one model). The primitive is ready; a default pairing h
 ## Model rank + reasoning + self-consistency + structurer (2026-07-09)
 
 A full sweep on the golden corpus (personas, `thinking off` unless noted, free z.ai structurer), scored by the
-**defect-match judge** (`scripts/judge.ts`, zai:glm-5.2) — the only trustworthy metric (file-level inflates ~1.5–4×).
-Single judged repeat per config; treat magnitudes as ±1–2 on 12 loci, but the ordering is robust and repeated.
+**defect-match judge** (`scripts/judge.ts`, zai:glm-5.2) — more trustworthy than file-level (which inflates ~1.5–4×), but
+see the caveats below: this is a **single judged repeat per config on 12 loci**, and the judge is **same-family as the
+top-ranked models**. Treat the rank as **directional, not settled** — the ordering was consistent across the session's
+runs, but a 6-vs-5-vs-4 spread at N=1 is within this harness's known variance (recall swings 1→3 on *identical* reruns —
+see the variance section above). **Do not switch the shipped default on this alone** — confirm first (below).
 
-### The headline: our default model was the single worst choice
+### The headline: our default model looks like a poor choice — but the exact numbers do NOT reproduce
 
-Reasoning-off, **defect-level recall / 12** (all free z.ai except deepseek):
+Reasoning-off, defect-level recall / 12, **from a single judged report per model** (the numbers below are ONE draw each):
 
-| model | defect recall | note |
+| model | defect recall (1 draw) | re-judge range (other saved runs) |
 |---|---|---|
-| **glm-5.2** | **6** | top tier |
-| **glm-4.5** | **6** | top tier — a cheap/fast "4x" model, surprisingly strong at review |
-| **deepseek/deepseek-v3.2** | **6** | paid, but ~$0.05/run with the free structurer |
-| glm-5 | 5 | |
-| glm-4.7 | 5 | |
-| glm-4.6 | 5 | |
-| glm-5.1 | 4 | |
-| glm-4.5-air | 3 | |
-| **glm-5-turbo** (the prior default) | **1** | dead last |
+| glm-5.2 | 6 | **2–7** (median ~4) — does not reproduce 6 |
+| glm-4.5 | 6 | (not re-audited) |
+| deepseek/deepseek-v3.2 | 6 | (not re-audited) |
+| glm-5 | 5 | **2–3** — never reached 5 |
+| glm-4.7 | 5 | file-level 6–9 across runs; N=1 sampling baseline judged **3** (self-inconsistent — see sampling note) |
+| glm-4.6 | 5 | **2–3** — never reached 5 |
+| glm-5.1 | 4 | (not re-audited) |
+| glm-4.5-air | 3 | (not re-audited) |
+| **glm-5-turbo** (the *current* default) | **1** | consistently low (0–1) across runs |
 
-**Switching the default from glm-5-turbo → glm-5.2 / glm-4.5 takes real recall 1 → 6 (6×), for free.** This is the
-biggest quality lever found, and it's just model selection. It also **doubles the project's prior best-ever** (~3/12).
-File-level scoring had hidden this — glm-5-turbo looks "clean" (few findings) but is nearly blind; the judge exposes it.
+**Honest read (corrected after an accuracy audit re-ran the judge on the saved reports):** the fine ordering (6 vs 5 vs 4)
+is **noise** — re-judging other saved runs gives glm-5.2 = 2–7, glm-5 = 2–3, glm-4.6 = 2–3. What *is* directionally robust:
+**glm-5-turbo reasoning-off sits consistently at the bottom (0–1/12)** and several capable models score higher on average —
+but with large run-to-run variance, so the "6/12" magnitude and the exact rank are **NOT established.** There is no
+directly-comparable defect-judged baseline to compare against (the old "~3/12" was a *file-level*, since-debunked figure).
+**This needs ≥3 judged repeats per model + a different-family judge before it can drive a default change.** File-level
+scoring still misled (glm-5-turbo looks "clean" but is near-blind); the judge is a better metric, just not at N=1.
 
 ### Reasoning helps weak models, hurts capable ones
 
@@ -239,10 +246,12 @@ the operating point**; "max reasoning" is not a quality mode. Reasoning-on also 
 ### Self-consistency sampling — a real recall lever (with a precision cost)
 
 `--samples N` runs each pass N times and unions the findings (`--consensus K` keeps only findings recurring in ≥K
-samples). On glm-5-turbo, N=5 union lifted **defect recall 0 → 2** and on glm-4.7 **3 → 8** — the miss-class map showed
-most misses are "reachable but rare," and union recovers them. Cost: false positives rise with the model's base noise
-(clean on glm-5-turbo, a firehose on noisier models), and `consensus≥2` at N=5 over-prunes (real catches are as rare as
-noise at that N). It's a genuine recall knob for the precision↔recall curve; validate per-model before enabling.
+samples). On glm-5-turbo, N=5 union lifted **defect recall 0 → 2**, and on glm-4.7 a separate run went **3 → 8** (its N=1
+here judged 3 — different draw than the rank table's 5, which is exactly the variance problem above). An informal read of
+which cases flipped between N=1 and N=5 suggested most misses are "reachable but rare" (union recovers them) rather than
+routing/prompt gaps — but this "miss-class" read was never persisted as a checkable artifact (issue #45's AC1). Cost:
+false positives rise with the model's base noise, and `consensus≥2` at N=5 over-prunes (real catches are as rare as noise
+at that N). A genuine recall knob for the precision↔recall curve, but small-N; validate per-model before enabling.
 
 ### Structurer default → free z.ai (cost footgun fixed)
 
@@ -253,7 +262,11 @@ calls). Changed `DEFAULT_STRUCTURER` to free **zai/glm-5-turbo**, which our own 
 cheapest configured lane's provider (coherent with any setup), and save the pass-1 analysis text so structurer models can
 be compared **offline** without re-running analysis.
 
-### Honest caveats
-- Single judged repeat per config, 12 loci — directional; the ordering repeated across the session's runs, magnitudes may shift ±1–2.
-- deepseek numbers are one paid model on OpenRouter; the GLM numbers are z.ai free-tier.
-- The reasoning conclusion is defect-judged and consistent across GLM + deepseek, but "capable vs weak" is a coarse axis.
+### Honest caveats (read before acting on any number here)
+- **Single judged repeat per config, 12 loci** — directional only; identical reruns of one config have swung recall 1→3 in this harness (variance section above). A 6/5/4 spread at N=1 is inside that noise.
+- **The judge (glm-5.2) is same-family as the top-ranked models** (glm-5.2, glm-4.5, and 5 of 8 candidates are GLM). A judge can favor its own family's style without cheating; deepseek tying at 6 is *some* counter-evidence, but this rank has **not** been cross-validated by a different-family judge (e.g. an Anthropic/OpenRouter-hosted one).
+- **One locus is a broken golden case:** `ci-moby-52727`'s described defect isn't in the diff (the observable `id-token` line is commented-out/defensive; the real bug lives in an *external* reusable workflow). So every "X/12" here has one questionable locus — flagged for corpus rework.
+- deepseek numbers are one paid model on OpenRouter (its reasoning-on run was *not* truncated by the 32k `maxTokens` cap — max ~15k tokens/case — so the 6→3 drop is real, not a cap artifact). GLM numbers are z.ai free-tier.
+- "capable vs weak" is a coarse axis; the reasoning conclusion rests mainly on glm-5.2 + deepseek.
+
+**Before switching the shipped default model** (`src/init/default-config.ts`), get **≥3 judged repeats** and a **different-family judge** — this is a hard prerequisite, not a nice-to-have.

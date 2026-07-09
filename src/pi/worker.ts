@@ -207,7 +207,13 @@ function sumCost(messages: unknown[]): number {
   return c;
 }
 
-/** Sum billable tokens (output includes reasoning tokens) — for the eval's immediate, lag-free spend guard. */
+/**
+ * Sum billable tokens (output includes reasoning tokens — Pi's `usage.output` = `completion_tokens`, which per
+ * OpenAI-compat already counts reasoning) for the eval's immediate, lag-free spend guard. It still counts only the
+ * usage Pi reports for the FINAL attempt: throttle-driven retries re-send context and re-bill without being seen
+ * here, so on a rate-limited provider the estimate can lag real spend. Bound OpenRouter reasoning cost with
+ * `max_tokens` at the source too — see docs/reference/models-reasoning-and-cost.md.
+ */
 function sumTokens(messages: unknown[]): { input: number; output: number } {
   let input = 0;
   let output = 0;

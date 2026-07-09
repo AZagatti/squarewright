@@ -61,7 +61,7 @@ postable*, then the depth that makes it good.
 | **M4** | **Onboarding — two first-class paths** | (a) **low-friction GitHub Action + config** (drop a workflow + `.squarewright.yml` pointing at the versioned harness); (b) **CLI binary + `init`**. Plus `doctor` + config loading. `init`+binary is **not** the only path. |
 | **M5** | **Multi-persona routing / pairing / batching engine** | glob routing and solo/batched passes drive the eval and wire to `.squarewright.yml`. Correlated-pair batching is a config **primitive** (`pass` group-key), not a default: measurement showed batching is a directional single-model precision lever whose specific pairings aren't corpus-validated (no golden case co-touches two domains), so no default pairing ships — the primitive stays opt-in pending a multi-domain corpus case. Lands *after* the review → post → re-review path works. |
 | **M6** | **Local feedback loop** — 👍/👎 (collaborator-weighted), flagged-line-changed-later, suggestion-accepted → per-rule/persona accept-rate | see [`design/feedback-and-data.md`](design/feedback-and-data.md); blocked on a signal-storage decision |
-| **M7** | **Honest measurement** — eval hardening + the cheap-model rank on the locked setup | **first judged rank done (2026-07-09)** — glm-5.2/glm-4.5/deepseek-v3.2 (6/12) vastly beat the old default glm-5-turbo (1/12); reasoning helps weak models but hurts capable ones. See `eval/RESULTS.md` + [`design/models-reasoning-and-cost`](reference/models-reasoning-and-cost.md). Remaining: confirm with ≥3 judged repeats. |
+| **M7** | **Honest measurement** — eval hardening + the cheap-model rank on the locked setup | **first judged rank (2026-07-09) — directional only, does NOT reproduce at N=1.** The current default glm-5-turbo sits consistently at the bottom (0–1/12); several capable models score higher on average but with large variance (re-judging saved runs: glm-5.2 = 2–7, glm-5/glm-4.6 = 2–3), so the exact rank/magnitude is unestablished. Reasoning seems to help weak models, hurt capable ones. See `eval/RESULTS.md` + [`reference/models-reasoning-and-cost`](reference/models-reasoning-and-cost.md). **Blocker before any default change: ≥3 judged repeats + a different-family judge.** |
 
 The low-friction Action/config path from M4 is also the vehicle that runs M1–M3 in CI for dogfooding, so a
 minimal version of it lands alongside M1–M2; M4 is the polish that makes **both** onboarding paths first-class.
@@ -71,16 +71,20 @@ minimal version of it lands alongside M1–M2; M4 is the polish that makes **bot
 Concrete, tracked items the model-rank/reasoning/cost session surfaced (full context: `eval/RESULTS.md`,
 [`reference/models-reasoning-and-cost.md`](reference/models-reasoning-and-cost.md)):
 
-- **Switch the dogfood default model** glm-5-turbo → **glm-5.2 or glm-4.5** (reasoning-off) — the biggest free quality
-  lever found (real recall 1/12 → 6/12). Left as a product decision (which model; speed/cost tradeoff).
-- **Fix the eval spend guard** to count reasoning tokens (`worker.ts` `sumTokens` excludes them → 6.5× undercount on OR
-  reasoning models). Until then, bound OR reasoning cost with `max_tokens`, not the token estimate.
+- **Candidate default-model switch** glm-5-turbo → a capable model reasoning-off (glm-5.2 / glm-4.5 / deepseek-v3.2 scored
+  best in one draw) — a promising free quality lever, but the numbers **don't reproduce at N=1** (glm-5.2 re-judged 2–7).
+  Prerequisite before changing `.squarewright.yml`: **≥3 judged repeats + a different-family judge** (the current judge is
+  same-family as the winners). Then a product decision (which model; speed/cost tradeoff).
+- **Harden the OR spend guard against retry re-billing** — the token estimate counts only the final attempt's usage, so
+  throttle-driven retries (which re-send context and re-bill) undercount real spend. (It does NOT miscount reasoning tokens
+  — Pi's `usage.output` already includes them.) Until then, bound OR reasoning cost with `max_tokens` at the source and
+  don't over-parallelize a rate-limited provider.
 - **Improve the structurer** — even free, it runs every pass. Options: default it to the cheapest configured lane's
   provider (coherent with any setup, not hardcoded z.ai); save the pass-1 analysis text to reports so structurer models
   can be compared **offline** without re-running analysis.
 - **Self-consistency sampling** (`--samples`/`--consensus`, shipped as an eval knob) is a real recall lever (union
   recovers "reachable but rare" misses) — evaluate promoting it to the review path, per-model, with a precision guard.
-- **Recall is the bottleneck** (issue #45) — the miss-class map shows most misses are model-ceiling / reachable-but-rare,
+- **Recall is the bottleneck** (issue #45) — an informal read of the sampling runs suggested most misses are model-ceiling / reachable-but-rare (not yet persisted as an artifact — #45 AC1),
   not routing/prompt gaps; grounding tested, didn't help the reasoning-bound cases.
 
 ## Later bets — v0.x depth

@@ -163,11 +163,16 @@ cases:
     kind: bugfix
     size: "+67/-0"
     label: has-issue
-    note: "Adds PR-review workflows requesting `id-token: write`, but org/repo policy only allows `id-token: none`, so every run fails immediately. Should have verified the OIDC permission was grantable."
-    evidence: "Reverted same day by moby/moby#53006: 'the workflow is requesting id-token: write, but is only allowed id-token: none'."
+    # FLAGGED (2026-07-09, sqw review): this case is NOT diff-reviewable and is a candidate to DROP or relabel clean.
+    # The offending `id-token: write` lives in an EXTERNAL reusable workflow (docker/docker-agent-action/.../review-pr.yml),
+    # NOT in this diff — the in-diff `#id-token: write` line is commented-out/defensive. A correct diff reviewer finds
+    # nothing here; the old note/about rewarded keyword-matching the comment. Rewritten to describe the real (external)
+    # cause so it no longer credits a string match. Every "X/12" in RESULTS.md carries this one questionable locus.
+    note: "The PR wires up a reusable review workflow whose EXTERNAL definition requests `id-token: write` (disallowed by policy), failing every run. The in-diff code only references that external workflow and has the local id-token line commented out — the actual defect is not visible in this diff."
+    evidence: "Reverted same day by moby/moby#53006: 'the workflow is requesting id-token: write... https://github.com/docker/docker-agent-action/pull/40 should fix this' — i.e. the fix is in the external action repo, not moby."
     expect_loci:
       - path: .github/workflows/pr-review.yml
-        about: "Requests id-token: write that policy disallows (id-token: none), failing every run."
+        about: "Invokes an external reusable workflow that itself requests id-token: write (disallowed) — not detectable from this diff alone; the local id-token line here is commented out."
   - id: config-astro-15139
     repo: withastro/astro
     pr: 15139
