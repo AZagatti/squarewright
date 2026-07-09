@@ -7,8 +7,10 @@
 > a hit even if it described a different bug. Both are now fixed: the worker is **two-pass** (reason → structure)
 > so it can't silently drop, and a **defect-match judge** (`scripts/judge.ts`) scores real root-cause matches.
 > On the same personas-off run, the judge corrected **file-recall 5/12 → defect-recall 3/12** (~25%, in line
-> with trimwire's ~27% reality). Also: Pi's reported cost badly undercounts reasoning tokens — real spend is now
-> read from OpenRouter's credits balance. Re-runs on the fixed harness are the real numbers; the table below is
+> with trimwire's ~27% reality). Also: Pi's reported `usage.cost` is unreliable (often left at 0/unpopulated), so real
+> spend is read from OpenRouter's credits balance instead. (Correction 2026-07-09: the token *count* `usage.output` DOES
+> include reasoning tokens — `openai-completions.js:917` — so this is a cost-field-population issue, not a reasoning-token
+> undercount; earlier phrasing here overstated it.) Re-runs on the fixed harness are the real numbers; the table below is
 > kept only as the record of what led to the fixes.
 
 Measurements from tuning the review *setup* against the golden corpus (not a model ranking — that comes once
@@ -76,8 +78,10 @@ Real defect-recall over 12 has-issue loci; noise = off-target findings; cost = r
   trimwire's ~27% reality). Our default dev model.
 - **deepseek-v4-flash** tops recall (5/12) but at $0.96/run (forced reasoning) and ~34 noise — not viable as-is.
 - Model choice moves recall only within a narrow 1–5/12 band. **Precision is the lever**, and it's controllable
-  without a bigger model: the **structurer's selectivity** dominated noise (glm-5-turbo structurer ~1 vs
-  qwen3-coder ~24–34), independent of the analysis model.
+  without a bigger model. Noise tracked with the structurer (glm-5-turbo structurer ~1 vs qwen3-coder ~24–34) —
+  **BUT that comparison is confounded** (2026-07-09): the low-noise glm-5-turbo-structurer rows also used z.ai
+  *analysis* models, and the qwen-structurer rows used noisier OpenRouter analysis models. No same-analysis-model,
+  swap-only-the-structurer comparison exists, so "the structurer dominates noise" is not established.
 - The **file metric inflated recall ~2–4×** vs the Claude judge — always judge on defect-match.
 
 **Caveats:** single run each (variance), 12 loci (small), no grounding, mixed structurers (a confound — the
@@ -257,16 +261,18 @@ at that N). A genuine recall knob for the precision↔recall curve, but small-N;
 
 Pass-2 structuring ran on a **paid** OpenRouter default (`qwen3-coder-30b`) — it fires on every pass of every review, so
 it quietly dominated cost (a full-corpus sweep spent ~$3 on structuring alone; the eval's own runs racked up thousands of
-calls). Changed `DEFAULT_STRUCTURER` to free **zai/glm-5-turbo**, which our own data shows is also a *better* structurer
-(~1 noise vs qwen's ~24–34). A z.ai config now forces no OpenRouter at all. Follow-up ideas: default the structurer to the
+calls). Changed `DEFAULT_STRUCTURER` to free **zai/glm-5-turbo**. The change is justified on **cost** (free vs paid, and
+it runs every pass) — *not* on quality: the earlier "glm-5-turbo structurer = ~1 noise vs qwen's ~24–34" reading is
+**confounded** with analysis-model choice (no same-analysis structurer-only comparison exists), so we do not claim it's a
+better structurer, only a free one that worked reliably all session. A z.ai config now forces no OpenRouter at all. Follow-up ideas: default the structurer to the
 cheapest configured lane's provider (coherent with any setup), and save the pass-1 analysis text so structurer models can
 be compared **offline** without re-running analysis.
 
 ### Honest caveats (read before acting on any number here)
-- **Single judged repeat per config, 12 loci** — directional only; identical reruns of one config have swung recall 1→3 in this harness (variance section above). A 6/5/4 spread at N=1 is inside that noise.
-- **The judge (glm-5.2) is same-family as the top-ranked models** (glm-5.2, glm-4.5, and 5 of 8 candidates are GLM). A judge can favor its own family's style without cheating; deepseek tying at 6 is *some* counter-evidence, but this rank has **not** been cross-validated by a different-family judge (e.g. an Anthropic/OpenRouter-hosted one).
-- **One locus is a broken golden case:** `ci-moby-52727`'s described defect isn't in the diff (the observable `id-token` line is commented-out/defensive; the real bug lives in an *external* reusable workflow). So every "X/12" here has one questionable locus — flagged for corpus rework.
-- deepseek numbers are one paid model on OpenRouter (its reasoning-on run was *not* truncated by the 32k `maxTokens` cap — max ~15k tokens/case — so the 6→3 drop is real, not a cap artifact). GLM numbers are z.ai free-tier.
-- "capable vs weak" is a coarse axis; the reasoning conclusion rests mainly on glm-5.2 + deepseek.
+- **The numbers do not reproduce, at TWO levels.** (a) Analysis variance: different saved runs of the same config judge differently (glm-5.2 across audits spanned **2–8**, not the "2–7" one audit reported). (b) **The judge itself is stochastic** — re-judging the *identical* report gave 8 then 7. So the "median ~4 / range 2–7" figures are themselves unstable; treat them as "wide and unsettled," not a closed interval.
+- **What actually survives repeated re-judging:** glm-5-turbo reasoning-off scored **0/12 three times** (worst, robust); its reasoning-high scored **3/12** (reasoning rescues the weak model). The rest is within measurement noise.
+- **The judge (glm-5.2) is same-family as the top-ranked models** (5 of 8 candidates are GLM) — self-preference risk, not cross-validated by a different-family judge.
+- **`ci-moby-52727` is a structurally unsolvable locus** — it scored `defect=0/1` in *every* judged report (real bug is in an external workflow, not the diff; the local `id-token` line is commented-out). It's now **relabeled `clean` in the manifest**, so the effective ceiling is **11 has-issue loci, not 12** — read the "/12" figures above as "/11 achievable" (they overstate headroom-to-perfect, though not relative rank, since it was a constant miss for all).
+- deepseek numbers are one paid model on OpenRouter (its reasoning-on run was *not* truncated by the 32k cap — max ~15k tokens/case). GLM numbers are z.ai free-tier. "capable vs weak" is a coarse axis (the reasoning-hurts-capable half rests mainly on deepseek's 6→3; glm-5.2 was flat at high, only max dropped).
 
-**Before switching the shipped default model** (`src/init/default-config.ts`), get **≥3 judged repeats** and a **different-family judge** — this is a hard prerequisite, not a nice-to-have.
+**Before switching the shipped default model** (`src/init/default-config.ts`), you need a genuinely reproducible setup — **≥3 analysis repeats × multiple judge re-scores per report, a pinned/low-temperature or different-family judge, and ci-moby fixed** — not just "≥3 repeats." As it stands this is a *lead*, not a result.

@@ -6,10 +6,15 @@ Written after a long measurement session that produced the model rank in [`eval/
 Read this before running paid-provider evals or touching reasoning/structurer config.
 
 ## TL;DR decisions this produced
-- **Default analysis model:** glm-5-turbo is the *worst* reviewer we measured (1/12 defect recall). Use a capable model
-  reasoning-**off**: glm-5.2 / glm-4.5 / deepseek-v3.2 all hit 6/12. (Dogfood default change is a tracked follow-up.)
-- **Reasoning:** on for *weak* models only. It hurts capable ones (glm-5.2, deepseek both drop with reasoning on).
+- **Default analysis model:** glm-5-turbo scored *worst* (reasoning-off it judged 0–1/12, robust across reruns). Capable
+  models (glm-5.2 / glm-4.5 / deepseek-v3.2) scored higher — but the exact numbers **do NOT reproduce** (glm-5.2 spanned
+  2–8 across audits; the judge is itself stochastic). So this is a **lead, not a result** — do NOT switch the default on
+  it; it needs a reproducible re-measure (see `eval/RESULTS.md` caveats). What's solid: glm-5-turbo is a poor default.
+- **Reasoning:** on for *weak* models only (turbo 0→3 was the most reproducible signal). It does **not** help capable
+  models and may hurt (deepseek halved 6→3; glm-5.2 was flat at high, dropped only at max) — small-N, treat as directional.
 - **Default structurer:** free `zai/glm-5-turbo` (was paid `openrouter/qwen3-coder-30b` — a per-pass cost footgun).
+  Justified on **cost** (free, runs every pass), *not* quality — the old "better structurer / lower noise" reading is
+  confounded with analysis-model choice (no same-analysis, structurer-only comparison exists).
 
 ## z.ai (Zhipu / BigModel — the GLM family)
 
