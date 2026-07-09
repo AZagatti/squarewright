@@ -65,6 +65,23 @@ describe("loadReviewRules", () => {
     );
   });
 
+  test("parses the block-list globs form (- item lines), not only inline [ ]", async () => {
+    const blockList = `---
+description: Block form
+globs:
+  - "src/**"
+  - test/**
+---
+
+- Rule body.`;
+    const reader = fakeReader(
+      { ".review-rules": ["- block.md"] },
+      { ".review-rules/block.md": blockList }
+    );
+    const rules = await loadReviewRules(reader);
+    expect(rules[0]?.globs).toEqual(["src/**", "test/**"]);
+  });
+
   test("a rule with no globs frontmatter loads with an empty globs list", async () => {
     const reader = fakeReader(
       { ".review-rules": ["- always.md"] },

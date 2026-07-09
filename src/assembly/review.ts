@@ -98,14 +98,17 @@ export async function runReview(
   });
   const passes = buildPasses(selected);
 
-  const rulePreamble = opts.repoReader
-    ? renderReviewRules(
-        selectReviewRules(
-          await loadReviewRules(opts.repoReader),
-          context.files.map((f) => f.path)
+  // Skip the rule load entirely when nothing will run (e.g. a docs-only PR selects no personas) — no pass
+  // means no prompt to inject into, so the dir listing + reads would be pure waste.
+  const rulePreamble =
+    opts.repoReader && passes.length > 0
+      ? renderReviewRules(
+          selectReviewRules(
+            await loadReviewRules(opts.repoReader),
+            context.files.map((f) => f.path)
+          )
         )
-      )
-    : "";
+      : "";
 
   // A finding's `source` is its PASS id; attribute it to the pass's persona label(s) for the review output.
   const lensLabel = (id: string) =>

@@ -60,6 +60,8 @@ function parseGlobs(frontmatterLines: string[]): string[] {
     const inner = after
       .replace(LEADING_BRACKET_RE, "")
       .replace(TRAILING_BRACKET_RE, "");
+    // Assumes globs contain no literal comma. Safe: the shared `matchGlob` has no brace-expansion, so a
+    // `{a,b}` glob has no meaning here anyway; use the block-list form for anything exotic.
     return inner
       .split(",")
       .map((x) => stripQuotes(x.trim()))
