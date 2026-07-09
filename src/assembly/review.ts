@@ -17,7 +17,12 @@ import {
 import { renderSticky } from "../output/render.js";
 import { buildPasses, type ReviewPass } from "../personas/defaults.js";
 import { selectPersonas } from "../personas/routing.js";
-import type { PiWorker } from "../pi/session.js";
+import type { PiWorker, RepoReader } from "../pi/session.js";
+import {
+  loadReviewRules,
+  renderReviewRules,
+  selectReviewRules,
+} from "../rules/review-rules.js";
 import type { AssemblyConfig } from "./config.js";
 
 /** Max review lenses per change-set — keeps cost and attention bounded. */
@@ -73,17 +78,34 @@ function laneForPass(
   return lane;
 }
 
-/** Compose an Assembly over a PR into review output. No network — inject a `PiWorker`. */
+/**
+ * Compose an Assembly over a PR into review output. No network — inject a `PiWorker`.
+ *
+ * When `opts.repoReader` is supplied, Tier-A project rules (`.review-rules/*.md`) relevant to the changed files
+ * are loaded and prepended to every pass prompt as trusted, precedence-taking context (ADR-0005 §1). The reader
+ * MUST be bound to the trusted **base** revision — see the trust note in `src/rules/review-rules.ts`. With no
+ * reader, behavior is unchanged.
+ */
 export async function runReview(
   context: ReviewContext,
   config: AssemblyConfig,
-  worker: PiWorker
+  worker: PiWorker,
+  opts: { repoReader?: RepoReader } = {}
 ): Promise<ReviewOutput> {
   const { personas } = config;
   const selected = selectPersonas(personas, context.files, {
     cap: MAX_PERSONAS,
   });
   const passes = buildPasses(selected);
+
+  const rulePreamble = opts.repoReader
+    ? renderReviewRules(
+        selectReviewRules(
+          await loadReviewRules(opts.repoReader),
+          context.files.map((f) => f.path)
+        )
+      )
+    : "";
 
   // A finding's `source` is its PASS id; attribute it to the pass's persona label(s) for the review output.
   const lensLabel = (id: string) =>
@@ -112,7 +134,7 @@ export async function runReview(
       context,
       lane,
       persona: pass.id,
-      systemPrompt: pass.prompt,
+      systemPrompt: rulePreamble + pass.prompt,
     });
     all.push(...result.findings);
     if (result.usage?.summary?.trim()) {

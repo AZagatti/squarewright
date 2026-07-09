@@ -81,6 +81,16 @@ single maintainer, **public** repo.
 - Run the CLI locally: `bun run dev -- <args>`
 - Eval (free z.ai default): see the ai-memory ops page for the exact command + the pre-spend check.
 
+## Project review rules (`.review-rules/`)
+Repo-specific conventions the reviewer loads as **trusted, precedence-taking** context (ADR-0005 Tier A, M6).
+Each `.review-rules/*.md` file carries `description`/`globs` frontmatter; the loader (`src/rules/review-rules.ts`)
+selects the rules whose `globs` match a PR's changed files — deterministically, reusing the persona glob matcher,
+**no LLM** — and prepends them to the review prompts. A rule that explicitly permits something a persona would
+flag wins. Rules are maintainer-authored via a normal reviewed change (never auto-committed); when the reviewer
+wants a new rule it posts the text as a suggestion to paste here, it does not write the file. **Trust:** the
+production reader must be bound to the **base** (merged) revision — a head-revision rule added by an untrusted PR
+could silently suppress findings. This repo dogfoods it via [`.review-rules/architecture.md`](.review-rules/architecture.md).
+
 ## Where things live
 See the **Module layout** table in [`docs/ROADMAP.md`](docs/ROADMAP.md) — kept there as the single source, not
 duplicated here.
