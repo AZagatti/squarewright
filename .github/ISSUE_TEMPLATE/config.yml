@@ -1,0 +1,7 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Not sure this is scoped yet?
+    url: https://github.com/AZagatti/squarewright/blob/main/docs/WORKFLOW.md#ready-issue-template
+    about: >-
+      Read the Ready-issue template and stop conditions first. An unscoped idea belongs in
+      docs/ROADMAP.md's "Follow-ups" section, not a blank issue.
