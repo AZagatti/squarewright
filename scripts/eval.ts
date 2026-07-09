@@ -36,6 +36,7 @@ import {
   estimatePassSpend,
   openrouterPrice,
   openrouterReasoningRisk,
+  parseMaxSpend,
 } from "./lib/spend-guard.js";
 import { formatRange, summarize } from "./lib/variance.js";
 
@@ -376,7 +377,7 @@ async function main() {
   // REAL-TIME SPEND CIRCUIT BREAKER — the only reliable protection. Metadata (mandatory/efforts) missed
   // mimo-v2.5, which looked safe but force-reasoned and burned ~$6.6. This checks actual OR credits during
   // the run and aborts the moment this run's spend exceeds --max-spend (default $0.50).
-  const maxSpend = Number(arg("max-spend") ?? 0.5);
+  const maxSpend = parseMaxSpend(arg("max-spend"), 0.5);
   const analysisPrice =
     provider === "openrouter" ? openrouterPrice(model) : { in: 0, out: 0 };
   const structModelId = structurerLane?.model ?? "glm-5-turbo";

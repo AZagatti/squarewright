@@ -27,6 +27,7 @@ import {
 import {
   makeSpendGuard,
   openrouterPrice,
+  parseMaxSpend,
   type SpendGuard,
   type TokenPrice,
 } from "./lib/spend-guard.js";
@@ -87,17 +88,6 @@ function parseRepeats(): number {
     throw new Error(
       `--judge-repeats must be a positive integer (got "${raw}")`
     );
-  }
-  return n;
-}
-
-/** Non-negative `--max-spend` (default $0.25). Rejects a malformed value — `NaN` would make `spent > NaN`
- *  always false, silently disabling the paid-judge cap (the one bug class the money rule can't tolerate). */
-function parseMaxSpend(): number {
-  const raw = arg("max-spend");
-  const n = raw === undefined ? 0.25 : Number(raw);
-  if (!Number.isFinite(n) || n < 0) {
-    throw new Error(`--max-spend must be a non-negative number (got "${raw}")`);
   }
   return n;
 }
@@ -400,7 +390,7 @@ async function main() {
     lane.provider === "openrouter"
       ? openrouterPrice(lane.model)
       : { in: 0, out: 0 };
-  const maxSpend = parseMaxSpend();
+  const maxSpend = parseMaxSpend(arg("max-spend"), 0.25);
   const ctx: JudgeCtx = {
     byId: new Map(manifest.map((c) => [c.id, c])),
     guard: makeSpendGuard(maxSpend),

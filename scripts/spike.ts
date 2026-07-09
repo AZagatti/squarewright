@@ -22,6 +22,7 @@ import {
   makeSpendGuard,
   openrouterPrice,
   openrouterReasoningRisk,
+  parseMaxSpend,
 } from "./lib/spend-guard.js";
 
 const THINKING = (process.env.SW_THINKING ?? "off") as ThinkingLevel;
@@ -101,7 +102,7 @@ async function main() {
 
   // Local spend guard: paid runs are capped by --max-spend (default $0.50). Some reasoning models can't disable
   // reasoning and burn far more than Pi's usage.cost reports, so we estimate from tokens against real prices.
-  const maxSpend = Number(arg("max-spend") ?? 0.5);
+  const maxSpend = parseMaxSpend(arg("max-spend"), 0.5);
   const analysisPrice = openrouterPrice(model);
   const structPrice = openrouterPrice("qwen/qwen3-coder-30b-a3b-instruct");
   const guard = makeSpendGuard(maxSpend);
