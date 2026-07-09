@@ -21,9 +21,12 @@ Give it exactly three things and the strict rule:
 
 1. The **report** (`eval/reports/*.json`) — `results[].findings[]` are the reviewer's findings `{path, line, message}`.
 2. The **ground truth** (`eval/golden/manifest.yaml`) — has-issue cases carry `expect_loci[]` = `{path, about, evidence?}`.
-3. The **grading contract**, verbatim from `src/eval/judge.ts`'s SYSTEM prompt: *for each known defect, decide
-   whether ANY of that case's findings identifies the SAME underlying problem — same root cause AND location,
-   not merely the same file or a superficial mention. Be strict.*
+3. The **grading contract**, verbatim from `src/eval/judge.ts`'s `SYSTEM` prompt (only the trailing
+   `Call submit_grades exactly once` is dropped — a subagent returns the count in prose instead):
+
+   > For each known defect, decide whether ANY of the reviewer's findings correctly identifies the SAME
+   > underlying problem — same root cause and location, not merely the same file or a superficial mention. Be
+   > strict: a finding that lands on the right file but describes a different issue does NOT match.
 
 Tell it to grade each locus **independently before summing**, be honest about close calls, and skip clean cases.
 Note `ci-moby-52727` is relabeled `clean` (its real defect is external) → **11 has-issue loci** across 8 cases.
