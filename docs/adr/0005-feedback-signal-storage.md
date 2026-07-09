@@ -33,12 +33,15 @@ Two tiers, deliberately different mechanisms:
   `src/personas/routing.ts`'s glob matcher to select the rules whose `globs` match the PR's changed files, and
   inject their text into the persona `systemPrompt`s. Same tested pattern as persona routing; no new tool, no new
   trust surface. **This is the first PR.**
-- **Tier B — freeform docs** (`AGENTS.md`, `.cursor/rules/`, `docs/`, which carry no glob metadata): a Worker
-  reads the ones relevant to the changed files using the `read_repo_file`/`list_repo_dir` Pi tools the analysis
-  pass **already has** (`src/pi/worker.ts` `buildRepoTools`) — LP's exact "list dir, read what's relevant"
-  mechanism, natively available because Squarewright runs on Pi (trimwire, a thin harness, couldn't). This is
-  ordinary **context-gathering**, the same judgment Pass 1 already exercises reading files — *not* a deciding
-  path, so it doesn't conflict with "no LLM decides a change." Fast-follow after Tier A.
+- **Tier B — freeform docs** (`AGENTS.md`, `docs/`, `.cursor/rules/`, which carry no glob metadata):
+  **deterministic and zero-LLM, like Tier A.** A `.squarewright.yml` `contextDocs` list maps changed-file globs
+  → an existing doc path; the docs whose globs match the PR's changed files are read via the same trusted
+  base-revision `fsRepoReader` and injected as **background context** (below Tier A's precedence rules). This
+  pulls in docs the maintainer already wrote without rewriting them as `.review-rules`, adds no new trust
+  surface, and keeps grounding **off by default** (Hard Rule #5's measurement default) — unlike model-driven
+  mining via the Worker's `read_repo_file`/`list_repo_dir` tools, which would flip grounding on and owe a
+  measurement first. That model-driven variant stays available later as an explicit, measured grounding option.
+  Fast-follow after Tier A.
 
 **Precedence is prompt-framing, not a new primitive:** project-rule text is placed with an explicit "these
 override conflicting persona guidance" instruction (as LP's "a linter-disable comment suppresses a finding" is

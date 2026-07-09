@@ -46,6 +46,14 @@ export const assemblyConfigSchema = z.object({
       maxToolCalls: z.number().int().positive().optional(),
     })
     .optional(),
+  /**
+   * Tier-B background docs (ADR-0005 §1): existing freeform docs (AGENTS.md, docs/…) to inject as context when
+   * the PR's changed files match `globs`. Read deterministically (zero-LLM) from the trusted base checkout and
+   * injected below Tier-A `.review-rules` (which take precedence). Off unless configured.
+   */
+  contextDocs: z
+    .array(z.object({ globs: z.array(z.string()), path: z.string() }))
+    .optional(),
   /** default lane id when a persona doesn't specify one */
   defaultLane: z.string().optional(),
   /** local feedback loop toggles */

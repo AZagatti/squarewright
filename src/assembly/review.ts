@@ -18,6 +18,7 @@ import { renderSticky } from "../output/render.js";
 import { buildPasses, type ReviewPass } from "../personas/defaults.js";
 import { selectPersonas } from "../personas/routing.js";
 import type { PiWorker, RepoReader } from "../pi/session.js";
+import { loadContextDocs, renderContextDocs } from "../rules/context-docs.js";
 import {
   loadReviewRules,
   renderReviewRules,
@@ -81,10 +82,11 @@ function laneForPass(
 /**
  * Compose an Assembly over a PR into review output. No network — inject a `PiWorker`.
  *
- * When `opts.repoReader` is supplied, Tier-A project rules (`.review-rules/*.md`) relevant to the changed files
- * are loaded and prepended to every pass prompt as trusted, precedence-taking context (ADR-0005 §1). The reader
- * MUST be bound to the trusted **base** revision — see the trust note in `src/rules/review-rules.ts`. With no
- * reader, behavior is unchanged.
+ * When `opts.repoReader` is supplied, project context relevant to the changed files is prepended to every pass
+ * prompt (ADR-0005 §1): Tier-A `.review-rules/*.md` as trusted, precedence-taking rules, then Tier-B
+ * `config.contextDocs` (existing docs like `AGENTS.md`) as background context. The reader MUST be bound to the
+ * trusted **base** revision — see the trust note in `src/rules/review-rules.ts`. With no reader, behavior is
+ * unchanged. The reader is used for context loading only; it is never forwarded to the Worker (grounding stays off).
  */
 export async function runReview(
   context: ReviewContext,
@@ -98,17 +100,24 @@ export async function runReview(
   });
   const passes = buildPasses(selected);
 
-  // Skip the rule load entirely when nothing will run (e.g. a docs-only PR selects no personas) — no pass
-  // means no prompt to inject into, so the dir listing + reads would be pure waste.
-  const rulePreamble =
-    opts.repoReader && passes.length > 0
-      ? renderReviewRules(
-          selectReviewRules(
-            await loadReviewRules(opts.repoReader),
-            context.files.map((f) => f.path)
-          )
-        )
-      : "";
+  // Load project context to prepend to every pass, only when something will run (a docs-only PR selects no
+  // personas → no prompt to inject into, so the reads would be pure waste). Tier-A `.review-rules` (precedence)
+  // first, then Tier-B `contextDocs` (background) — both from the trusted base checkout via `opts.repoReader`.
+  let preamble = "";
+  if (opts.repoReader && passes.length > 0) {
+    const changedPaths = context.files.map((f) => f.path);
+    const rules = renderReviewRules(
+      selectReviewRules(await loadReviewRules(opts.repoReader), changedPaths)
+    );
+    const docs = renderContextDocs(
+      await loadContextDocs(
+        opts.repoReader,
+        config.contextDocs ?? [],
+        changedPaths
+      )
+    );
+    preamble = rules + docs;
+  }
 
   // A finding's `source` is its PASS id; attribute it to the pass's persona label(s) for the review output.
   const lensLabel = (id: string) =>
@@ -137,7 +146,7 @@ export async function runReview(
       context,
       lane,
       persona: pass.id,
-      systemPrompt: rulePreamble + pass.prompt,
+      systemPrompt: preamble + pass.prompt,
     });
     all.push(...result.findings);
     if (result.usage?.summary?.trim()) {

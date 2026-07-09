@@ -230,6 +230,51 @@ describe("runReview", () => {
     expect(received?.systemPrompt).toContain("review it");
   });
 
+  test("injects Tier-B contextDocs as background, ordered after Tier-A rules", async () => {
+    let received: WorkerRequest | undefined;
+    const worker: PiWorker = {
+      run: (req) => {
+        received = req;
+        return Promise.resolve({
+          findings: [],
+          usage: { submitted: true, toolCalls: 0 },
+        });
+      },
+    };
+    const reader: RepoReader = {
+      listDir: (path) =>
+        Promise.resolve(path === ".review-rules" ? ["- ts.md"] : null),
+      readFile: (path) => {
+        if (path === ".review-rules/ts.md") {
+          return Promise.resolve(
+            '---\nglobs: ["src/**"]\n---\n\nRULE TEXT here.'
+          );
+        }
+        if (path === "AGENTS.md") {
+          return Promise.resolve("AGENTS DOC TEXT here.");
+        }
+        return Promise.resolve(null);
+      },
+    };
+    const config: AssemblyConfig = {
+      ...CONFIG,
+      contextDocs: [{ globs: ["src/**"], path: "AGENTS.md" }],
+    };
+
+    await runReview(CONTEXT, config, worker, { repoReader: reader });
+
+    const prompt = received?.systemPrompt ?? "";
+    expect(prompt).toContain("RULE TEXT here.");
+    expect(prompt).toContain("AGENTS DOC TEXT here.");
+    // rules (precedence) before docs (background) before the persona prompt
+    expect(prompt.indexOf("RULE TEXT here.")).toBeLessThan(
+      prompt.indexOf("AGENTS DOC TEXT here.")
+    );
+    expect(prompt.indexOf("AGENTS DOC TEXT here.")).toBeLessThan(
+      prompt.indexOf("review it")
+    );
+  });
+
   test("no repoReader leaves the systemPrompt untouched (bare persona prompt)", async () => {
     let received: WorkerRequest | undefined;
     const worker: PiWorker = {
