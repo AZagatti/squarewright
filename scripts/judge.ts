@@ -297,7 +297,6 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
     configs.add(JSON.stringify(report.config ?? null));
     const scored = selectScored(report.results, ctx.byId);
     const total = scored.reduce((n, { c }) => n + c.expect_loci.length, 0);
-    totals.add(total);
     // biome-ignore lint/performance/noAwaitInLoops: sequential by design — the shared spend guard must see each report's cost before the next report's passes fire
     const { perPassRecall } = await runPasses(ctx.judge, ctx.lane, scored, {
       guard: ctx.guard,
@@ -306,11 +305,13 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
       total,
     });
     if (perPassRecall.length === 0) {
-      // No complete pass (spend cap cut this report short) — exclude it, never fold a fake 0 into the interval.
+      // No complete pass (spend cap cut this report short) — exclude it, never fold a fake 0 into the
+      // interval, and keep its loci total out of the denominator too.
       excluded += 1;
       console.log(`  ${basename(p).padEnd(46)} (no complete pass — excluded)`);
       continue;
     }
+    totals.add(total);
     matrix.push(perPassRecall);
     console.log(
       `  ${basename(p).padEnd(46)} [${perPassRecall.join(", ")}]/${total}`
@@ -323,8 +324,14 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
     );
   }
   if (excluded > 0 || stoppedEarly) {
+    const why = [
+      excluded > 0 ? `${excluded} report(s) had no complete judge pass` : "",
+      stoppedEarly
+        ? "remaining report(s) skipped after the spend cap tripped"
+        : "",
+    ].filter(Boolean);
     console.log(
-      `\n⚠️  ${excluded} report(s) excluded (no complete judge pass)${stoppedEarly ? " and remaining report(s) skipped after the spend cap tripped" : ""} — the interval reflects only the ${matrix.length} report(s) actually judged.`
+      `\n⚠️  ${why.join("; ")} — interval reflects only the ${matrix.length} report(s) actually judged.`
     );
   }
   if (matrix.length === 0) {
