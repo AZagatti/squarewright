@@ -38,9 +38,11 @@ describe("fsRepoReader", () => {
     expect(await r.listDir("..")).toBeNull();
   });
 
-  test("the factory takes only a root — no SHA/ref parameter, so head-binding is impossible", () => {
-    // A regression guard on the trust contract: adding a `headSha`/`ref` parameter would bump the arity and
-    // fail here, forcing that change through review instead of silently enabling a PR-head-bound reader.
+  test("the factory takes exactly one required parameter — a weak tripwire against a head-binding param", () => {
+    // A tripwire on the trust contract: adding a *non-defaulted* `headSha`/`ref` parameter bumps the arity and
+    // fails here. It is deliberately weak — `Function.length` ignores defaulted/rest params, so `headSha = ""`
+    // would slip past. The real defense is the wiring test above (the reader never reaches WorkerRequest) plus
+    // review; this only catches the most obvious mistake early. Do not treat it as a proof of head-safety.
     expect(fsRepoReader.length).toBe(1);
   });
 });

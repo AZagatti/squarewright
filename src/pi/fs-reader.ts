@@ -1,8 +1,10 @@
 /**
  * Filesystem-backed {@link RepoReader} over a checked-out repo tree rooted at `root`. The TRUSTED review phase
  * uses it to read maintainer-authored files (Tier-A `.review-rules/*.md`) from the checkout the Review workflow
- * produces — which is the trusted **default-branch** tree, NEVER the PR head (`.github/workflows/squarewright-
- * review.yml` runs `actions/checkout@v4` with no ref, `contents: read` "checkout trusted base only").
+ * produces. That checkout is the trusted **default-branch** tree, NEVER the PR head — specifically because the
+ * workflow is triggered by `workflow_run` (not `pull_request`), for which a no-`ref` `actions/checkout@v4`
+ * resolves to the default-branch tip, not a `refs/pull/N/merge` commit. The workflow additionally asserts the
+ * checked-out HEAD is not the PR head SHA, so the invariant fails closed if that trigger ever changes.
  *
  * TRUST (Hard Rule #1): this factory takes ONLY a root path — it has no SHA/ref parameter, so it can never be
  * pointed at a PR-head revision; head-binding is a type-level impossibility, not a runtime promise. Its safety

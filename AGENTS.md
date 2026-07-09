@@ -89,8 +89,10 @@ selects the rules whose `globs` match a PR's changed files — deterministically
 flag wins. Rules are maintainer-authored via a normal reviewed change (never auto-committed); when the reviewer
 wants a new rule it posts the text as a suggestion to paste here, it does not write the file. **Trust:** rules
 are read by `fsRepoReader` over the Review workflow's checkout — the **trusted default branch, never PR head**
-(`squarewright-review.yml`: `actions/checkout@v4`, no ref) — so a head-revision rule added by an untrusted PR
-can't suppress its own findings, and a new/edited rule applies from the **next** PR. The reader loads rules only;
+(`squarewright-review.yml` is `workflow_run`-triggered, so a no-`ref` `actions/checkout@v4` resolves to the
+default-branch tip, not `refs/pull/N/merge`; the workflow also asserts HEAD ≠ PR-head SHA, failing closed) — so a
+head-revision rule added by an untrusted PR can't suppress its own findings, and a new/edited rule applies from
+the **next** PR. The reader loads rules only;
 it is NOT forwarded to the Worker (that would enable grounding tools — a separate off-by-default feature). This
 repo dogfoods it via [`.review-rules/architecture.md`](.review-rules/architecture.md).
 
