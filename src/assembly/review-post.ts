@@ -7,7 +7,7 @@
 import type { ModelLane, ReviewContext } from "../core/types.js";
 import type { Poster } from "../github/poster.js";
 import type { ResolvedKeys } from "../pi/keys.js";
-import type { PiWorker } from "../pi/session.js";
+import type { PiWorker, RepoReader } from "../pi/session.js";
 import { DEFAULT_STRUCTURER } from "../pi/worker.js";
 import type {
   LookupPullsForCommit,
@@ -23,6 +23,12 @@ interface ReviewPostDeps {
     apiKeys: Record<string, string>,
     structurerLane?: ModelLane
   ) => PiWorker;
+  /**
+   * Read-only access to the TRUSTED base checkout, used ONLY to load Tier-A `.review-rules/*.md` (ADR-0005 §1).
+   * It is passed to `runReview` for the rules path — it is NOT forwarded into the Worker (that would enable
+   * grounding tools, a separate off-by-default feature). Absent => no rules load; behavior is unchanged.
+   */
+  repoReader?: RepoReader;
   resolveKeys: (providers: Iterable<string>) => Promise<ResolvedKeys>;
 }
 
@@ -51,7 +57,8 @@ export async function runReviewPost(
   return await runReview(
     context,
     config,
-    deps.makeWorker(apiKeys, config.structurer)
+    deps.makeWorker(apiKeys, config.structurer),
+    { repoReader: deps.repoReader }
   );
 }
 

@@ -32,8 +32,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # bound a stuck model call / agent loop (default is 6h)
     steps:
+      # Because this workflow is triggered by `workflow_run` (NOT `pull_request`), a no-`ref` checkout resolves
+      # to the base repo's DEFAULT BRANCH tip — trusted, already-reviewed code — never the PR head or a
+      # `refs/pull/N/merge` commit. This is what makes it safe for the trusted phase to read files from disk
+      # (e.g. Tier-A `.review-rules/*.md`). NEVER add a `ref:` that points at PR-head/merge content here.
       - name: Checkout base repo (trusted; never PR head)
         uses: actions/checkout@v4
+
+      # Best-effort tripwire against PR-head content in the checkout (Hard Rule #1). The PRIMARY guarantee is the
+      # `workflow_run` trigger above (no-ref checkout => default-branch tip); this step is defense-in-depth only.
+      # Under the default `fetch-depth: 1` the PR head object is absent, so the ancestry clause below is inert and
+      # the guard practically reduces to "checkout HEAD is literally the PR head SHA" — a narrow but real catch
+      # for the most obvious misconfiguration. The ancestry clause additionally fires only if history is deepened
+      # so the head object is present (e.g. a merge-ref checkout with fetch-depth: 0). It fails OPEN otherwise —
+      # the trigger, not this check, is the real defense. Uses env, not run-block interpolation, per the CI convention.
+      - name: Guard against PR-head content in the checkout (Hard Rule #1)
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          got="$(git rev-parse HEAD)"
+          if [ "$got" = "$HEAD_SHA" ] || { git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null && git merge-base --is-ancestor "$HEAD_SHA" HEAD 2>/dev/null; }; then
+            echo "::error::Checkout contains the PR head commit ($HEAD_SHA) — refusing to review (would load PR-head content)."
+            exit 1
+          fi
+          echo "No PR-head content detected in checkout (trigger-trusted base)."
 
       - name: Download gather artifact (by run-id)
         uses: actions/download-artifact@v4
