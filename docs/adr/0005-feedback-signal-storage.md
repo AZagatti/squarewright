@@ -47,7 +47,7 @@ The reviewer proposes rule text (a `rule-drift` finding with a ready-to-paste bl
 rule stale or introduces a pattern that should be a rule; the human edits the rule file. **Anti-noise discipline
 (so it isn't a proposal on every PR):** propose only if **no already-loaded rule (§1) already covers the
 pattern**; **at most one rule-drift finding per persona-pass per PR**; subject to the **same dedup-on-repost** as
-any finding (the `INLINE_MARKER`/file+line dedup in `src/output/`), so a re-review doesn't re-propose it. It's a
+any finding (same-issue collapse in `src/output/aggregate.ts`; prior-comment clearing via `clearPriorInline` in `src/github/poster.ts`), so a re-review doesn't re-propose it. It's a
 *finding a human chooses to act on* (not a write), so it needs no permission gate itself.
 
 ### 3. Teach-by-reply — an inline suggestion, not an auto-PR
