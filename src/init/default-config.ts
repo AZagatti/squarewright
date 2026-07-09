@@ -1,9 +1,8 @@
 /**
  * The default `.squarewright.yml` that `squarewright init` writes. Generated from `DEFAULT_PERSONAS` (the single
  * source of truth), so the scaffolded config carries the full review-persona set and can't drift from the code.
- * Review lanes run on z.ai's free `glm-5.2` (reasoning-off) — glm-5-turbo, the earlier default, judged the
- * reproducibly-worst reviewer, so the default moved off it to a capable free pick; #49's re-measure sets the
- * final measured choice. The structurer stays on free `glm-5-turbo` (a mechanical pass-2 extractor). Point
+ * Review lanes run on z.ai's free `glm-5.2` (reasoning-off) — a provisional pre-v0.1 pick pending #49's
+ * reproducible re-measure. The structurer runs on free `glm-5-turbo` (a mechanical pass-2 extractor). Point
  * "strong" at a frontier model for deeper reviews, or swap the provider entirely (Pi supports ~30).
  */
 import { stringify } from "yaml";
