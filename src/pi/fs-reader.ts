@@ -35,8 +35,12 @@ export function fsRepoReader(root: string): RepoReader {
       }
       try {
         const entries = await readdir(abs, { withFileTypes: true });
-        // Match the RepoReader entry format ("d name" / "- name") that `loadReviewRules` and the eval reader use.
-        return entries.map((e) => `${e.isDirectory() ? "d" : "-"} ${e.name}`);
+        // Sort by name so the reader is a deterministic primitive regardless of filesystem order (ext4 hash
+        // order, APFS/tmpfs arbitrary). `loadReviewRules` also sorts, but a deterministic reader is cleaner and
+        // keeps prompt order reproducible for any consumer. Match the RepoReader entry format ("d name"/"- name").
+        return entries
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((e) => `${e.isDirectory() ? "d" : "-"} ${e.name}`);
       } catch {
         return null;
       }

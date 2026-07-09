@@ -32,6 +32,16 @@ describe("fsRepoReader", () => {
     expect(await r.listDir("does-not-exist")).toBeNull();
   });
 
+  test("listDir entries are sorted by name (deterministic, filesystem-order-independent)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sw-fsreader-sort-"));
+    for (const name of ["z.md", "a.md", "m.md"]) {
+      writeFileSync(join(dir, name), "x");
+    }
+    const entries = await fsRepoReader(dir).listDir("");
+    rmSync(dir, { force: true, recursive: true });
+    expect(entries).toEqual(["- a.md", "- m.md", "- z.md"]);
+  });
+
   test("refuses path traversal outside the root (reads back null)", async () => {
     const r = fsRepoReader(root);
     expect(await r.readFile("../../etc/passwd")).toBeNull();
