@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { summarize, sumUsage } from "./judge.js";
+import { summarize, summarizeMatrix, sumUsage } from "./judge.js";
 
 test("summarize: a single value has no spread (min = median = max)", () => {
   const s = summarize([7]);
@@ -53,4 +53,48 @@ test("sumUsage: falls back to totalTokens - input when output is absent", () => 
 test("sumUsage: never returns negative output when totalTokens < input", () => {
   const u = sumUsage([{ usage: { input: 200, totalTokens: 50 } }]);
   expect(u.output).toBe(0);
+});
+
+test("summarizeMatrix: decomposes overall, analysis, and judge variance", () => {
+  // 3 analysis runs (rows) × 2 judge passes (cols) of the same config.
+  const m = summarizeMatrix([
+    [6, 6],
+    [4, 5],
+    [7, 8],
+  ]);
+  // overall = spread of all 6 values: sorted [4,5,6,6,7,8]
+  expect(m.overall.min).toBe(4);
+  expect(m.overall.median).toBe(6);
+  expect(m.overall.max).toBe(8);
+  // analysis = spread of per-report medians [6, 4.5, 7.5]
+  expect(m.analysis.min).toBe(4.5);
+  expect(m.analysis.median).toBe(6);
+  expect(m.analysis.max).toBe(7.5);
+  // judge = spread of per-report (max-min) ranges [0, 1, 1]
+  expect(m.judge.min).toBe(0);
+  expect(m.judge.median).toBe(1);
+  expect(m.judge.max).toBe(1);
+});
+
+test("summarizeMatrix: a single report × single pass collapses to a point", () => {
+  const m = summarizeMatrix([[3]]);
+  expect(m.overall).toMatchObject({ max: 3, median: 3, min: 3 });
+  expect(m.analysis).toMatchObject({ max: 3, median: 3, min: 3 });
+  expect(m.judge).toMatchObject({ max: 0, median: 0, min: 0 });
+});
+
+test("summarizeMatrix: empty matrix yields zeros, never NaN", () => {
+  const m = summarizeMatrix([]);
+  expect(m.overall.median).toBe(0);
+  expect(Number.isNaN(m.overall.median)).toBe(false);
+});
+
+test("summarizeMatrix: an empty row (spend-cap-aborted report) is dropped, not counted as a 0", () => {
+  // A report whose passes were all cut short must be ABSENT from the interval, not a fabricated 0 in it.
+  const m = summarizeMatrix([[6, 6], [], [7, 8]]);
+  // effective rows are [[6,6],[7,8]] → per-report medians [6, 7.5], flat [6,6,7,8]
+  expect(m.overall).toMatchObject({ max: 8, median: 6.5, min: 6 });
+  expect(m.analysis.min).toBe(6); // NOT 0 — the empty row contributes nothing
+  expect(m.analysis.max).toBe(7.5);
+  expect(m.judge.max).toBe(1); // ranges [0, 1], not [0, 0, 1]
 });

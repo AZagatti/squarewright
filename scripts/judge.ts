@@ -4,12 +4,16 @@
  * Reuses saved findings — no worker re-run. Default judge = free z.ai glm-5.2.
  *
  * The judge is itself stochastic, so `--judge-repeats K` re-scores the whole report K times and reports the
- * defect-recall as a min–median–max spread — a single judged pass is not a number.
+ * defect-recall as a min–median–max spread — a single judged pass is not a number. Pass `--reports p1,p2,…`
+ * (≥1 reports of the SAME config) instead of `--report` to get the analysis×judge matrix: a recall interval
+ * that separates analysis variance (across reports) from judge variance (within a report).
  *
  *   bun run scripts/judge.ts --report eval/reports/<file>.json [--model zai:glm-5.2] [--judge-repeats 3]
+ *   bun run scripts/judge.ts --reports "eval/reports/a.json,eval/reports/b.json" --judge-repeats 3
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { basename } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { ModelLane } from "../src/core/types.js";
 import {
@@ -17,6 +21,7 @@ import {
   type DefectLocus,
   type JudgedFinding,
   summarize,
+  summarizeMatrix,
 } from "../src/eval/judge.js";
 import {
   makeSpendGuard,
@@ -202,26 +207,166 @@ function printReport(
   );
 }
 
-async function main() {
-  const reportPath = arg("report");
-  if (!reportPath) {
-    throw new Error("provide --report <path to eval/reports/*.json>");
-  }
+interface JudgeCtx {
+  byId: Map<string, Case>;
+  guard: SpendGuard;
+  judge: Judge;
+  lane: ModelLane;
+  maxSpend: number;
+  paid: boolean;
+  price: TokenPrice;
+  repeats: number;
+}
+
+/** Score one report (K judge-passes) and print its per-case + spread report. */
+async function runSingle(reportPath: string, ctx: JudgeCtx): Promise<void> {
   const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
     results: ReportResult[];
     config?: unknown;
   };
+  const scored = selectScored(report.results, ctx.byId);
+  const total = scored.reduce((n, { c }) => n + c.expect_loci.length, 0);
+  const fileHits = scored.reduce((n, { r }) => n + (r.hitLoci ?? 0), 0);
+
+  console.log(`\n▸ judging ${reportPath}`);
+  console.log(`  config: ${JSON.stringify(report.config ?? "(none)")}`);
+  console.log(`  judge:  ${ctx.lane.provider}/${ctx.lane.model}`);
+  console.log(
+    `  passes: ${ctx.repeats}${ctx.paid ? `  (PAID judge — spend cap $${ctx.maxSpend})` : ""}\n`
+  );
+
+  const { perCase, perPassRecall } = await runPasses(
+    ctx.judge,
+    ctx.lane,
+    scored,
+    {
+      guard: ctx.guard,
+      price: ctx.price,
+      repeats: ctx.repeats,
+      total,
+    }
+  );
+  printReport(scored, perCase, perPassRecall, {
+    fileHits,
+    repeats: ctx.repeats,
+    total,
+  });
+  if (ctx.paid) {
+    console.log(
+      `  judge spend (token estimate): ~$${ctx.guard.spent().toFixed(4)} of $${ctx.maxSpend} cap`
+    );
+  }
+  console.log("");
+}
+
+function band(s: { max: number; median: number; min: number }): string {
+  return s.min === s.max
+    ? `${s.min}`
+    : `${s.min}–${s.max} (median ${s.median})`;
+}
+
+/**
+ * Matrix mode: score ≥1 reports of the SAME config (typically from `eval --repeat N`), each K judge-passes, and
+ * report the config's defect-recall as an interval that separates analysis variance (spread across reports)
+ * from judge variance (spread within a fixed report) — so recall is a range, not a point (#49 AC3). One shared
+ * spend guard caps the whole matrix.
+ */
+async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
+  console.log(
+    `\n▸ matrix: ${reportPaths.length} report(s) × ${ctx.repeats} judge-pass(es)`
+  );
+  console.log(
+    `  judge:  ${ctx.lane.provider}/${ctx.lane.model}${ctx.paid ? `  (PAID — spend cap $${ctx.maxSpend})` : ""}\n`
+  );
+
+  const configs = new Set<string>();
+  const totals = new Set<number>();
+  const matrix: number[][] = [];
+  let excluded = 0;
+  let stoppedEarly = false;
+  for (const p of reportPaths) {
+    // Money is guarded across the WHOLE matrix: once the cap trips, don't start another report's passes.
+    if (ctx.guard.tripped()) {
+      stoppedEarly = true;
+      break;
+    }
+    const report = JSON.parse(readFileSync(p, "utf8")) as {
+      results: ReportResult[];
+      config?: unknown;
+    };
+    configs.add(JSON.stringify(report.config ?? null));
+    const scored = selectScored(report.results, ctx.byId);
+    const total = scored.reduce((n, { c }) => n + c.expect_loci.length, 0);
+    // biome-ignore lint/performance/noAwaitInLoops: sequential by design — the shared spend guard must see each report's cost before the next report's passes fire
+    const { perPassRecall } = await runPasses(ctx.judge, ctx.lane, scored, {
+      guard: ctx.guard,
+      price: ctx.price,
+      repeats: ctx.repeats,
+      total,
+    });
+    if (perPassRecall.length === 0) {
+      // No complete pass (spend cap cut this report short) — exclude it, never fold a fake 0 into the
+      // interval, and keep its loci total out of the denominator too.
+      excluded += 1;
+      console.log(`  ${basename(p).padEnd(46)} (no complete pass — excluded)`);
+      continue;
+    }
+    totals.add(total);
+    matrix.push(perPassRecall);
+    console.log(
+      `  ${basename(p).padEnd(46)} [${perPassRecall.join(", ")}]/${total}`
+    );
+  }
+
+  if (configs.size > 1) {
+    console.log(
+      `\n⚠️  reports span ${configs.size} different configs — the interval below mixes setups, not one config's recall.`
+    );
+  }
+  if (excluded > 0 || stoppedEarly) {
+    const why = [
+      excluded > 0 ? `${excluded} report(s) had no complete judge pass` : "",
+      stoppedEarly
+        ? "remaining report(s) skipped after the spend cap tripped"
+        : "",
+    ].filter(Boolean);
+    console.log(
+      `\n⚠️  ${why.join("; ")} — interval reflects only the ${matrix.length} report(s) actually judged.`
+    );
+  }
+  if (matrix.length === 0) {
+    console.log(
+      "\n── no report produced a complete judge pass — nothing to report ──\n"
+    );
+    return;
+  }
+
+  const total = Math.max(...totals);
+  if (totals.size > 1) {
+    console.log(
+      `\n⚠️  reports have different loci totals ${JSON.stringify([...totals])} — denominator shown is the max.`
+    );
+  }
+  const m = summarizeMatrix(matrix);
+  console.log("\n── recall interval (defect-level) ──");
+  console.log(`  overall (analysis × judge): ${band(m.overall)} / ${total}`);
+  console.log(`  analysis variance (per-report medians): ${band(m.analysis)}`);
+  console.log(`  judge variance (within-report range):   ${band(m.judge)}`);
+  if (ctx.paid) {
+    console.log(
+      `  judge spend (token estimate): ~$${ctx.guard.spent().toFixed(4)} of $${ctx.maxSpend} cap`
+    );
+  }
+  console.log("");
+}
+
+async function main() {
   const manifest = (
     parseYaml(readFileSync(`${ROOT}eval/golden/manifest.yaml`, "utf8")) as {
       cases: Case[];
     }
   ).cases;
-  const byId = new Map(manifest.map((c) => [c.id, c]));
-
   const lane = buildLane(arg("model") ?? "zai:glm-5.2");
-  const judge = createJudge({ apiKeys: readKeys() });
-  const repeats = parseRepeats();
-
   // GLM judges via z.ai are free (price {0,0} → guard never trips). Only a paid cross-family judge
   // (openrouter) accumulates real spend against --max-spend (default $0.25).
   const price =
@@ -229,33 +374,36 @@ async function main() {
       ? openrouterPrice(lane.model)
       : { in: 0, out: 0 };
   const maxSpend = parseMaxSpend();
-  const guard = makeSpendGuard(maxSpend);
-  const paid = price.in > 0 || price.out > 0;
-
-  const scored = selectScored(report.results, byId);
-  const total = scored.reduce((n, { c }) => n + c.expect_loci.length, 0);
-  const fileHits = scored.reduce((n, { r }) => n + (r.hitLoci ?? 0), 0);
-
-  console.log(`\n▸ judging ${reportPath}`);
-  console.log(`  config: ${JSON.stringify(report.config ?? "(none)")}`);
-  console.log(`  judge:  ${lane.provider}/${lane.model}`);
-  console.log(
-    `  passes: ${repeats}${paid ? `  (PAID judge — spend cap $${maxSpend})` : ""}\n`
-  );
-
-  const { perCase, perPassRecall } = await runPasses(judge, lane, scored, {
-    guard,
+  const ctx: JudgeCtx = {
+    byId: new Map(manifest.map((c) => [c.id, c])),
+    guard: makeSpendGuard(maxSpend),
+    judge: createJudge({ apiKeys: readKeys() }),
+    lane,
+    maxSpend,
+    paid: price.in > 0 || price.out > 0,
     price,
-    repeats,
-    total,
-  });
-  printReport(scored, perCase, perPassRecall, { fileHits, repeats, total });
-  if (paid) {
-    console.log(
-      `  judge spend (token estimate): ~$${guard.spent().toFixed(4)} of $${maxSpend} cap`
+    repeats: parseRepeats(),
+  };
+
+  const reportsArg = arg("reports");
+  if (reportsArg !== undefined) {
+    const paths = reportsArg
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (paths.length === 0) {
+      throw new Error("--reports needs a comma-separated list of report paths");
+    }
+    await runMatrix(paths, ctx);
+    return;
+  }
+  const reportPath = arg("report");
+  if (!reportPath) {
+    throw new Error(
+      "provide --report <path> (or --reports <p1,p2,…> for the analysis×judge matrix)"
     );
   }
-  console.log("");
+  await runSingle(reportPath, ctx);
 }
 
 main().catch((e) => {

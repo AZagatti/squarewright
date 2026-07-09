@@ -91,6 +91,31 @@ export function summarize(values: number[]): RepeatStat {
   return { max: sorted.at(-1) ?? 0, median, min: sorted[0] ?? 0, values };
 }
 
+export interface MatrixStat {
+  /** spread of per-report medians — variance attributable to the analysis (worker) runs */
+  analysis: RepeatStat;
+  /** spread of per-report (max−min) ranges — how much the judge alone wobbles within a fixed report */
+  judge: RepeatStat;
+  /** spread across every analysis-run × judge-pass cell — the config's honest recall interval */
+  overall: RepeatStat;
+}
+
+/**
+ * Decompose a matrix of `analysisRuns × judgePasses` defect-recall totals into its two variance sources, so a
+ * config's recall is reported as an interval, not a point (issue #49 AC3). `matrix[a]` holds the K judge-pass
+ * totals for analysis run `a`. Empty rows (a report whose passes were all cut short by the spend cap) are
+ * dropped, not counted as a fabricated 0 — an un-judged report is absent from the interval, not a zero in it.
+ */
+export function summarizeMatrix(matrix: number[][]): MatrixStat {
+  const rows = matrix.filter((row) => row.length > 0);
+  const perReport = rows.map((row) => summarize(row));
+  return {
+    analysis: summarize(perReport.map((s) => s.median)),
+    judge: summarize(perReport.map((s) => s.max - s.min)),
+    overall: summarize(rows.flat()),
+  };
+}
+
 const SYSTEM = `You grade a code reviewer against known ground-truth defects in a pull request. For each known
 defect, decide whether ANY of the reviewer's findings correctly identifies the SAME underlying problem — same
 root cause and location, not merely the same file or a superficial mention. Be strict: a finding that lands on
