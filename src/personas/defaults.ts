@@ -10,14 +10,8 @@
  */
 import type { Persona, ThinkingLevel } from "../core/types.js";
 
-// Calibration tail appended to every persona prompt — and thus to every analysis call (worker.ts
-// concatenates the persona systemPrompt ahead of any grounding note, so these anchors reach all lenses).
-// The three anchors (empty-findings-is-valid, defer-to-CI, truncation-safe) come from the cc-dcp scout
-// (docs/research/cc-dcp-reviewer-ideas.md §2.4), where a BUNDLE including them shifted precision +14.7pp at
-// a recall cost of −5.2pp (N=4) — a directional, bundled third-party signal, NOT isolated or measured on
-// our corpus. Issue #47 AC2/AC3 measures the precision↔recall tradeoff here before this is trusted.
 const CLEAN_TAIL =
-  "\nReport only real, grounded issues; ground each in the actual code, not assumptions. An empty findings array is a correct answer when the change is sound — don't manufacture issues to seem thorough. Defer to tooling: don't flag what a linter, formatter, type-checker, or test suite already enforces (style, formatting, import order, obvious type slips). Never treat a diff's truncation or elision markers (`…`, `[…]`, collapsed or omitted hunks) as problems — they are how the diff is displayed, not the code.";
+  "\nReport only real, grounded issues; ground each in the actual code, not assumptions. Submit an empty findings array if the change is sound.";
 
 export const DEFAULT_PERSONAS: Persona[] = [
   {

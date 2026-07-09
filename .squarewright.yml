@@ -62,13 +62,7 @@ personas:
       depended on the previous order/behavior.
 
       Report only real, grounded issues; ground each in the actual code, not
-      assumptions. An empty findings array is a correct answer when the change
-      is sound — don't manufacture issues to seem thorough. Defer to tooling:
-      don't flag what a linter, formatter, type-checker, or test suite already
-      enforces (style, formatting, import order, obvious type slips). Never
-      treat a diff's truncation or elision markers (`…`, `[…]`, collapsed or
-      omitted hunks) as problems — they are how the diff is displayed, not the
-      code.
+      assumptions. Submit an empty findings array if the change is sound.
     thinking: medium
   - id: warden
     label: Security
@@ -103,13 +97,7 @@ personas:
       already covers it (this is where false positives come from).
 
       Report only real, grounded issues; ground each in the actual code, not
-      assumptions. An empty findings array is a correct answer when the change
-      is sound — don't manufacture issues to seem thorough. Defer to tooling:
-      don't flag what a linter, formatter, type-checker, or test suite already
-      enforces (style, formatting, import order, obvious type slips). Never
-      treat a diff's truncation or elision markers (`…`, `[…]`, collapsed or
-      omitted hunks) as problems — they are how the diff is displayed, not the
-      code.
+      assumptions. Submit an empty findings array if the change is sound.
     thinking: medium
   - id: chromatic
     label: CSS
@@ -144,13 +132,7 @@ personas:
       computed value old vs new for one concrete input.
 
       Report only real, grounded issues; ground each in the actual code, not
-      assumptions. An empty findings array is a correct answer when the change
-      is sound — don't manufacture issues to seem thorough. Defer to tooling:
-      don't flag what a linter, formatter, type-checker, or test suite already
-      enforces (style, formatting, import order, obvious type slips). Never
-      treat a diff's truncation or elision markers (`…`, `[…]`, collapsed or
-      omitted hunks) as problems — they are how the diff is displayed, not the
-      code.
+      assumptions. Submit an empty findings array if the change is sound.
     solo: true
     thinking: low
     when:
@@ -192,13 +174,7 @@ personas:
       build/publish command emits before vs after.
 
       Report only real, grounded issues; ground each in the actual code, not
-      assumptions. An empty findings array is a correct answer when the change
-      is sound — don't manufacture issues to seem thorough. Defer to tooling:
-      don't flag what a linter, formatter, type-checker, or test suite already
-      enforces (style, formatting, import order, obvious type slips). Never
-      treat a diff's truncation or elision markers (`…`, `[…]`, collapsed or
-      omitted hunks) as problems — they are how the diff is displayed, not the
-      code.
+      assumptions. Submit an empty findings array if the change is sound.
     solo: true
     thinking: low
     when:
@@ -240,13 +216,7 @@ personas:
       subsequent stage to the final image.
 
       Report only real, grounded issues; ground each in the actual code, not
-      assumptions. An empty findings array is a correct answer when the change
-      is sound — don't manufacture issues to seem thorough. Defer to tooling:
-      don't flag what a linter, formatter, type-checker, or test suite already
-      enforces (style, formatting, import order, obvious type slips). Never
-      treat a diff's truncation or elision markers (`…`, `[…]`, collapsed or
-      omitted hunks) as problems — they are how the diff is displayed, not the
-      code.
+      assumptions. Submit an empty findings array if the change is sound.
     solo: true
     thinking: low
     when:
@@ -284,13 +254,7 @@ personas:
       clearing a scope request.
 
       Report only real, grounded issues; ground each in the actual code, not
-      assumptions. An empty findings array is a correct answer when the change
-      is sound — don't manufacture issues to seem thorough. Defer to tooling:
-      don't flag what a linter, formatter, type-checker, or test suite already
-      enforces (style, formatting, import order, obvious type slips). Never
-      treat a diff's truncation or elision markers (`…`, `[…]`, collapsed or
-      omitted hunks) as problems — they are how the diff is displayed, not the
-      code.
+      assumptions. Submit an empty findings array if the change is sound.
     solo: true
     thinking: off
     when:
