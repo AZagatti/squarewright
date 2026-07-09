@@ -59,13 +59,29 @@ safe `renderInlineBody`/`mdSafe` in `src/output/render.ts`) — **it does not op
 (comments only), needs **no new write path** (today's workflow has `pull-requests: write`, not `contents:
 write`), and keeps auto-opened PRs in the deferred tier. The AI *reads* intent; the human makes the change.
 
-### 4. Read-only accept-rate / dismiss report — bounded window
-A report of per-rule/persona **accept-rate + sample size** with **fixed weights** (behavioral highest — a flagged
-hunk changed in a later commit, a suggestion committed; 👍/👎 lowest, per the anti-sycophancy lesson), **reported
-to the human, never auto-gated on** (Goodhart). Computed **live from GitHub over a bounded window** (last N
-reviewed PRs / ~30 days): a single-window report is genuinely storage-free (GitHub's review-comment API returns
-`diff_hunk` + inline `reactions`, so the content-hash is derivable at query time). An **unbounded growing trend**
-is *not* "live" — it needs the deferred ledger/rollup; v0.1 is explicitly the bounded-window report.
+### 4. Accept-rate signal → proactively surfaced, human-pulled into a proposal
+Per-rule/persona **accept-rate + sample size** with **fixed weights** (behavioral highest — a flagged hunk
+changed in a later commit, a suggestion committed; 👍/👎 lowest, per the anti-sycophancy lesson), **never
+auto-gated on** (Goodhart). Computed **live from GitHub over a bounded window** (last N reviewed PRs / ~30 days):
+a single-window report is genuinely storage-free (GitHub's review-comment API returns `diff_hunk` + inline
+`reactions`, so the content-hash is derivable at query time). An **unbounded growing trend** is *not* "live" — it
+needs the deferred ledger/rollup; v0.1 is explicitly the bounded-window computation.
+
+What makes this an actual feedback loop, not a dashboard nobody opens (costs nothing new in trust or storage —
+same live bounded-window computation, no ledger, no write path):
+- **Proactively surfaced, not pull-only.** The report is appended to the sticky summary on a cadence (every N
+  reviews), so accumulated signal has a forcing function to be seen. A report you must remember to run is, in
+  practice, no report.
+- **The human pulls the proposal; the tool never auto-emits one.** From the surfaced numbers, a maintainer who
+  sees a low-accept-rate rule can **reply to convert it into a proposal** through §3's existing teach-by-reply
+  path (which drafts a rule-drift-style edit they then ratify). We deliberately do **not** auto-emit a proposal
+  when an accept-rate crosses a threshold: a bounded-window rate over a handful of dogfood PRs — against a judge
+  our own Deferred section calls too noisy to gate on — is sampling noise, and *rendering* it as a finding would
+  assert "this pattern is real," which is Hard Rule #5's guess-presented-as-fact moved from write-time to
+  notice-time (no honest volume gate exists at this N + judge variance). So: **the numbers tune future reviews by
+  informing a human's pull, never by the tool deciding a rate is signal.** That still delivers "implicit signals
+  tune future reviews" — the implicit signal (accept-rate) drives a proposed edit — while keeping the honesty
+  boundary the deferral was drawn to protect.
 
 ## Trust boundary
 Rules are read and the reply-interpreter runs in the trusted `review` zone; `gather` never reads them. Reply text
@@ -75,10 +91,18 @@ is the injection defense; reliable text sanitization is unsolved). No part of v0
 
 ## Deferred — the one *real* big thing
 The **automated self-tuner**: a persistent signal-ledger branch, a deterministic accept-rate *rollup*, a
-*regression gate*, **auto-opened** proposal PRs, AI-weighted signal aggregation, and any AI that *decides and
-applies* changes. Genuinely large + risky (persistent state, a new trusted write path, injection/regression
-surfaces, and — per our M5/M7 evidence — a golden corpus too noisy to gate per-repo tuning against). It earns its
-place only **after** parts 1–4 are used on real signals and volume justifies it. Everything else ships in v0.1.
+*regression gate*, **auto-opened** proposal PRs, and AI-weighted signal aggregation. Genuinely large + risky
+(persistent state, a new trusted write path, injection/regression surfaces, and — per our M5/M7 evidence — a
+golden corpus too noisy to gate per-repo tuning against). Its infrastructure (ledger/rollup/regression-gate)
+**earns its place only after** v0.1's parts 1–4 are used on real signals and dogfood experience shows the
+bounded-window computation is too lossy to reason about. **Honest caveat:** "volume justifies it" is a judgment
+call, not a measured trigger — without a ledger there is no counter to cross a line; the reopening decision is
+maintainer judgment on lived dogfood, which is the honest version given we can't yet measure it.
+
+**One line is *permanently* excluded, not deferred:** *any AI that decides and applies a change on its own.* The
+North Star's "never auto-applied" is unconditional — no volume, ledger, or maturity gate ever un-defers auto-apply.
+The deferred tier is about **automating the proposing** (scale, persistence, an eventual write path a human still
+gates), never about removing the human from the decision.
 
 ## Non-goals
 No fine-tuning. No silent auto-apply. **No LLM decides a change** — AI only *interprets* a reply (§3), *drafts*
