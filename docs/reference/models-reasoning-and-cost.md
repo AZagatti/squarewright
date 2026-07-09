@@ -39,6 +39,7 @@ Read this before running paid-provider evals or touching reasoning/structurer co
 - **`max_tokens` caps output (incl. reasoning) at the source** — the reliable cost bound. Pi sends it from the model's catalog `maxTokens`; the default is often huge (131072!). Cap it via a models.json `modelOverride` for cheap tests. (Too *low* a cap can truncate reasoning mid-thought → malformed response → retry loop → billing with no completion; ~32k is a safe "practically off but bounded" value for deepseek.)
 - **Adaptive concurrency (AIMD)** is the right client pattern for unknown ceilings: ramp on success, halve on backpressure, honor `Retry-After` as a floor. z.ai has no such header → map its JSON codes (1302/1305 → backoff; 1308+ → hard pause until reset; 1113 balance → fatal). Ref: Netflix/concurrency-limits `AIMDLimit`.
 - The management key (`/tmp/openrouter_mgm_key`) can hit `/api/v1/activity` (per-model spend) and `/api/v1/credits`; a normal key cannot fetch activity.
+- **Free-tier models are unreliable for tool-calling.** As a defect judge (thinking-off, must call one custom tool), both `qwen/qwen3-coder:free` and `meta-llama/llama-3.3-70b-instruct:free` **never called the tool** — scored 0/11 where glm-5.2 judged 6 (see `eval/RESULTS.md`). For a cross-family (non-GLM) judge use a **cheap paid** model — `deepseek/deepseek-v3.2` (~$0.01/run, capped by `--max-spend`) reliably tool-calls and agreed with glm-5.2. A `0` from a judge that didn't tool-call is not a measurement; `scripts/judge.ts` now warns on it.
 
 ## Pi model catalog (adding / overriding models)
 

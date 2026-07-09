@@ -37,8 +37,26 @@ export interface Grade {
 
 /** One judge call's grades plus the token usage it billed, so a paid judge run can be spend-capped. */
 export interface JudgeResult {
+  /** did the model actually call submit_grades? false ⇒ grades are the all-miss fallback, not a real judgment */
+  graded: boolean;
   grades: Grade[];
   usage: { input: number; output: number };
+}
+
+/**
+ * A warning when a judge silently failed to call submit_grades on some calls. Those calls fall back to
+ * all-miss grades, so a recall of "0" can mean "the judge is broken," not "nothing matched" — the exact
+ * honesty trap in AGENTS.md §5. Free OpenRouter models notably fail this thinking-off (qwen/llama returned
+ * 0-across-the-board where glm-5.2 judged 6). Returns null when every call was genuinely graded.
+ */
+export function ungradedWarning(
+  ungraded: number,
+  calls: number
+): string | null {
+  if (ungraded <= 0) {
+    return null;
+  }
+  return `⚠️  judge did not call submit_grades on ${ungraded}/${calls} calls (those counted as 0 matches). This judge is unreliable thinking-off — treat its recall as suspect. Free OpenRouter models fail this; use zai:glm-5.2 or a paid non-GLM (e.g. deepseek/deepseek-v3.2).`;
 }
 
 /**
@@ -170,10 +188,12 @@ export function createJudge(opts: { apiKeys: Record<string, string> }) {
       }
 
       let captured: { grades: Grade[] } | undefined;
+      let toolCalled = false;
       const submitGrades = defineTool({
         description: "Submit the per-defect grades. Call exactly once.",
         execute: (_id, params) => {
           captured = params as { grades: Grade[] };
+          toolCalled = true;
           return Promise.resolve({
             content: [
               {
@@ -228,7 +248,7 @@ export function createJudge(opts: { apiKeys: Record<string, string> }) {
           matched: false,
           why: "judge produced no grade",
         }));
-      return { grades, usage };
+      return { graded: toolCalled, grades, usage };
     },
   };
 }

@@ -22,6 +22,7 @@ import {
   type JudgedFinding,
   summarize,
   summarizeMatrix,
+  ungradedWarning,
 } from "../src/eval/judge.js";
 import {
   makeSpendGuard,
@@ -124,19 +125,30 @@ async function runPasses(
   lane: ModelLane,
   scored: ScoredCase[],
   ctx: { guard: SpendGuard; price: TokenPrice; repeats: number; total: number }
-): Promise<{ perCase: Map<string, number[]>; perPassRecall: number[] }> {
+): Promise<{
+  calls: number;
+  perCase: Map<string, number[]>;
+  perPassRecall: number[];
+  ungraded: number;
+}> {
   const perCase = new Map<string, number[]>();
   const perPassRecall: number[] = [];
+  let ungraded = 0;
+  let calls = 0;
   let aborted = false;
   for (let k = 0; k < ctx.repeats && !aborted; k += 1) {
     let passTotal = 0;
     for (const { r, c } of scored) {
       // biome-ignore lint/performance/noAwaitInLoops: sequential by design — respects the judge model's concurrency limits AND lets the spend guard see each call's cost before the next fires
-      const { grades, usage } = await judge.judge(
+      const { grades, usage, graded } = await judge.judge(
         c.expect_loci,
         r.findings ?? [],
         lane
       );
+      calls += 1;
+      if (!graded) {
+        ungraded += 1;
+      }
       ctx.guard.add(usage.input * ctx.price.in + usage.output * ctx.price.out);
       const matched = grades.filter((g) => g.matched).length;
       passTotal += matched;
@@ -158,7 +170,7 @@ async function runPasses(
       }
     }
   }
-  return { perCase, perPassRecall };
+  return { calls, perCase, perPassRecall, ungraded };
 }
 
 function printReport(
@@ -235,7 +247,7 @@ async function runSingle(reportPath: string, ctx: JudgeCtx): Promise<void> {
     `  passes: ${ctx.repeats}${ctx.paid ? `  (PAID judge — spend cap $${ctx.maxSpend})` : ""}\n`
   );
 
-  const { perCase, perPassRecall } = await runPasses(
+  const { perCase, perPassRecall, ungraded, calls } = await runPasses(
     ctx.judge,
     ctx.lane,
     scored,
@@ -251,6 +263,10 @@ async function runSingle(reportPath: string, ctx: JudgeCtx): Promise<void> {
     repeats: ctx.repeats,
     total,
   });
+  const warn = ungradedWarning(ungraded, calls);
+  if (warn) {
+    console.log(`\n${warn}`);
+  }
   if (ctx.paid) {
     console.log(
       `  judge spend (token estimate): ~$${ctx.guard.spent().toFixed(4)} of $${ctx.maxSpend} cap`
@@ -284,6 +300,8 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
   const matrix: number[][] = [];
   let excluded = 0;
   let stoppedEarly = false;
+  let ungraded = 0;
+  let calls = 0;
   for (const p of reportPaths) {
     // Money is guarded across the WHOLE matrix: once the cap trips, don't start another report's passes.
     if (ctx.guard.tripped()) {
@@ -298,12 +316,15 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
     const scored = selectScored(report.results, ctx.byId);
     const total = scored.reduce((n, { c }) => n + c.expect_loci.length, 0);
     // biome-ignore lint/performance/noAwaitInLoops: sequential by design — the shared spend guard must see each report's cost before the next report's passes fire
-    const { perPassRecall } = await runPasses(ctx.judge, ctx.lane, scored, {
+    const pass = await runPasses(ctx.judge, ctx.lane, scored, {
       guard: ctx.guard,
       price: ctx.price,
       repeats: ctx.repeats,
       total,
     });
+    const { perPassRecall } = pass;
+    ungraded += pass.ungraded;
+    calls += pass.calls;
     if (perPassRecall.length === 0) {
       // No complete pass (spend cap cut this report short) — exclude it, never fold a fake 0 into the
       // interval, and keep its loci total out of the denominator too.
@@ -352,6 +373,10 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
   console.log(`  overall (analysis × judge): ${band(m.overall)} / ${total}`);
   console.log(`  analysis variance (per-report medians): ${band(m.analysis)}`);
   console.log(`  judge variance (within-report range):   ${band(m.judge)}`);
+  const warn = ungradedWarning(ungraded, calls);
+  if (warn) {
+    console.log(`\n${warn}`);
+  }
   if (ctx.paid) {
     console.log(
       `  judge spend (token estimate): ~$${ctx.guard.spent().toFixed(4)} of $${ctx.maxSpend} cap`
