@@ -276,3 +276,11 @@ be compared **offline** without re-running analysis.
 - deepseek numbers are one paid model on OpenRouter (its reasoning-on run was *not* truncated by the 32k cap — max ~15k tokens/case). GLM numbers are z.ai free-tier. "capable vs weak" is a coarse axis (the reasoning-hurts-capable half rests mainly on deepseek's 6→3; glm-5.2 was flat at high, only max dropped).
 
 **Before switching the shipped default model** (`src/init/default-config.ts`), you need a genuinely reproducible setup — **≥3 analysis repeats × multiple judge re-scores per report, a pinned/low-temperature or different-family judge, and ci-moby fixed** — not just "≥3 repeats." As it stands this is a *lead*, not a result.
+
+## Provisional default switch: review lanes → z.ai glm-5.2 reasoning-off (2026-07-09)
+
+Maintainer-directed. The dogfood/scaffold **review** lanes (`strong`, `cheap` in `src/init/default-config.ts`, mirrored to `.squarewright.yml`) moved from `glm-5-turbo` to free z.ai **`glm-5.2` reasoning-off**. The **structurer** stays free `glm-5-turbo` (mechanical pass-2).
+
+This is deliberately a **weak, provisional claim, not the settled rank**: it only spends the *robust* half of the measurement — glm-5-turbo reasoning-off is the reproducibly-**worst** reviewer (0/12 ×3) — so moving *off* it is safe. It is **NOT** a claim that glm-5.2 beats the other capable models (glm-4.5 / deepseek-v3.2 tied it at one draw; glm-5.2 itself re-judged **2–8**). It's acceptable now only because this is **pre-v0.1 test config with no external users** (few have a z.ai subscription) — the default is a dev/dogfood artifact, not a product commitment.
+
+The **real product-release default** remains a separate future decision: product-safe, cheap end-to-end if OpenRouter, and gated on the reproducible re-measure above (issue #49, AC4). The M7 gate still governs *that* choice; this change does not close it.

@@ -38,8 +38,9 @@ latency. This note records what was verified against Pi's source and z.ai's docs
   backstop.
 - **Prefer the fast/free GLM variants for the analysis pass** for cost/latency — but note a **later judged rank
   (2026-07-09) found `glm-5-turbo` has the *worst* recall of every GLM tested** (0–1/12; it's "clean" because it
-  barely finds anything). It's the current default only by inertia; capable models (glm-5.2/glm-4.5) scored higher
-  on recall (unconfirmed — see [`../reference/models-reasoning-and-cost.md`](../reference/models-reasoning-and-cost.md)
+  barely finds anything). The review lanes therefore default to `glm-5.2` reasoning-off (a provisional pick pending
+  #49's re-measure); `glm-5-turbo` is kept only as the mechanical structurer. Capable models (glm-5.2/glm-4.5) scored
+  higher on recall (unconfirmed — see [`../reference/models-reasoning-and-cost.md`](../reference/models-reasoning-and-cost.md)
   and `eval/RESULTS.md`). `glm-4.5-air` is the documented low-latency small model.
 - **Drop reasoning effort where quality allows.** z.ai's docs say Max→High on GLM-5.2-class "sacrifices only a
   few points … while effectively halving token output." `--thinking off/minimal` maps to disabled/high via
