@@ -7,7 +7,9 @@ Status: Proposed · 2026-07-09
 M6 is the North-Star differentiator: *"gets better from your feedback without ever changing itself behind your
 back… any change to its own rules is proposed to you, never auto-applied"* ([`NORTH_STAR.md`](../../NORTH_STAR.md);
 issue #50). Two hard constraints: **(1)** we don't own/train the model (Pi drives it) — "improve" means **assembly
-tuning** (rules, personas, config), never fine-tuning; **(2)** **human-gated** — proposed, never silently applied.
+tuning** (rules, personas, config), never fine-tuning; **(2)** never **silently / behind-your-back** applied
+(permanent) — and **in v0.1 specifically, human-gated** (proposed, not applied), a safe starting default the
+Deferred section revisits (a transparent, reversible auto-tuner may earn its place later).
 **Scope: per-repo local** — each repo improves from its own use. (Cross-repo aggregate tuning of the *shipped*
 defaults is a separate, later, opt-in tier — out of scope.)
 

@@ -9,7 +9,8 @@ and factual — they go straight into the model's prompt.
 - Rules can be scoped by file globs so the reviewer only sees rules relevant to the changed files.
 - Rule text is injected as trusted context, so **rules are only added by maintainers via a reviewed change**
   — never auto-committed by the tool (an auto-committed rule would be a prompt-injection vector). When the
-  reviewer proposes a new rule, it opens a PR for a human to merge.
+  reviewer proposes a new rule, it posts the rule text as a suggestion for a maintainer to paste into a file
+  here — it does not open a PR or write the file itself.
 
 ## Example
 
