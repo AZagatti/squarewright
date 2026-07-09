@@ -39,17 +39,22 @@ jobs:
       - name: Checkout base repo (trusted; never PR head)
         uses: actions/checkout@v4
 
-      # Enforce the invariant the reader's safety depends on, so a future misconfiguration fails CLOSED instead
-      # of silently loading PR-head rules (Hard Rule #1): the checked-out commit must not be the PR head SHA.
-      - name: Assert checkout is trusted base, not PR head (Hard Rule #1)
+      # Best-effort tripwire against PR-head content in the checkout (Hard Rule #1). The PRIMARY guarantee is the
+      # `workflow_run` trigger above (no-ref checkout => default-branch tip). This step is defense-in-depth: it
+      # refuses if the PR head commit is the checkout HEAD *or* an ancestor of it (which catches a direct
+      # PR-head ref and a `refs/pull/N/merge` ref when their objects are present). It cannot fully prove
+      # base-binding under a shallow clone (the head object may be absent), so it fails OPEN in that case — the
+      # trigger, not this check, is the real defense. Uses env, not run-block interpolation, per the CI convention.
+      - name: Guard against PR-head content in the checkout (Hard Rule #1)
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          head='${{ github.event.workflow_run.head_sha }}'
           got="$(git rev-parse HEAD)"
-          if [ "$got" = "$head" ]; then
-            echo "::error::Checkout HEAD ($got) equals the PR head SHA — refusing to review (would load PR-head content)."
+          if [ "$got" = "$HEAD_SHA" ] || { git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null && git merge-base --is-ancestor "$HEAD_SHA" HEAD 2>/dev/null; }; then
+            echo "::error::Checkout contains the PR head commit ($HEAD_SHA) — refusing to review (would load PR-head content)."
             exit 1
           fi
-          echo "Trusted base confirmed: checkout $got != PR head $head."
+          echo "No PR-head content detected in checkout (trigger-trusted base)."
 
       - name: Download gather artifact (by run-id)
         uses: actions/download-artifact@v4
