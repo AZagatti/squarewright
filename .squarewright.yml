@@ -1,7 +1,8 @@
 # Squarewright — reviewer assembly config, written by `squarewright init`.
 # Edit freely: trim personas, retarget lanes (provider/model), tune budgets. The reviewer is model-agnostic.
-# Lanes default to z.ai's free glm-5-turbo; set the ZAI_API_KEY secret and you have a working reviewer.
-# Point "strong" at a frontier model for deeper correctness/security review. See docs/adr/0001, docs/ROADMAP.md.
+# Review lanes use z.ai's free glm-5.2 (reasoning-off); the structurer uses free glm-5-turbo. Set the
+# ZAI_API_KEY secret and you have a working reviewer. Point "strong" at a frontier model for deeper
+# correctness/security review. See docs/adr/0001, docs/ROADMAP.md.
 
 budget:
   maxToolCalls: 30
@@ -12,11 +13,11 @@ feedback:
 grounders: []
 lanes:
   - id: strong
-    model: glm-5-turbo
+    model: glm-5.2
     provider: zai
     thinking: off
   - id: cheap
-    model: glm-5-turbo
+    model: glm-5.2
     provider: zai
     thinking: off
 personas:

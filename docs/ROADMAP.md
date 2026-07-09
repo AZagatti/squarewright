@@ -61,7 +61,7 @@ postable*, then the depth that makes it good.
 | **M4** | **Onboarding — two first-class paths** | (a) **low-friction GitHub Action + config** (drop a workflow + `.squarewright.yml` pointing at the versioned harness); (b) **CLI binary + `init`**. Plus `doctor` + config loading. `init`+binary is **not** the only path. |
 | **M5** | **Multi-persona routing / pairing / batching engine** | glob routing and solo/batched passes drive the eval and wire to `.squarewright.yml`. Correlated-pair batching is a config **primitive** (`pass` group-key), not a default: measurement showed batching is a directional single-model precision lever whose specific pairings aren't corpus-validated (no golden case co-touches two domains), so no default pairing ships — the primitive stays opt-in pending a multi-domain corpus case. Lands *after* the review → post → re-review path works. |
 | **M6** | **Local feedback loop** — 👍/👎 (collaborator-weighted), flagged-line-changed-later, suggestion-accepted → per-rule/persona accept-rate | see [`design/feedback-and-data.md`](design/feedback-and-data.md); blocked on a signal-storage decision |
-| **M7** | **Honest measurement** — eval hardening + the cheap-model rank on the locked setup | **Shipped: free default structurer** (PR #48, cost fix). **First judged rank (2026-07-09) — a lead, NOT a result: the numbers don't reproduce** (glm-5.2 spans 2–8 across audits; the judge is itself stochastic). Robust: current default glm-5-turbo is the *worst* (0–1/12); reasoning rescues weak models. Exact rank unestablished. See `eval/RESULTS.md` + [`reference/models-reasoning-and-cost.md`](reference/models-reasoning-and-cost.md). **Blocker before any default change: a reproducible re-measure (analysis repeats × judge re-scores, pinned/different-family judge, ci-moby fixed).** |
+| **M7** | **Honest measurement** — eval hardening + the cheap-model rank on the locked setup | **Shipped: free default structurer** (PR #48, cost fix). **First judged rank (2026-07-09) — a lead, NOT a result: the numbers don't reproduce** (glm-5.2 spans 2–8 across audits; the judge is itself stochastic). Robust: glm-5-turbo is the *worst* (0–1/12); reasoning rescues weak models. Exact rank unestablished. See `eval/RESULTS.md` + [`reference/models-reasoning-and-cost.md`](reference/models-reasoning-and-cost.md). **The dogfood/scaffold default review lanes moved off glm-5-turbo → free z.ai `glm-5.2` reasoning-off — a *provisional, pre-v0.1 test-config* pick (off the robust-worst, not a measured-best), NOT the eventual product-release default.** The **real** release default is a separate future study (product-safe; if OpenRouter, cheap through the *whole* pipeline). It stays gated on the reproducible re-measure (analysis repeats × judge re-scores, pinned/different-family judge, ci-moby fixed) — issue #49. |
 
 The low-friction Action/config path from M4 is also the vehicle that runs M1–M3 in CI for dogfooding, so a
 minimal version of it lands alongside M1–M2; M4 is the polish that makes **both** onboarding paths first-class.
@@ -71,10 +71,12 @@ minimal version of it lands alongside M1–M2; M4 is the polish that makes **bot
 Concrete, tracked items the model-rank/reasoning/cost session surfaced (full context: `eval/RESULTS.md`,
 [`reference/models-reasoning-and-cost.md`](reference/models-reasoning-and-cost.md)):
 
-- **Candidate default-model switch** glm-5-turbo → a capable model reasoning-off (glm-5.2 / glm-4.5 / deepseek-v3.2 scored
-  best in one draw) — a promising free quality lever, but the numbers **don't reproduce at N=1** (glm-5.2 re-judged 2–7).
-  Prerequisite before changing `.squarewright.yml`: **≥3 judged repeats + a different-family judge** (the current judge is
-  same-family as the winners). Then a product decision (which model; speed/cost tradeoff).
+- **Default-model switch — done provisionally, not settled.** The dogfood/scaffold review lanes now run free z.ai
+  `glm-5.2` reasoning-off (maintainer-directed): a move *off the robust-worst* glm-5-turbo, safe because this is pre-v0.1
+  test config with no external users — **not** a claim glm-5.2 beats glm-4.5 / deepseek-v3.2 (all tied at one draw; glm-5.2
+  itself re-judged 2–8). The structurer stays free glm-5-turbo. The **real product-release default** is a separate future
+  study (product-safe; cheap end-to-end if OpenRouter) and still needs the reproducible re-measure — **≥3 analysis repeats ×
+  multiple judge re-scores, a different-family judge** (issue #49) — before it's chosen.
 - **Harden the OR spend guard against retry re-billing** — the token estimate counts only the final attempt's usage, so
   throttle-driven retries (which re-send context and re-bill) undercount real spend. (It does NOT miscount reasoning tokens
   — Pi's `usage.output` already includes them.) Until then, bound OR reasoning cost with `max_tokens` at the source and
