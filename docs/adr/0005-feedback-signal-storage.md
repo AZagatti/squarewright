@@ -28,8 +28,10 @@ norm* safety stance, not table stakes — a deliberate differentiator worth stat
 
 ## Decision
 
-### 1. Storage — a dedicated, aggregates-only git branch
+### 1. Storage — a dedicated, anonymized signal ledger on a git branch
 Persist derived signals to a dedicated orphan branch (e.g. `squarewright-signals`), **never merged to `main`**.
+(It's a per-event, PII-stripped *ledger* — the statistical *aggregation* into accept-rates happens downstream in
+the Rollup stage, not at the storage layer.)
 This keeps the ledger fully diff-auditable (the enforcement of "never behind your back") without polluting
 `main`'s history — an established CI pattern (`benchmark-action/github-action-benchmark` stores time-series
 this way), and the improved shape of what trimwire did.
@@ -37,13 +39,14 @@ this way), and the improved shape of what trimwire did.
 - **Split raw vs. derived.** GitHub already durably stores raw explicit signals (👍/👎, resolved-state) — read
   those live via the API, don't duplicate them. Only **derived** data lives on the branch, because GitHub has
   no representation of it and it must survive PR close / force-push / ephemeral runners.
-- **Aggregates only, never PII.** `{rule_id, persona_id, glob/lang bucket, content_hash, outcome, observed_at}`
+- **Anonymized, never PII.** `{rule_id, persona_id, glob/lang bucket, content_hash, outcome, observed_at}`
   — no usernames, paths, line numbers, message text, or code. The repo is **public**; a branch is exactly as
   world-readable as `main`, so the design doc's "strictly local" tier must meet its own *aggregate* privacy bar.
-- **Improve on trimwire (per AGENTS.md "improve on references, don't copy them"):** key findings by
-  **content-hash of the flagged hunk** (survives force-push; trimwire keyed on comment-id/line, which our own
-  gaming section flags as fragile); **permission-gate** classification (count only write/maintain/admin
-  reactors, exclude the PR author; trimwire skipped this); route every write through the **`Poster`** interface
+- **Improve on trimwire (per AGENTS.md "improve on references, don't copy them"; trimwire's internals below are
+  from the maintainer's recollection, not re-verified against its source):** key findings by **content-hash of
+  the flagged hunk** (survives force-push; trimwire reportedly keyed on comment-id/line, which our own gaming
+  section flags as fragile); **permission-gate** classification (count only write/maintain/admin reactors,
+  exclude the PR author); route every write through the **`Poster`** interface
   (not raw `gh`/`git` in YAML); publish a **versioned schema**; and **compact** old raw detail into rollups so
   clone size stays bounded.
 
@@ -64,8 +67,8 @@ this way), and the improved shape of what trimwire did.
 When the rollup proposes strengthening a persona, the diff attaches **2–5 curated accepted findings as few-shot
 exemplars** in the persona prompt — not just an abstract instruction. This is a plain, human-approved diff (no
 new infra) and matches the strongest evidence (DeepCRCEval's exemplar baseline; the many-shot-paradox result
-that small curated sets beat both zero-shot and "dump everything"). **Cap exemplars (~≤25)** — quality
-degrades past that.
+that small curated sets beat both zero-shot and "dump everything"). Each proposal adds 2–5; the **cumulative
+cap is ~≤25 exemplars per persona** (across supersessions — see §4), because quality degrades past that.
 
 ### 4. Supersession, not accumulation
 A new proposal that contradicts or duplicates an existing rule/exemplar **replaces** it; it never stacks.
@@ -91,9 +94,11 @@ These are product/trust-shape calls, deliberately left open for sign-off rather 
 1. **Proposal trigger + threshold** — auto-drafted on a schedule vs. maintainer-dispatched only; and the
    evidence floor / accept-rate threshold that fires a proposal (how *eager* the tool is to touch its own
    config). *Council lean: dispatch-or-scheduled is fine; start conservative (e.g. ≥3 signals, ≥N sample).*
-2. **Write scope** — the trusted zone gains `contents: write` for the signals branch + proposal PR-branches
-   (a smaller widening than writing `main`). *Council lean: acceptable, since it writes only a data branch and
-   proposal branches, never `main` directly.*
+2. **Write scope** — grant the trusted `review` workflow `contents: write` (scoped to the signals branch +
+   proposal PR-branches, never `main`) **vs.** a narrower path: a dedicated fine-grained token / GitHub App, or
+   capture-only-now-with-writes-deferred. *Council lean: the branch-scoped `contents: write` is acceptable
+   because it never writes `main` directly and every rule/prompt change still lands as a maintainer-merged PR —
+   but this widens the trusted zone's blast radius, so it's your call, not a default.*
 3. **Poll model** — a new scheduled (`schedule: cron`) workflow vs. piggybacking capture onto the existing
    `workflow_run` review trigger. *Council lean: scheduled, low-frequency, mirroring the "propose suppression"
    flow.*
