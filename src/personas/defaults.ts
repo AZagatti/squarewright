@@ -10,8 +10,11 @@
  */
 import type { Persona, ThinkingLevel } from "../core/types.js";
 
+// Calibration tail appended to every persona prompt. The three anchors (empty-findings-is-valid,
+// defer-to-CI, truncation-safe) are the self-review lever that measurably cut false-positive noise in the
+// cc-dcp scout — cheaper and more effective than a second verify pass. See issue #47 / eval/RESULTS.md.
 const CLEAN_TAIL =
-  "\nReport only real, grounded issues; ground each in the actual code, not assumptions. Submit an empty findings array if the change is sound.";
+  "\nReport only real, grounded issues; ground each in the actual code, not assumptions. An empty findings array is a correct answer when the change is sound — don't manufacture issues to seem thorough. Defer to tooling: don't flag what a linter, formatter, type-checker, or test suite already enforces (style, formatting, import order, obvious type slips). Never treat a diff's truncation or elision markers (`…`, `[…]`, collapsed or omitted hunks) as problems — they are how the diff is displayed, not the code.";
 
 export const DEFAULT_PERSONAS: Persona[] = [
   {
