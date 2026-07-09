@@ -89,26 +89,36 @@ and any rule text sourced (via a finding) from a third-party diff is **untrusted
 model, permission-gated at the input** — and only ever surfaced as a suggestion a human acts on (the human step
 is the injection defense; reliable text sanitization is unsolved). No part of v0.1 adds a trusted auto-write path.
 
-## Deferred — the one *real* big thing
+## Deferred — the one *real* big thing (deferred for complexity, **not** ruled out on principle)
 The **automated self-tuner**: a persistent signal-ledger branch, a deterministic accept-rate *rollup*, a
-*regression gate*, **auto-opened** proposal PRs, and AI-weighted signal aggregation. Genuinely large + risky
-(persistent state, a new trusted write path, injection/regression surfaces, and — per our M5/M7 evidence — a
-golden corpus too noisy to gate per-repo tuning against). Its infrastructure (ledger/rollup/regression-gate)
-**earns its place only after** v0.1's parts 1–4 are used on real signals and dogfood experience shows the
-bounded-window computation is too lossy to reason about. **Honest caveat:** "volume justifies it" is a judgment
-call, not a measured trigger — without a ledger there is no counter to cross a line; the reopening decision is
-maintainer judgment on lived dogfood, which is the honest version given we can't yet measure it.
+*regression gate*, **auto-opened** proposal PRs, AI-weighted signal aggregation, and — the ambitious end state —
+**an AI that decides *and applies* its own rule/persona/config improvements**. This is deferred because it is
+genuinely large + risky *right now* (persistent state, a new trusted write path, injection/regression surfaces,
+and — per our M5/M7 evidence — a golden corpus too noisy to gate per-repo tuning against), **not** because
+human-gating is inherently the right end state.
 
-**One line is *permanently* excluded, not deferred:** *any AI that decides and applies a change on its own.* The
-North Star's "never auto-applied" is unconditional — no volume, ledger, or maturity gate ever un-defers auto-apply.
-The deferred tier is about **automating the proposing** (scale, persistence, an eventual write path a human still
-gates), never about removing the human from the decision.
+**Open premise we intend to test, not a settled law.** A human ratifying rule changes assumes the human knows
+what makes *this AI* review well — which is often false; the reviewer, seeing accept/dismiss patterns, may tune
+its own rules better than the maintainer would. So AI auto-improvement may prove *better* than human-gating. v0.1
+ships human-gated proposals as the **safe starting default** (cheap, no new trust surface, honest given we can't
+measure per-repo tuning yet), and we **measure the three arms — baseline vs. deterministic rules vs. AI-assisted**
+— before deciding whether the auto-tuner supersedes it.
+
+**How this squares with the North Star.** The North Star's promise is *"without ever changing itself behind your
+back"* (line 19) — the real value is **transparency + user control**, of which "never auto-applied" (line 20) is
+one implementation. An auto-applied improvement that is **announced, diffed, reversible, and opt-out-able** is
+*not* "behind your back," so a future auto-tuner can honor the North Star without a human ratifying every edit.
+The reopening gate is therefore **measured evidence it improves reviews + a transparency/rollback mechanism** —
+not "manual forever." (Whether to also reword North Star line 20 to the transparency framing is a maintainer call
+flagged alongside this ADR.)
 
 ## Non-goals
-No fine-tuning. No silent auto-apply. **No LLM decides a change** — AI only *interprets* a reply (§3), *drafts*
-proposed rule prose, or *gathers* freeform-doc context (§1 Tier B); the decision to change is always the human's.
-No AI-weighted signal aggregation (fixed weights until data justifies otherwise — Google's *Rules of ML* #1
-spirit). No vector/RAG retrieval in v0.1. No cross-repo aggregate telemetry.
+No fine-tuning (ever — we don't own the model). No **silent / behind-your-back** auto-apply (ever — that's the
+North Star line; a *transparent, reversible* auto-tuner is the deferred end state, a different thing). **In v0.1
+specifically:** no LLM decides a change — AI only *interprets* a reply (§3), *drafts* proposed rule prose, or
+*gathers* freeform-doc context (§1 Tier B); the decision to change is the human's *for now*. No AI-weighted signal
+aggregation in v0.1 (fixed weights until data justifies otherwise — Google's *Rules of ML* #1 spirit). No
+vector/RAG retrieval in v0.1. No cross-repo aggregate telemetry.
 
 ## Decisions the maintainer should confirm
 1. **Where project rules live** — standardize on `.review-rules/` (Tier A) and *also* mine `AGENTS.md`/
