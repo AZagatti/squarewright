@@ -35,6 +35,32 @@ export interface Grade {
   why: string;
 }
 
+export interface RepeatStat {
+  max: number;
+  median: number;
+  min: number;
+  values: number[];
+}
+
+/**
+ * Collapse repeated measurements of the same quantity into a min/median/max spread. The judge is
+ * stochastic — re-scoring a byte-identical report gives different totals (RESULTS.md records 8 then 7) —
+ * so a single judged pass is not a number. This turns K passes into an honest range.
+ */
+export function summarize(values: number[]): RepeatStat {
+  if (values.length === 0) {
+    return { max: 0, median: 0, min: 0, values };
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  // The `?? …` fallbacks are unreachable (the array is non-empty here) but keep strict indexed
+  // access happy without non-null assertions.
+  const hi = sorted[mid] ?? 0;
+  const lo = sorted[mid - 1] ?? hi;
+  const median = sorted.length % 2 === 0 ? (lo + hi) / 2 : hi;
+  return { max: sorted.at(-1) ?? 0, median, min: sorted[0] ?? 0, values };
+}
+
 const SYSTEM = `You grade a code reviewer against known ground-truth defects in a pull request. For each known
 defect, decide whether ANY of the reviewer's findings correctly identifies the SAME underlying problem — same
 root cause and location, not merely the same file or a superficial mention. Be strict: a finding that lands on

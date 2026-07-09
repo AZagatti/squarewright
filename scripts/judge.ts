@@ -3,7 +3,10 @@
  * see real DEFECT recall (did a finding describe the actual bug?) vs the loose FILE recall the eval prints.
  * Reuses saved findings — no worker re-run. Default judge = free z.ai glm-5.2.
  *
- *   bun run scripts/judge.ts --report eval/reports/<file>.json [--model zai:glm-5.2]
+ * The judge is itself stochastic, so `--judge-repeats K` re-scores the whole report K times and reports the
+ * defect-recall as a min–median–max spread — a single judged pass is not a number.
+ *
+ *   bun run scripts/judge.ts --report eval/reports/<file>.json [--model zai:glm-5.2] [--judge-repeats 3]
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -13,6 +16,7 @@ import {
   createJudge,
   type DefectLocus,
   type JudgedFinding,
+  summarize,
 } from "../src/eval/judge.js";
 
 const ROOT = new URL("..", import.meta.url).pathname;
@@ -72,35 +76,65 @@ async function main() {
   };
   const judge = createJudge({ apiKeys: readKeys() });
 
+  // The judge is stochastic — re-scoring an identical report gives different totals (RESULTS.md: 8
+  // then 7). Re-run the whole report K times and report the judge's own spread, so a config's
+  // defect-recall is a range, not a point. K=1 keeps the old single-number output.
+  const repeats = Math.max(1, Math.trunc(Number(arg("judge-repeats") ?? 1)));
+
+  // Narrow to the scorable has-issue cases up front (clean cases have no defect loci to judge).
+  const scored = report.results
+    .map((r) => ({ c: byId.get(r.id), r }))
+    .filter(
+      (x): x is { r: ReportResult; c: Case & { expect_loci: DefectLocus[] } } =>
+        x.c?.label === "has-issue" && !!x.c.expect_loci?.length
+    );
+  const total = scored.reduce((n, { c }) => n + c.expect_loci.length, 0);
+  const fileHits = scored.reduce((n, { r }) => n + (r.hitLoci ?? 0), 0);
+
   console.log(`\n▸ judging ${reportPath}`);
   console.log(`  config: ${JSON.stringify(report.config ?? "(none)")}`);
-  console.log(`  judge:  ${lane.provider}/${lane.model}\n`);
+  console.log(`  judge:  ${lane.provider}/${lane.model}`);
+  console.log(`  passes: ${repeats}\n`);
 
-  let fileHits = 0;
-  let defectHits = 0;
-  let total = 0;
-  for (const r of report.results) {
-    const c = byId.get(r.id);
-    if (c?.label !== "has-issue" || !c.expect_loci?.length) {
-      continue;
+  const perCase = new Map<string, number[]>();
+  const perPassRecall: number[] = [];
+  for (let k = 0; k < repeats; k += 1) {
+    let passTotal = 0;
+    for (const { r, c } of scored) {
+      // biome-ignore lint/performance/noAwaitInLoops: sequential by design — respects the judge model's concurrency limits across passes × offline-report cases
+      const grades = await judge.judge(c.expect_loci, r.findings ?? [], lane);
+      const matched = grades.filter((g) => g.matched).length;
+      passTotal += matched;
+      perCase.set(r.id, [...(perCase.get(r.id) ?? []), matched]);
     }
-    const n = c.expect_loci.length;
-    total += n;
-    fileHits += r.hitLoci ?? 0;
-    // biome-ignore lint/performance/noAwaitInLoops: sequential by design — respects the judge model's concurrency limits across offline-report cases
-    const grades = await judge.judge(c.expect_loci, r.findings ?? [], lane);
-    const matched = grades.filter((g) => g.matched).length;
-    defectHits += matched;
+    perPassRecall.push(passTotal);
+    if (repeats > 1) {
+      console.log(`  pass ${k + 1}/${repeats}: defect ${passTotal}/${total}`);
+    }
+  }
+
+  console.log("\n── per case (defect matches across passes) ──");
+  for (const { r, c } of scored) {
+    const s = summarize(perCase.get(r.id) ?? []);
+    const range = s.min === s.max ? `${s.min}` : `${s.min}–${s.max}`;
     console.log(
-      `  ${r.id.padEnd(28)} file=${r.hitLoci ?? 0}/${n}  defect=${matched}/${n}`
+      `  ${r.id.padEnd(28)} file=${r.hitLoci ?? 0}/${c.expect_loci.length}  defect=${range}/${c.expect_loci.length}`
     );
   }
 
+  const overall = summarize(perPassRecall);
   console.log("\n── recall ──");
   console.log(`  FILE-level (eval metric): ${fileHits}/${total}`);
-  console.log(`  DEFECT-level (judge):     ${defectHits}/${total}`);
+  if (repeats === 1) {
+    console.log(`  DEFECT-level (judge):     ${overall.median}/${total}`);
+  } else {
+    console.log(
+      `  DEFECT-level (judge, ${repeats} passes): ${overall.min}–${overall.max}/${total} (median ${overall.median})`
+    );
+    console.log(`  per-pass totals: [${perPassRecall.join(", ")}]`);
+  }
   console.log(
-    `  → the file metric over-credited by ${fileHits - defectHits} loci\n`
+    `  → the file metric over-credited the median by ${fileHits - overall.median} loci\n`
   );
 }
 
