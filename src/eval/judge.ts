@@ -35,6 +35,24 @@ export interface Grade {
   why: string;
 }
 
+/** One judge call's grades plus the token usage it billed, so a paid judge run can be spend-capped. */
+export interface JudgeResult {
+  grades: Grade[];
+  usage: { input: number; output: number };
+}
+
+function sumUsage(messages: unknown[]): { input: number; output: number } {
+  let input = 0;
+  let output = 0;
+  for (const m of messages as Array<{
+    usage?: { input?: number; output?: number };
+  }>) {
+    input += m.usage?.input ?? 0;
+    output += m.usage?.output ?? 0;
+  }
+  return { input, output };
+}
+
 export interface RepeatStat {
   max: number;
   median: number;
@@ -101,7 +119,7 @@ export function createJudge(opts: { apiKeys: Record<string, string> }) {
       loci: DefectLocus[],
       findings: JudgedFinding[],
       lane: ModelLane
-    ): Promise<Grade[]> {
+    ): Promise<JudgeResult> {
       const authStorage = AuthStorage.create();
       for (const [p, k] of Object.entries(opts.apiKeys)) {
         authStorage.setRuntimeApiKey(p, k);
@@ -163,16 +181,17 @@ export function createJudge(opts: { apiKeys: Record<string, string> }) {
           "Call submit_grades now, exactly once, with a grade for each known defect."
         );
       }
+      const usage = sumUsage(session.messages);
       session.dispose();
-      return (
+      const grades =
         // biome-ignore lint/suspicious/noUnnecessaryConditions: runtime guard — the model may still not have called submit_grades after the nudge loop exhausts its retries; Biome's flow analysis can't see that the while loop can exit with `captured` still undefined
         captured?.grades ??
         loci.map((_, i) => ({
           defectIndex: i,
           matched: false,
           why: "judge produced no grade",
-        }))
-      );
+        }));
+      return { grades, usage };
     },
   };
 }
