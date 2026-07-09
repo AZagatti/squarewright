@@ -1,5 +1,8 @@
 # z.ai (GLM) reliability & latency — what we know, what we do
 
+> See also [`../reference/models-reasoning-and-cost.md`](../reference/models-reasoning-and-cost.md) for the broader
+> provider reference (reasoning control, caching, batch, OpenRouter, cost/process lessons).
+
 GLM models reach squarewright **only through the z.ai Coding Plan** (subscription, flat cost), never
 OpenRouter. That makes them the cheap default for the analysis pass, but the subscription endpoint has an
 **undocumented, real concurrency ceiling** (empirically ~5 in-flight requests before 429s) and ~40s/call
@@ -33,9 +36,11 @@ latency. This note records what was verified against Pi's source and z.ai's docs
   maxRetryDelayMs: 20_000 }`. This re-enables the SDK's per-request 429/5xx backoff (fact #1), reacting
   faster and more precisely than waiting for a whole turn to fail. Agent-level `retry` stays on as a coarse
   backstop.
-- **Prefer the fast/free GLM variants for the analysis pass.** `glm-5-turbo` is the value pick (best
-  precision at ~1 noise in the initial rank, free); `glm-4.5-air` is the documented low-latency small model.
-  Reserve `glm-5.2`/reasoning-heavy calls for what needs them.
+- **Prefer the fast/free GLM variants for the analysis pass** for cost/latency — but note a **later judged rank
+  (2026-07-09) found `glm-5-turbo` has the *worst* recall of every GLM tested** (0–1/12; it's "clean" because it
+  barely finds anything). It's the current default only by inertia; capable models (glm-5.2/glm-4.5) scored higher
+  on recall (unconfirmed — see [`../reference/models-reasoning-and-cost.md`](../reference/models-reasoning-and-cost.md)
+  and `eval/RESULTS.md`). `glm-4.5-air` is the documented low-latency small model.
 - **Drop reasoning effort where quality allows.** z.ai's docs say Max→High on GLM-5.2-class "sacrifices only a
   few points … while effectively halving token output." `--thinking off/minimal` maps to disabled/high via
   `thinkingLevelMap` — cheaper and faster. Our operating point is `--thinking off` anyway.

@@ -61,10 +61,31 @@ postable*, then the depth that makes it good.
 | **M4** | **Onboarding — two first-class paths** | (a) **low-friction GitHub Action + config** (drop a workflow + `.squarewright.yml` pointing at the versioned harness); (b) **CLI binary + `init`**. Plus `doctor` + config loading. `init`+binary is **not** the only path. |
 | **M5** | **Multi-persona routing / pairing / batching engine** | glob routing and solo/batched passes drive the eval and wire to `.squarewright.yml`. Correlated-pair batching is a config **primitive** (`pass` group-key), not a default: measurement showed batching is a directional single-model precision lever whose specific pairings aren't corpus-validated (no golden case co-touches two domains), so no default pairing ships — the primitive stays opt-in pending a multi-domain corpus case. Lands *after* the review → post → re-review path works. |
 | **M6** | **Local feedback loop** — 👍/👎 (collaborator-weighted), flagged-line-changed-later, suggestion-accepted → per-rule/persona accept-rate | see [`design/feedback-and-data.md`](design/feedback-and-data.md); blocked on a signal-storage decision |
-| **M7** | **Honest measurement** — eval hardening + the cheap-model rank on the locked setup | ranking deferred until the setup is good (see `eval/RESULTS.md`) |
+| **M7** | **Honest measurement** — eval hardening + the cheap-model rank on the locked setup | **Shipped: free default structurer** (PR #48, cost fix). **First judged rank (2026-07-09) — a lead, NOT a result: the numbers don't reproduce** (glm-5.2 spans 2–8 across audits; the judge is itself stochastic). Robust: current default glm-5-turbo is the *worst* (0–1/12); reasoning rescues weak models. Exact rank unestablished. See `eval/RESULTS.md` + [`reference/models-reasoning-and-cost.md`](reference/models-reasoning-and-cost.md). **Blocker before any default change: a reproducible re-measure (analysis repeats × judge re-scores, pinned/different-family judge, ci-moby fixed).** |
 
 The low-friction Action/config path from M4 is also the vehicle that runs M1–M3 in CI for dogfooding, so a
 minimal version of it lands alongside M1–M2; M4 is the polish that makes **both** onboarding paths first-class.
+
+## Follow-ups from the 2026-07-09 measurement session
+
+Concrete, tracked items the model-rank/reasoning/cost session surfaced (full context: `eval/RESULTS.md`,
+[`reference/models-reasoning-and-cost.md`](reference/models-reasoning-and-cost.md)):
+
+- **Candidate default-model switch** glm-5-turbo → a capable model reasoning-off (glm-5.2 / glm-4.5 / deepseek-v3.2 scored
+  best in one draw) — a promising free quality lever, but the numbers **don't reproduce at N=1** (glm-5.2 re-judged 2–7).
+  Prerequisite before changing `.squarewright.yml`: **≥3 judged repeats + a different-family judge** (the current judge is
+  same-family as the winners). Then a product decision (which model; speed/cost tradeoff).
+- **Harden the OR spend guard against retry re-billing** — the token estimate counts only the final attempt's usage, so
+  throttle-driven retries (which re-send context and re-bill) undercount real spend. (It does NOT miscount reasoning tokens
+  — Pi's `usage.output` already includes them.) Until then, bound OR reasoning cost with `max_tokens` at the source and
+  don't over-parallelize a rate-limited provider.
+- **Improve the structurer** — even free, it runs every pass. Options: default it to the cheapest configured lane's
+  provider (coherent with any setup, not hardcoded z.ai); save the pass-1 analysis text to reports so structurer models
+  can be compared **offline** without re-running analysis.
+- **Self-consistency sampling** (`--samples`/`--consensus`, shipped as an eval knob) is a real recall lever (union
+  recovers "reachable but rare" misses) — evaluate promoting it to the review path, per-model, with a precision guard.
+- **Recall is the bottleneck** (issue #45) — an informal read of the sampling runs suggested most misses are model-ceiling / reachable-but-rare (not yet persisted as an artifact — #45 AC1),
+  not routing/prompt gaps; grounding tested, didn't help the reasoning-bound cases.
 
 ## Later bets — v0.x depth
 

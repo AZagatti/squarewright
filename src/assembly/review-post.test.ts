@@ -99,12 +99,9 @@ describe("runReviewPost preflight", () => {
 });
 
 describe("requiredProviders", () => {
-  test("adds the default (openrouter) structurer provider when none is set", () => {
-    // CONFIG's only lane is zai
-    expect([...requiredProviders(CONFIG)].sort()).toEqual([
-      "openrouter",
-      "zai",
-    ]);
+  test("the default structurer is free z.ai — a z.ai-only config forces no other provider", () => {
+    // CONFIG's only lane is zai, and the default structurer is now zai too (no forced openrouter)
+    expect([...requiredProviders(CONFIG)]).toEqual(["zai"]);
   });
 
   test("follows a config-specified structurer — no forced openrouter", () => {
