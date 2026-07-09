@@ -6,8 +6,10 @@
  *
  * TRUST (Hard Rule #1): this factory takes ONLY a root path — it has no SHA/ref parameter, so it can never be
  * pointed at a PR-head revision; head-binding is a type-level impossibility, not a runtime promise. Its safety
- * rests on the caller checking out trusted content (the review workflow does). Path traversal is contained:
- * every request resolves under `root` and anything escaping it reads back as `null`.
+ * rests on the caller checking out trusted content (the review workflow does). Lexical path traversal is
+ * contained: every request resolves under `root` and any `..`/absolute path that escapes it reads back as
+ * `null`. (A symlink *inside* the tree pointing outside is not caught here — that needs a symlink already merged
+ * into the trusted branch through review, a different trust tier than the PR-head/base line this reader defends.)
  */
 import { readdir, readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
