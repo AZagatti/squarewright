@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { Finding, ReviewContext } from "../core/types.js";
 import { STICKY_MARKER } from "../output/render.js";
-import type { PiWorker, WorkerRequest, WorkerResult } from "../pi/session.js";
+import type {
+  PiWorker,
+  RepoReader,
+  WorkerRequest,
+  WorkerResult,
+} from "../pi/session.js";
 import type { AssemblyConfig } from "./config.js";
 import { runReview } from "./review.js";
 
@@ -182,6 +187,62 @@ describe("runReview", () => {
     expect(runReview(CONTEXT, config, worker)).rejects.toThrow(
       "different lanes"
     );
+  });
+
+  test("injects a matching Tier-A rule into the pass systemPrompt; excludes a non-matching one", async () => {
+    let received: WorkerRequest | undefined;
+    const worker: PiWorker = {
+      run: (req) => {
+        received = req;
+        return Promise.resolve({
+          findings: [],
+          usage: { submitted: true, toolCalls: 0 },
+        });
+      },
+    };
+    const reader: RepoReader = {
+      listDir: (path) =>
+        Promise.resolve(
+          path === ".review-rules" ? ["- ts.md", "- css.md"] : null
+        ),
+      readFile: (path) => {
+        if (path === ".review-rules/ts.md") {
+          return Promise.resolve(
+            '---\nglobs: ["src/**"]\n---\n\nTS RULE: no default exports.'
+          );
+        }
+        if (path === ".review-rules/css.md") {
+          return Promise.resolve(
+            '---\nglobs: ["**/*.css"]\n---\n\nCSS RULE: logical properties only.'
+          );
+        }
+        return Promise.resolve(null);
+      },
+    };
+
+    // CONTEXT changes src/a.ts → the src/** rule matches, the *.css rule does not.
+    await runReview(CONTEXT, CONFIG, worker, { repoReader: reader });
+
+    expect(received?.systemPrompt).toContain("TS RULE: no default exports.");
+    expect(received?.systemPrompt).toContain("take precedence");
+    expect(received?.systemPrompt).not.toContain("CSS RULE");
+    // the persona's own prompt is still present, after the rule preamble
+    expect(received?.systemPrompt).toContain("review it");
+  });
+
+  test("no repoReader leaves the systemPrompt untouched (bare persona prompt)", async () => {
+    let received: WorkerRequest | undefined;
+    const worker: PiWorker = {
+      run: (req) => {
+        received = req;
+        return Promise.resolve({
+          findings: [],
+          usage: { submitted: true, toolCalls: 0 },
+        });
+      },
+    };
+    await runReview(CONTEXT, CONFIG, worker);
+    expect(received?.systemPrompt).toBe("review it");
   });
 
   test("docs-only PR selects no personas and never calls the worker", async () => {
