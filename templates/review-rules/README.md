@@ -25,4 +25,9 @@ globs: ["src/**"]
 - Public API changes require a changelog entry.
 ```
 
+**Rules load from the default branch, so a new or edited rule applies starting with the _next_ PR** — the
+reviewer reads the trusted merged tree, never a PR's own head, so an untrusted PR can't add a rule that
+suppresses its own findings. (Same model as CODEOWNERS or CI config.) For that reason, protect your default
+branch with required review, and consider a CODEOWNERS entry on `.review-rules/*.md`.
+
 This starter file is safe to edit or delete. See docs/design/feedback-and-data.md for the learning loop.

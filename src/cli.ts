@@ -19,6 +19,7 @@ import {
   spawnRunner,
 } from "./github/poster.js";
 import { scaffold } from "./init/scaffold.js";
+import { fsRepoReader } from "./pi/fs-reader.js";
 import { resolveProviderKeys } from "./pi/keys.js";
 import { createPiWorker } from "./pi/worker.js";
 
@@ -80,6 +81,9 @@ program
               runReviewPost(config, context, {
                 makeWorker: (apiKeys, structurerLane) =>
                   createPiWorker({ apiKeys, structurerLane }),
+                // Tier-A rules load from the TRUSTED base checkout the Review workflow provides (default branch,
+                // never PR head — see squarewright-review.yml). opts.cwd is that checkout root.
+                repoReader: fsRepoReader(opts.cwd),
                 resolveKeys: resolveProviderKeys,
               }),
           }

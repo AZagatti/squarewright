@@ -87,9 +87,12 @@ Each `.review-rules/*.md` file carries `description`/`globs` frontmatter; the lo
 selects the rules whose `globs` match a PR's changed files — deterministically, reusing the persona glob matcher,
 **no LLM** — and prepends them to the review prompts. A rule that explicitly permits something a persona would
 flag wins. Rules are maintainer-authored via a normal reviewed change (never auto-committed); when the reviewer
-wants a new rule it posts the text as a suggestion to paste here, it does not write the file. **Trust:** the
-production reader must be bound to the **base** (merged) revision — a head-revision rule added by an untrusted PR
-could silently suppress findings. This repo dogfoods it via [`.review-rules/architecture.md`](.review-rules/architecture.md).
+wants a new rule it posts the text as a suggestion to paste here, it does not write the file. **Trust:** rules
+are read by `fsRepoReader` over the Review workflow's checkout — the **trusted default branch, never PR head**
+(`squarewright-review.yml`: `actions/checkout@v4`, no ref) — so a head-revision rule added by an untrusted PR
+can't suppress its own findings, and a new/edited rule applies from the **next** PR. The reader loads rules only;
+it is NOT forwarded to the Worker (that would enable grounding tools — a separate off-by-default feature). This
+repo dogfoods it via [`.review-rules/architecture.md`](.review-rules/architecture.md).
 
 ## Where things live
 See the **Module layout** table in [`docs/ROADMAP.md`](docs/ROADMAP.md) — kept there as the single source, not

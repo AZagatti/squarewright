@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ModelLane, ReviewContext } from "../core/types.js";
 import type { Poster } from "../github/poster.js";
-import type { PiWorker } from "../pi/session.js";
+import type { PiWorker, RepoReader, WorkerRequest } from "../pi/session.js";
 import type { LookupPullsForCommit, VerifiedTarget } from "../safety/trust.js";
 import type { AssemblyConfig } from "./config.js";
 import type { ReviewOutput } from "./review.js";
@@ -95,6 +95,43 @@ describe("runReviewPost preflight", () => {
     await runReviewPost({ ...CONFIG, structurer }, CONTEXT, deps);
 
     expect(receivedStructurer).toEqual(structurer);
+  });
+});
+
+describe("runReviewPost rules loading", () => {
+  test("loads Tier-A rules from the repoReader into the prompt, but never forwards it to the worker", async () => {
+    let received: WorkerRequest | undefined;
+    const spyWorker: PiWorker = {
+      run: (req) => {
+        received = req;
+        return Promise.resolve({
+          findings: [],
+          usage: { submitted: true, toolCalls: 0 },
+        });
+      },
+    };
+    // A no-globs rule always applies, so it injects regardless of the (empty) changed-file set.
+    const repoReader: RepoReader = {
+      listDir: (p) =>
+        Promise.resolve(p === ".review-rules" ? ["- always.md"] : null),
+      readFile: (p) =>
+        Promise.resolve(
+          p === ".review-rules/always.md" ? "ALWAYS RULE BODY" : null
+        ),
+    };
+    const deps = {
+      makeWorker: () => spyWorker,
+      repoReader,
+      resolveKeys: () =>
+        Promise.resolve({ apiKeys: { zai: "z" }, missing: [] }),
+    };
+
+    await runReviewPost(CONFIG, CONTEXT, deps);
+
+    // rule text reached the prompt...
+    expect(received?.systemPrompt).toContain("ALWAYS RULE BODY");
+    // ...but the reader did NOT reach the Worker — grounding tools stay off (a separate, off-by-default feature)
+    expect(received?.repoReader).toBeUndefined();
   });
 });
 
