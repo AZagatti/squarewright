@@ -41,14 +41,26 @@ export interface JudgeResult {
   usage: { input: number; output: number };
 }
 
-function sumUsage(messages: unknown[]): { input: number; output: number } {
+/**
+ * Sum billable tokens across a session's messages for the spend guard — mirrors `sumTokens` in
+ * src/pi/worker.ts, including its `totalTokens - input` fallback for messages that report only a total. Feeds
+ * a money-safety cap, so it stays byte-compatible with the worker's accounting.
+ */
+export function sumUsage(messages: unknown[]): {
+  input: number;
+  output: number;
+} {
   let input = 0;
   let output = 0;
   for (const m of messages as Array<{
-    usage?: { input?: number; output?: number };
+    usage?: { input?: number; output?: number; totalTokens?: number };
   }>) {
-    input += m.usage?.input ?? 0;
-    output += m.usage?.output ?? 0;
+    const u = m.usage;
+    if (!u) {
+      continue;
+    }
+    input += u.input ?? 0;
+    output += u.output ?? Math.max(0, (u.totalTokens ?? 0) - (u.input ?? 0));
   }
   return { input, output };
 }

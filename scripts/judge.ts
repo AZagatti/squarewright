@@ -85,6 +85,17 @@ function parseRepeats(): number {
   return n;
 }
 
+/** Non-negative `--max-spend` (default $0.25). Rejects a malformed value — `NaN` would make `spent > NaN`
+ *  always false, silently disabling the paid-judge cap (the one bug class the money rule can't tolerate). */
+function parseMaxSpend(): number {
+  const raw = arg("max-spend");
+  const n = raw === undefined ? 0.25 : Number(raw);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`--max-spend must be a non-negative number (got "${raw}")`);
+  }
+  return n;
+}
+
 /** The scorable has-issue cases (clean cases carry no defect loci to judge). */
 function selectScored(
   results: ReportResult[],
@@ -217,7 +228,7 @@ async function main() {
     lane.provider === "openrouter"
       ? openrouterPrice(lane.model)
       : { in: 0, out: 0 };
-  const maxSpend = Number(arg("max-spend") ?? 0.25);
+  const maxSpend = parseMaxSpend();
   const guard = makeSpendGuard(maxSpend);
   const paid = price.in > 0 || price.out > 0;
 

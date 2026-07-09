@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { summarize } from "./judge.js";
+import { summarize, sumUsage } from "./judge.js";
 
 test("summarize: a single value has no spread (min = median = max)", () => {
   const s = summarize([7]);
@@ -33,4 +33,24 @@ test("summarize: empty input yields zeros, never NaN", () => {
   expect(s.median).toBe(0);
   expect(s.max).toBe(0);
   expect(Number.isNaN(s.median)).toBe(false);
+});
+
+test("sumUsage: adds input/output across messages, skips ones without usage", () => {
+  const u = sumUsage([
+    { usage: { input: 100, output: 20 } },
+    { role: "user" }, // no usage → skipped
+    { usage: { input: 50, output: 10 } },
+  ]);
+  expect(u).toEqual({ input: 150, output: 30 });
+});
+
+test("sumUsage: falls back to totalTokens - input when output is absent", () => {
+  // A message that reports only a total must still yield billable output — else a spend cap under-counts.
+  const u = sumUsage([{ usage: { input: 80, totalTokens: 200 } }]);
+  expect(u).toEqual({ input: 80, output: 120 });
+});
+
+test("sumUsage: never returns negative output when totalTokens < input", () => {
+  const u = sumUsage([{ usage: { input: 200, totalTokens: 50 } }]);
+  expect(u.output).toBe(0);
 });
