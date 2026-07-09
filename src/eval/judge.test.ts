@@ -1,5 +1,24 @@
 import { expect, test } from "bun:test";
-import { summarize, summarizeMatrix, sumUsage } from "./judge.js";
+import {
+  summarize,
+  summarizeMatrix,
+  sumUsage,
+  ungradedWarning,
+} from "./judge.js";
+
+test("ungradedWarning: null when every call was graded", () => {
+  expect(ungradedWarning(0, 8)).toBeNull();
+});
+
+test("ungradedWarning: flags a fully-broken judge (all calls ungraded)", () => {
+  const w = ungradedWarning(8, 8);
+  expect(w).toContain("8/8");
+  expect(w).toContain("suspect");
+});
+
+test("ungradedWarning: flags partial tool-call failures too", () => {
+  expect(ungradedWarning(3, 8)).toContain("3/8");
+});
 
 test("summarize: a single value has no spread (min = median = max)", () => {
   const s = summarize([7]);

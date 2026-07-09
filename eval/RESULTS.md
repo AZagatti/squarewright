@@ -284,3 +284,20 @@ Maintainer-directed. The dogfood/scaffold **review** lanes (`strong`, `cheap` in
 This is deliberately a **weak, provisional claim, not the settled rank**: it only spends the *robust* half of the measurement — glm-5-turbo reasoning-off is the reproducibly-**worst** reviewer (0/12 ×3) — so moving *off* it is safe. It is **NOT** a claim that glm-5.2 beats the other capable models (glm-4.5 / deepseek-v3.2 tied it at one draw; glm-5.2 itself re-judged **2–8**). It's acceptable now only because this is **pre-v0.1 test config with no external users** (few have a z.ai subscription) — the default is a dev/dogfood artifact, not a product commitment.
 
 The **real product-release default** remains a separate future decision: product-safe, cheap end-to-end if OpenRouter, and gated on the reproducible re-measure above (issue #49, AC4). The M7 gate still governs *that* choice; this change does not close it.
+
+## Cross-family (non-GLM) judge — cross-check (2026-07-09, #49 AC2)
+
+The defect judge defaults to z.ai `glm-5.2`, which is the **same family** as most ranked candidates → self-preference risk. To cross-check, `scripts/judge.ts --model <provider:model>` can point the judge at any Pi model. Findings, judging the same saved glm-5.2 report (thinking:xhigh):
+
+| judge | family | defect-recall | cost/run | notes |
+|---|---|---|---|---|
+| `zai/glm-5.2` | GLM | 6/11 | free | the default (same-family) |
+| **`openrouter/deepseek/deepseek-v3.2`** | DeepSeek | **6/11** | **~$0.01** | cross-family — **agrees** with glm-5.2 |
+| `openrouter/qwen/qwen3-coder:free` | Qwen | 0/11 ⚠️ | free | **broken** — never called `submit_grades` |
+| `openrouter/meta-llama/llama-3.3-70b-instruct:free` | Llama | 0/11 ⚠️ | free | **broken** — same tool-call failure |
+
+**Reads:**
+- **A cross-family judge (deepseek-v3.2) agrees with glm-5.2 (6/11 = 6/11)** on this report — the glm-5.2 judge is *not* obviously self-preferential. This is N=1 (one report, one pass each); #49d runs it across the rank via `--reports`/`--judge-repeats`.
+- **Free OpenRouter models fail as judges** — both qwen3-coder:free and llama-3.3-70b:free returned 0-across-the-board because they never called the `submit_grades` tool (thinking-off), which the judge scores as all-miss. A `0` from a judge that didn't tool-call is not a measurement.
+- **New guard:** the judge now reports a `graded` flag per call, and `scripts/judge.ts` prints a warning when any call failed to tool-call (`⚠️ judge did not call submit_grades on N/M calls`), so a broken-judge `0` can never be silently read as real recall.
+- **The cross-family cross-check must use a *cheap paid* non-GLM (deepseek-v3.2, ~$0.01/run capped by `--max-spend`)**, not a free model.
