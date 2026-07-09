@@ -301,3 +301,19 @@ The defect judge defaults to z.ai `glm-5.2`, which is the **same family** as mos
 - **Free OpenRouter models fail as judges** — both qwen3-coder:free and llama-3.3-70b:free returned 0-across-the-board because they never called the `submit_grades` tool (thinking-off), which the judge scores as all-miss. A `0` from a judge that didn't tool-call is not a measurement.
 - **New guard:** the judge now reports a `graded` flag per call, and `scripts/judge.ts` prints a warning when any call failed to tool-call (`⚠️ judge did not call submit_grades on N/M calls`), so a broken-judge `0` can never be silently read as real recall.
 - **The cross-family cross-check must use a *cheap paid* non-GLM (deepseek-v3.2, ~$0.01/run capped by `--max-spend`)**, not a free model.
+
+## Reproducible interval on the robust-worst model (2026-07-09, #49 AC4, bounded)
+
+First use of the hardened toolkit (`--reports` matrix × `--judge-repeats`) to report a config's recall as an **interval on real data** — 4 full-corpus same-config `glm-5-turbo` reports (analysis) × 2 glm-5.2 judge passes each, free z.ai:
+
+```
+overall (analysis × judge): 0–2 (median 0.5) / 11
+analysis variance (per-report medians): 0–1.5 (median 0.5)   ← worker run-to-run spread
+judge variance (within-report range):   0–1 (median 0)        ← judge stochasticity at this floor
+```
+Per-report: `[1,1] [0,0] [0,0] [1,2]` / 11.
+
+**Reads:**
+- **This confirms the one *robust* rank fact as a proper interval:** glm-5-turbo defect-recall is **0–2/11 (median 0.5)** — reproducibly the worst, now with variance decomposed rather than a single lucky/unlucky point. The bulk of the spread is *analysis* (worker) variance; the judge is stable at this low level.
+- **Methodology validated on real data** — the matrix mode, the spread math, and the honesty guards all work end-to-end. Notably the `--reports` "different loci totals" guard *fired correctly* on a first attempt where two reports shared a `.config` but covered different case subsets → **`.config` does not record the case set; a matrix needs same-*corpus* reports (here, 18-result full-corpus runs), not just same-config.**
+- **This is NOT the full rank re-measure (#49 AC4).** It's one model (the robust-worst). A complete rank needs **≥3 fresh `eval --repeat` analysis runs per candidate model** (a multi-hour z.ai job, quota-sensitive) fed through this same matrix + a deepseek cross-family cross-check. The tooling is ready; the run is the remaining work. Until then, the shipped default (glm-5.2) stays a **provisional** pick, not a measured rank winner.
