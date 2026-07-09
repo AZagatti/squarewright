@@ -109,8 +109,8 @@ back"* (line 19) — the real value is **transparency + user control**, of which
 one implementation. An auto-applied improvement that is **announced, diffed, reversible, and opt-out-able** is
 *not* "behind your back," so a future auto-tuner can honor the North Star without a human ratifying every edit.
 The reopening gate is therefore **measured evidence it improves reviews + a transparency/rollback mechanism** —
-not "manual forever." (Whether to also reword North Star line 20 to the transparency framing is a maintainer call
-flagged alongside this ADR.)
+not "manual forever." (North Star line 20 was reworded to this transparency framing alongside this ADR — an
+auto-tuner may earn its place *if* it measures better and stays transparent/reversible.)
 
 ## Non-goals
 No fine-tuning (ever — we don't own the model). No **silent / behind-your-back** auto-apply (ever — that's the

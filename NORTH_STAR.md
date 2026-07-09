@@ -17,7 +17,9 @@ You drop Squarewright into a repository and, in minutes, have a working code rev
 - **Posts like a good colleague** — a single sticky summary plus inline comments on the right lines, deduped
   across re-reviews, never spammy, safe against markdown injection from the diff.
 - **Gets better from your feedback without ever changing itself behind your back** — 👍/👎 and implicit
-  signals tune future reviews; any change to its own rules is proposed to you, never auto-applied.
+  signals tune future reviews; changes to its own rules are always transparent and reversible — never applied
+  behind your back. (Today they're human-ratified proposals; an AI that improves its own rules may earn its place
+  later *if* it measures better and stays transparent/reversible — see [ADR-0005](docs/adr/0005-feedback-signal-storage.md).)
 - **Is honest about how good it is** — it measures itself on real PRs and reports real recall/precision,
   refusing a single flattering blended number. If it can't back a claim with measurement, it doesn't make it.
 - **Is a toolbox, not a black box** — progressive disclosure from a low-friction start (add the GitHub Action
