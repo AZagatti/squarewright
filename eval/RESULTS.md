@@ -548,6 +548,14 @@ matter** (the shipped default vs the strongest contender), both with the **same 
   overlap. The ranking is judge-robust even though the point values aren't.
 - **This does NOT reproduce the earlier "sonnet 5 vs glm 4" subagent gap** — that was N=1. At N=3×2×2-judges the
   gap shrinks to ~0.5–1 median inside the overlap. Higher N ate the apparent gap, as expected.
+- **The deepseek structurer buys recall *and* clean-case noise together — a real precision cost.** The matched
+  glm-5.2+deepseek-struct runs threw **6 / 10 / 17 false-positive findings across 10 clean cases** (~0.6–1.7
+  FP/clean), vs the shipped glm-5-turbo structurer path's **~0–0.4 FP/clean**. `cleanFP` counts *findings* on
+  clean cases (all false positives), and it can exceed `cleanCases` — 17/10 is 17 FP-findings, not "all cases
+  flagged." So the structurer swap that fixes nosub (#78) and lifts *file* recall is **~3–4× noisier on clean
+  cases** while judged recall barely moves. This is the precision half of the retraction's "more findings = more
+  noise" — chasing recall via a stronger structurer degrades precision for ~0 judged-recall gain. Reinforces
+  keeping the shipped free `glm-5-turbo` structurer as default; feeds #73 (precision cost) and #78.
 - **Still open (unchanged):** contamination (famous reverted PRs) is unaddressed, so the shared ~2–4/11 band may
   still be memorization-saturation not corpus difficulty; and this covers 2 models, not the whole field. But for
   the one decision that was live — *switch off free glm-5.2 to a paid model for recall?* — the answer is now a
