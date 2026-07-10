@@ -437,13 +437,16 @@ cross-family deepseek judge:
 | | defect recall (judged) | file recall |
 |---|---|---|
 | baseline (`--samples 1`, 3 reports) | 1–4/11 · median **3** | 6–7 |
-| `--samples 3` (1 report, per-pass [3,2]) | 2–3/11 · median **2.5** | 5 |
+| `--samples 3` (2 reports, per-pass [3,2] · [1,1]) | 1–3/11 · median **~2** | 5–6 |
 
-- **No lift** — samples=3 recall (2–3) overlaps/undershoots the baseline (1–4). Union-of-samples recovers
-  *reachable-but-rare* misses; that it didn't help means glm-5.2's misses are largely **model-ceiling**
-  (fundamental reasoning gaps), not sampling-recoverable. **The bottleneck is the model.**
+- **No lift — arguably slightly worse.** Across 2 reports samples=3 recall (1–3, median ~2) undershoots the
+  baseline (1–4, median 3). Union-of-samples recovers *reachable-but-rare* misses; that it didn't help — and
+  perhaps hurt (extra sampled candidates the structurer consolidates imperfectly) — means glm-5.2's misses are
+  largely **model-ceiling** (fundamental reasoning gaps), not sampling-recoverable. **The bottleneck is the
+  model.**
 - **Implication:** the recall fix is a **better analysis model** (the full #49 AC4 rank sweep — needs paid OR
   spend + go-ahead), not a free sampling knob. Self-consistency stays a possible small precision/recall knob but
-  is not the recall answer for this model.
-- **Caveat:** N=1 samples=3 report — a strong lead, being confirmed with more runs; but union clearly didn't
-  produce the lift it would if misses were reachable-but-rare.
+  is **not** the recall answer for this model.
+- **Confirmed (2 reports).** Both samples=3 reports undershoot the baseline; the direction is stable even with
+  judge variance. This closes the free-lever question — recall needs a model change, which is a maintainer
+  go/no-go on the paid sweep.
