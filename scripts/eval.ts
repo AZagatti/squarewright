@@ -401,6 +401,11 @@ async function main() {
   }) => estimatePassSpend(u, analysisPrice, structPrice);
   let localSpend = 0;
   let aborted = false;
+  let errored = 0;
+  // --note "<text>": prepend an instruction to every analysis system prompt (e.g. steer a reasoning-heavy model
+  // to think less). Applies to whatever model this run uses; note it is a DELIBERATE bias when comparing runs.
+  const note = arg("note") ?? "";
+  const withNote = (prompt: string) => (note ? `${note}\n\n${prompt}` : prompt);
   const spendGuard = () => {
     if (aborted || localSpend <= maxSpend) {
       return;
@@ -444,127 +449,138 @@ async function main() {
       if (aborted) {
         return null;
       }
-      const diff = readFileSync(diffPath(c.id), "utf8").slice(0, 60_000);
-      const context: ReviewContext = {
-        baseSha: "",
-        body: "",
-        files: splitUnifiedDiff(diff),
-        headSha: "",
-        prNumber: c.pr,
-        repo: c.repo,
-        title: `${c.repo}#${c.pr}`,
-      };
-      const repoReader = doGround ? ghRepoReader(c.repo, c.pr) : undefined;
-      const t0 = Date.now();
-      let findings: Finding[];
-      let workerCost = 0;
-      let noSubmit = 0; // passes where the model never called submit_findings (NOT a clean review — a dropped submission)
-      if (doPersonas) {
-        const selected = applyBatching(
-          selectPersonas(DEFAULT_PERSONAS, context.files, {
-            cap: 4,
-          })
-        );
-        const passes = buildPasses(selected);
-        const all: Finding[] = [];
-        for (const pass of passes) {
-          const passLane = {
-            ...lane,
-            thinking: thinkingSet ? thinking : pass.thinking,
-          };
-          for (let s = 0; s < samples; s += 1) {
-            // biome-ignore lint/performance/noAwaitInLoops: sequential by design — each run feeds the local spend guard (spendGuard/aborted) checked right after, so later runs must know the running spend before firing
-            const pr = await worker.run({
-              context,
-              lane: passLane,
-              persona: pass.id,
-              repoReader,
-              systemPrompt: pass.prompt,
-            });
-            all.push(...pr.findings);
-            workerCost += pr.usage?.costUsd ?? 0;
-            localSpend += passSpend(pr.usage);
-            if (!pr.usage?.submitted) {
-              noSubmit += 1;
+      try {
+        const diff = readFileSync(diffPath(c.id), "utf8").slice(0, 60_000);
+        const context: ReviewContext = {
+          baseSha: "",
+          body: "",
+          files: splitUnifiedDiff(diff),
+          headSha: "",
+          prNumber: c.pr,
+          repo: c.repo,
+          title: `${c.repo}#${c.pr}`,
+        };
+        const repoReader = doGround ? ghRepoReader(c.repo, c.pr) : undefined;
+        const t0 = Date.now();
+        let findings: Finding[];
+        let workerCost = 0;
+        let noSubmit = 0; // passes where the model never called submit_findings (NOT a clean review — a dropped submission)
+        if (doPersonas) {
+          const selected = applyBatching(
+            selectPersonas(DEFAULT_PERSONAS, context.files, {
+              cap: 4,
+            })
+          );
+          const passes = buildPasses(selected);
+          const all: Finding[] = [];
+          for (const pass of passes) {
+            const passLane = {
+              ...lane,
+              thinking: thinkingSet ? thinking : pass.thinking,
+            };
+            for (let s = 0; s < samples; s += 1) {
+              // biome-ignore lint/performance/noAwaitInLoops: sequential by design — each run feeds the local spend guard (spendGuard/aborted) checked right after, so later runs must know the running spend before firing
+              const pr = await worker.run({
+                context,
+                lane: passLane,
+                persona: pass.id,
+                repoReader,
+                systemPrompt: withNote(pass.prompt),
+              });
+              all.push(...pr.findings);
+              workerCost += pr.usage?.costUsd ?? 0;
+              localSpend += passSpend(pr.usage);
+              if (!pr.usage?.submitted) {
+                noSubmit += 1;
+              }
+              spendGuard();
+              if (aborted) {
+                break;
+              }
             }
-            spendGuard();
             if (aborted) {
               break;
             }
           }
-          if (aborted) {
-            break;
+          // union across samples, then (optionally) keep only findings that recurred in ≥`consensus` samples
+          const aggregated = aggregateFindings(all);
+          findings =
+            consensus > 1
+              ? aggregated.filter((f) => f.consensus >= consensus)
+              : aggregated;
+        } else {
+          const pr = await worker.run({
+            context,
+            lane,
+            persona: "persona:general",
+            repoReader,
+            systemPrompt: withNote(PERSONA),
+          });
+          ({ findings } = pr);
+          workerCost += pr.usage?.costUsd ?? 0;
+          localSpend += passSpend(pr.usage);
+          if (!pr.usage?.submitted) {
+            noSubmit += 1;
           }
         }
-        // union across samples, then (optionally) keep only findings that recurred in ≥`consensus` samples
-        const aggregated = aggregateFindings(all);
-        findings =
-          consensus > 1
-            ? aggregated.filter((f) => f.consensus >= consensus)
-            : aggregated;
-      } else {
-        const pr = await worker.run({
-          context,
-          lane,
-          persona: "persona:general",
-          repoReader,
-          systemPrompt: PERSONA,
-        });
-        ({ findings } = pr);
-        workerCost += pr.usage?.costUsd ?? 0;
-        localSpend += passSpend(pr.usage);
-        if (!pr.usage?.submitted) {
-          noSubmit += 1;
-        }
-      }
-      let confirmed = findings.length;
-      let verifyCost = 0;
-      if (verifier) {
-        confirmed = 0;
-        for (const f of findings) {
-          // biome-ignore lint/performance/noAwaitInLoops: sequential by design — respects the model provider's concurrency limits when verifying one case's findings
-          const v = await verifier.verify(f, context, lane);
-          verifyCost += v.usage?.costUsd ?? 0;
-          if (v.verdict === "confirmed") {
-            confirmed += 1;
+        let confirmed = findings.length;
+        let verifyCost = 0;
+        if (verifier) {
+          confirmed = 0;
+          for (const f of findings) {
+            // biome-ignore lint/performance/noAwaitInLoops: sequential by design — respects the model provider's concurrency limits when verifying one case's findings
+            const v = await verifier.verify(f, context, lane);
+            verifyCost += v.usage?.costUsd ?? 0;
+            if (v.verdict === "confirmed") {
+              confirmed += 1;
+            }
           }
         }
+        const ms = Date.now() - t0;
+        // has-issue recall: a finding on the same file as an expected locus counts as a hit (boundary-safe;
+        // NOTE this is file-level only — it cannot see root-cause/precision; a judge scorer is the real fix).
+        const sameFile = (fp: string, lp: string) =>
+          fp === lp ||
+          fp.endsWith(`/${lp}`) ||
+          lp.endsWith(`/${fp}`) ||
+          fp.split("/").pop() === lp.split("/").pop();
+        const lociTotal = c.expect_loci?.length ?? 0;
+        const hitLoci =
+          c.expect_loci?.filter((l) =>
+            findings.some((f) => sameFile(f.path, l.path))
+          ).length ?? 0;
+        const line = `[${c.label === "clean" ? "clean    " : "has-issue"}] ${c.id.padEnd(28)} raw=${findings.length} ${
+          verifier ? `confirmed=${confirmed} ` : ""
+        }${lociTotal ? `hits=${hitLoci}/${lociTotal} ` : ""}${noSubmit ? `nosub=${noSubmit} ` : ""}$${(workerCost + verifyCost).toFixed(4)} ${(ms / 1000).toFixed(0)}s`;
+        console.log(line);
+        return {
+          confirmed,
+          costUsd: workerCost + verifyCost,
+          findings: findings.map((f) => ({
+            line: f.line,
+            message: f.message,
+            path: f.path,
+            severity: f.severity,
+          })),
+          hitLoci,
+          id: c.id,
+          label: c.label,
+          lociTotal,
+          ms,
+          noSubmit,
+          rawFindings: findings.length,
+          stack: c.stack,
+        };
+      } catch (e) {
+        // Isolate a per-case failure (e.g. a provider 429 once quota is exhausted) so it can't reject the whole
+        // pool and lose every completed case. Drop it (returns null → excluded from metrics, never a fake 0),
+        // exactly like a circuit-breaker skip; the run still finishes and writes a report for the cases that ran.
+        errored += 1;
+        console.log(
+          `  ERROR  ${c.id}: ${e instanceof Error ? e.message : String(e)}`
+        );
+        return null;
       }
-      const ms = Date.now() - t0;
-      // has-issue recall: a finding on the same file as an expected locus counts as a hit (boundary-safe;
-      // NOTE this is file-level only — it cannot see root-cause/precision; a judge scorer is the real fix).
-      const sameFile = (fp: string, lp: string) =>
-        fp === lp ||
-        fp.endsWith(`/${lp}`) ||
-        lp.endsWith(`/${fp}`) ||
-        fp.split("/").pop() === lp.split("/").pop();
-      const lociTotal = c.expect_loci?.length ?? 0;
-      const hitLoci =
-        c.expect_loci?.filter((l) =>
-          findings.some((f) => sameFile(f.path, l.path))
-        ).length ?? 0;
-      const line = `[${c.label === "clean" ? "clean    " : "has-issue"}] ${c.id.padEnd(28)} raw=${findings.length} ${
-        verifier ? `confirmed=${confirmed} ` : ""
-      }${lociTotal ? `hits=${hitLoci}/${lociTotal} ` : ""}${noSubmit ? `nosub=${noSubmit} ` : ""}$${(workerCost + verifyCost).toFixed(4)} ${(ms / 1000).toFixed(0)}s`;
-      console.log(line);
-      return {
-        confirmed,
-        costUsd: workerCost + verifyCost,
-        findings: findings.map((f) => ({
-          line: f.line,
-          message: f.message,
-          path: f.path,
-          severity: f.severity,
-        })),
-        hitLoci,
-        id: c.id,
-        label: c.label,
-        lociTotal,
-        ms,
-        noSubmit,
-        rawFindings: findings.length,
-        stack: c.stack,
-      };
     });
 
     // aggregate (drop any cases skipped by the circuit breaker)
@@ -574,6 +590,11 @@ async function main() {
     if (aborted) {
       console.log(
         `  (circuit breaker: ${cases.length - results.length} cases skipped)`
+      );
+    }
+    if (errored > 0) {
+      console.log(
+        `  ⚠️  ${errored} case(s) errored (e.g. provider quota) and were excluded — report covers the ${results.length} that ran`
       );
     }
     const clean = results.filter((r) => r.label === "clean");
