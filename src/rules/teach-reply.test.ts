@@ -33,12 +33,21 @@ test("stripTrigger removes the trigger prefix, keeps the intent", () => {
   expect(stripTrigger("  plain text  ")).toBe("plain text");
 });
 
-test("gateSuggestion drops null, low-confidence, and empty-rule suggestions", () => {
+test("gateSuggestion drops null, low-confidence, empty-rule, and empty-scope suggestions", () => {
   expect(gateSuggestion(null)).toBeNull();
   expect(
     gateSuggestion(sug({ confidence: CONFIDENCE_FLOOR - 0.01 }))
   ).toBeNull();
   expect(gateSuggestion(sug({ ruleText: "   " }))).toBeNull();
+  expect(gateSuggestion(sug({ scope: "   " }))).toBeNull();
+});
+
+test("teach trigger is intentionally loose — slash form fires without the keyword", () => {
+  // documents nit: the `remember`/`rule` keyword is optional; the interpreter (Part B) is the real filter.
+  expect(hasTeachTrigger("/squarewright hey look at this")).toBe(true);
+  expect(stripTrigger("/squarewright hey look at this")).toBe(
+    "hey look at this"
+  );
 });
 
 test("gateSuggestion passes a confident, non-empty suggestion at/above the floor", () => {

@@ -46,6 +46,9 @@ export interface ReplyInterpreter {
   }) => Promise<RuleSuggestion | null>;
 }
 
+// Intentionally loose: the `remember`/`rule` keyword is OPTIONAL for both the `@`- and `/`-forms, so any
+// `@squarewright …` / `/squarewright …` addressed to us is treated as a possible teach reply. Part B's interpreter
+// is the real filter — it returns null (via the confidence gate) when the stripped text carries no durable rule.
 const TRIGGER_RE =
   /^\s*[/@]squarewright\b[ \t]*(?:remember|rule)?[ \t]*:?[ \t]*/i;
 
@@ -66,7 +69,12 @@ export function hasTeachTrigger(replyText: string): boolean {
 export function gateSuggestion(
   s: RuleSuggestion | null
 ): RuleSuggestion | null {
-  if (!s || s.confidence < CONFIDENCE_FLOOR || !s.ruleText.trim()) {
+  if (
+    !s ||
+    s.confidence < CONFIDENCE_FLOOR ||
+    !s.ruleText.trim() ||
+    !s.scope.trim()
+  ) {
     return null;
   }
   return s;
