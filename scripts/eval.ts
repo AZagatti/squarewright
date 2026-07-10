@@ -354,23 +354,32 @@ async function main() {
   const usesOR =
     provider === "openrouter" || structurerLane?.provider === "openrouter";
 
-  // guardrail: refuse OpenRouter reasoning models that can't run cheap at low effort (they fall back to
-  // expensive reasoning). Skipped if you explicitly ask for high/xhigh reasoning or pass --allow-reasoning-burn.
+  // guardrail: refuse OpenRouter reasoning-trap models (fall back to expensive reasoning at low effort). Checks
+  // BOTH the analysis lane AND the structurer lane — a trap *structurer* once burned ~$5 (qwen), and the
+  // metadata preflight used to guard only the analysis model. Skipped for high/xhigh or --allow-reasoning-burn.
   if (
-    provider === "openrouter" &&
     thinking !== "high" &&
     thinking !== "xhigh" &&
     !flag("allow-reasoning-burn")
   ) {
-    const risk = openrouterReasoningRisk(model);
-    if (risk.block) {
-      console.error(
-        `\n✋ ABORT: ${model} — ${risk.detail}.\n` +
-          "   At low/off effort it still bills expensive reasoning tokens (minimax burned ~$4.8; deepseek-v4-flash ~$0.96/run).\n" +
-          "   Use a model whose reasoning disables cheaply (deepseek-v3.2, xiaomi/mimo-v2.5, qwen3.5-flash, or a non-reasoning model),\n" +
-          "   or run it intentionally with --thinking high, or pass --allow-reasoning-burn.\n"
-      );
-      process.exit(2);
+    const orLanes: { model: string; role: string }[] = [];
+    if (provider === "openrouter") {
+      orLanes.push({ model, role: "analysis" });
+    }
+    if (structurerLane?.provider === "openrouter") {
+      orLanes.push({ model: structurerLane.model, role: "structurer" });
+    }
+    for (const orLane of orLanes) {
+      const risk = openrouterReasoningRisk(orLane.model);
+      if (risk.block) {
+        console.error(
+          `\n✋ ABORT: ${orLane.role} model ${orLane.model} — ${risk.detail}.\n` +
+            "   At low/off effort it still bills expensive reasoning tokens (minimax burned ~$4.8; deepseek-v4-flash ~$0.96/run; a trap *structurer* once burned ~$5).\n" +
+            "   Use a model whose reasoning disables cheaply (deepseek-v3.2, xiaomi/mimo-v2.5, qwen3.5-flash, or a non-reasoning model),\n" +
+            "   or run it intentionally with --thinking high, or pass --allow-reasoning-burn.\n"
+        );
+        process.exit(2);
+      }
     }
   }
 
