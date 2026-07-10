@@ -428,3 +428,22 @@ within a report 0–3 (report 3 swung 4→1 — the judge is itself stochastic, 
   This is a first honest AC4 step, not the full multi-model rank. Reports are gitignored; re-run:
   `ZAI_API_KEY=… bun run scripts/eval.ts --provider zai --model glm-5.2 --repeat 3 --concurrency 5` then
   `bun run scripts/judge.ts --reports "<3 paths>" --judge-repeats 2 --model openrouter:deepseek/deepseek-v3.2`.
+
+## Self-consistency (`--samples 3`) does NOT fix glm-5.2 recall (2026-07-10, loop, #45)
+
+Council's cheapest recall lever, tested. glm-5.2 `--samples 3` (union of 3 sampled analysis passes), same
+cross-family deepseek judge:
+
+| | defect recall (judged) | file recall |
+|---|---|---|
+| baseline (`--samples 1`, 3 reports) | 1–4/11 · median **3** | 6–7 |
+| `--samples 3` (1 report, per-pass [3,2]) | 2–3/11 · median **2.5** | 5 |
+
+- **No lift** — samples=3 recall (2–3) overlaps/undershoots the baseline (1–4). Union-of-samples recovers
+  *reachable-but-rare* misses; that it didn't help means glm-5.2's misses are largely **model-ceiling**
+  (fundamental reasoning gaps), not sampling-recoverable. **The bottleneck is the model.**
+- **Implication:** the recall fix is a **better analysis model** (the full #49 AC4 rank sweep — needs paid OR
+  spend + go-ahead), not a free sampling knob. Self-consistency stays a possible small precision/recall knob but
+  is not the recall answer for this model.
+- **Caveat:** N=1 samples=3 report — a strong lead, being confirmed with more runs; but union clearly didn't
+  produce the lift it would if misses were reachable-but-rare.
