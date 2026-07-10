@@ -1,0 +1,21 @@
+{
+  "inline": [
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Lost guard against copying outDir into itself — The old `copyDir` in `utils.ts` had an explicit guard (`if (srcFile === destDir) continue`) to skip copying the output directory into itself when `outDir` is nested inside `publicDir` (e.g., `publicDir: '.'` or `outDir: 'public/build'`). The replacement `fs.cpSync` call has no equivalent protection. This is a behavioral regression for nested-output configurations. A `filter` predicate should be added to skip the resolved `outDir`.",
+      "line": 89,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Symlink semantics flipped from dereference to preserve — The old `copyDir` used `fs.statSync` and `fs.copyFileSync` which dereference symlinks, flattening them to real files/dirs. `fs.cpSync` defaults to `dereference: false`, preserving symlinks verbatim. A relative symlink or one pointing outside the copied tree may now appear broken in the output. If old semantics are desired, pass `dereference: true`.",
+      "line": 89,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Symlink semantics flipped from dereference to preserve — Same symlink semantics change as in `prepareOutDir.ts`. The old hand-rolled copy dereferenced symlinks; `fs.cpSync` without `dereference: true` preserves them. A symlink in the template directory may end up broken in the scaffolded project.",
+      "line": 647,
+      "path": "packages/create-vite/src/index.ts"
+    }
+  ],
+  "sticky": "<!-- squarewright:review -->\n\n## Squarewright review\n\nThe stdlib migration from hand-rolled `copyDir` to `fs.cpSync` is the right direction, but introduces two behavioral regressions: a lost guard against copying `outDir` into itself for nested-output configurations, and symlink semantics silently flipping from dereference to preserve. Both should be addressed before merge.\n\n**3** finding(s): 🔴 0  ·  🟡 1  ·  🔵 2\n\n- 🟡 `packages/vite/src/node/plugins/prepareOutDir.ts:89` _[Correctness, Security]_ — Lost guard against copying outDir into itself — The old `copyDir` in `utils.ts` had an explicit guard (`if (srcFile === destDir) continue`) to skip copying the output directory into itself when `outDir` is nested inside `publicDir` (e.g., `publicDir: '.'` or `outDir: 'public/build'`). The replacement `fs.cpSync` call has no equivalent protection. This is a behavioral regression for nested-output configurations. A `filter` predicate should be added to skip the resolved `outDir`.\n\n  ```suggestion\n  fs.cpSync(publicDir, outDir, { recursive: true, filter: (src) => path.resolve(src) !== path.resolve(outDir), mode: fs.constants.COPYFILE_FICLONE, })\n  ```\n- 🔵 `packages/vite/src/node/plugins/prepareOutDir.ts:89` _[Correctness, Security]_ — Symlink semantics flipped from dereference to preserve — The old `copyDir` used `fs.statSync` and `fs.copyFileSync` which dereference symlinks, flattening them to real files/dirs. `fs.cpSync` defaults to `dereference: false`, preserving symlinks verbatim. A relative symlink or one pointing outside the copied tree may now appear broken in the output. If old semantics are desired, pass `dereference: true`.\n- 🔵 `packages/create-vite/src/index.ts:647` _[Correctness, Security]_ — Symlink semantics flipped from dereference to preserve — Same symlink semantics change as in `prepareOutDir.ts`. The old hand-rolled copy dereferenced symlinks; `fs.cpSync` without `dereference: true` preserves them. A symlink in the template directory may end up broken in the scaffolded project.\n\n---\n_Reviewed by: Correctness, Security · glm-5.2 · findings reflect the enabled lenses only_",
+  "unplaceable": []
+}

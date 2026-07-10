@@ -1,0 +1,8 @@
+{
+  "base_sha": "base",
+  "body": "",
+  "head_sha": "head",
+  "number": 1,
+  "repo": "acme/vite-fork",
+  "title": "Use fs.cpSync instead of custom copyDir"
+}

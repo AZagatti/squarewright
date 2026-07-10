@@ -364,3 +364,37 @@ glm-5.2, 5 runs/arm.
   variant** (a real corpus defect + a rule targeting it) is the next measurement — more realistic, at the cost of
   possible training-leak on real conventions. Extending this fixture with drift-trigger cases is the base for
   rule-drift (ADR-0005 §2).
+
+## Golden-PR rules probe — baseline × Tier-A × Tier-B × A+B on a REAL defect (2026-07-09)
+
+The realistic companion to the synthetic clock-rule measurement: does a rule help catch a **real, documented**
+defect? Case **`ts-vite-21019`** (a `copyDir` → `fs.cpSync` refactor, reverted by vite: omits `dereference:true`
+so symlinks stop being followed, + a Windows non-ASCII `fs.cpSync` bug). The real diff is converted to an
+artifact (`scripts/diff-to-artifact.ts`) and reviewed through the product path in four arms — **same convention
+content** delivered differently — so the only variable is delivery. glm-5.2, 3 runs/arm; each review graded by a
+Claude subagent judge (defect-match: names the concrete symlink/dereference or Windows regression, NOT merely
+"violates the rule"). A single consistent judge re-graded all 12 to remove per-judge strictness variance.
+
+| arm | delivery | caught the real defect |
+|---|---|---|
+| Baseline | nothing | **3/3** |
+| Tier-A | convention as `.review-rules` **precedence rule** | **3/3** |
+| Tier-B | same convention as a **background doc** (`contextDocs`) | **3/3** |
+| A+B | both | **2/3** |
+
+- **Ceiling effect — the rule adds NO recall here:** glm-5.2 already catches this `fs.cpSync` symlink regression
+  **unaided (baseline 3/3)**, because it's a known bug class. The rule/doc can't improve what's already caught.
+  This is the exact **training-leak** tradeoff we flagged — and now it's measured, not asserted.
+- **Contrast with the synthetic made-up rule** (clock.ts, prior section): there the rule moved recall **0/5 → 5/5**
+  because the model *couldn't* know the convention. **So rules pay off for project-specific conventions the model
+  can't infer, and add ~nothing for defects it already catches.** That's the honest product story.
+- **Over-loading can mildly HURT:** A+B (rule + doc, redundant) dipped to **2/3** — one run (`ab_2`) got so busy
+  citing the rule/doc that it never independently established the regression. Small effect, but it validates
+  keeping Tier-B **off by default until measured** rather than stacking context reflexively.
+- **Rules add citation findings (a precision cost):** the Tier-A/A+B reviews carry extra "violates the rule /
+  removed copyDir" findings that aren't the defect — signal to some readers, noise to others.
+- **Caveats:** one case, one model, N=3/arm; the 4-arm grades came from 4 different judges first (A+B read as
+  **1/3**) then one consistent judge (**2/3**) — a live example of judge stochasticity (report ranges, not
+  points). Reviews reproduce from the committed fixture + `diff-to-artifact.ts`; the 12 graded outputs are
+  committed under `eval/golden-rule-probe/runs/` for audit; grading was by subagent judges (documented protocol),
+  not a committed script.

@@ -1,0 +1,17 @@
+[
+  {
+    "filename": "packages/create-vite/src/index.ts",
+    "patch": "@@ -644,7 +644,11 @@ async function init() {\n       )\n       fs.writeFileSync(targetPath, updatedContent)\n     } else {\n-      copy(path.join(templateDir, file), targetPath)\n+      // eslint-disable-next-line n/no-unsupported-features/node-builtins -- it is not experimental in Node 22.3+\n+      fs.cpSync(path.join(templateDir, file), targetPath, {\n+        recursive: true,\n+        mode: fs.constants.COPYFILE_FICLONE,\n+      })\n     }\n   }\n \n@@ -710,15 +714,6 @@ function formatTargetDir(targetDir: string) {\n   return targetDir.trim().replace(/\\/+$/g, '')\n }\n \n-function copy(src: string, dest: string) {\n-  const stat = fs.statSync(src)\n-  if (stat.isDirectory()) {\n-    copyDir(src, dest)\n-  } else {\n-    fs.copyFileSync(src, dest)\n-  }\n-}\n-\n function isValidPackageName(projectName: string) {\n   return /^(?:@[a-z\\d\\-*~][a-z\\d\\-*._~]*\\/)?[a-z\\d\\-~][a-z\\d\\-._~]*$/.test(\n     projectName,\n@@ -734,15 +729,6 @@ function toValidPackageName(projectName: string) {\n     .replace(/[^a-z\\d\\-~]+/g, '-')\n }\n \n-function copyDir(srcDir: string, destDir: string) {\n-  fs.mkdirSync(destDir, { recursive: true })\n-  for (const file of fs.readdirSync(srcDir)) {\n-    const srcFile = path.resolve(srcDir, file)\n-    const destFile = path.resolve(destDir, file)\n-    copy(srcFile, destFile)\n-  }\n-}\n-\n function isEmpty(path: string) {\n   const files = fs.readdirSync(path)\n   return files.length === 0 || (files.length === 1 && files[0] === '.git')\n",
+    "status": "modified"
+  },
+  {
+    "filename": "packages/vite/src/node/plugins/prepareOutDir.ts",
+    "patch": "@@ -4,7 +4,7 @@ import colors from 'picocolors'\n import type { Plugin } from '../plugin'\n import { getResolvedOutDirs, resolveEmptyOutDir } from '../watch'\n import type { Environment } from '../environment'\n-import { copyDir, emptyDir, normalizePath } from '../utils'\n+import { emptyDir, normalizePath } from '../utils'\n import { withTrailingSlash } from '../../shared/utils'\n \n export function prepareOutDirPlugin(): Plugin {\n@@ -86,7 +86,11 @@ function prepareOutDir(\n           ),\n         )\n       }\n-      copyDir(publicDir, outDir)\n+      // eslint-disable-next-line n/no-unsupported-features/node-builtins -- it is not experimental in Node 22.3+\n+      fs.cpSync(publicDir, outDir, {\n+        recursive: true,\n+        mode: fs.constants.COPYFILE_FICLONE,\n+      })\n     }\n   }\n }\n",
+    "status": "modified"
+  },
+  {
+    "filename": "packages/vite/src/node/utils.ts",
+    "patch": "@@ -624,23 +624,6 @@ export function emptyDir(dir: string, skip?: string[]): void {\n   }\n }\n \n-export function copyDir(srcDir: string, destDir: string): void {\n-  fs.mkdirSync(destDir, { recursive: true })\n-  for (const file of fs.readdirSync(srcDir)) {\n-    const srcFile = path.resolve(srcDir, file)\n-    if (srcFile === destDir) {\n-      continue\n-    }\n-    const destFile = path.resolve(destDir, file)\n-    const stat = fs.statSync(srcFile)\n-    if (stat.isDirectory()) {\n-      copyDir(srcFile, destFile)\n-    } else {\n-      fs.copyFileSync(srcFile, destFile)\n-    }\n-  }\n-}\n-\n export const ERR_SYMLINK_IN_RECURSIVE_READDIR =\n   'ERR_SYMLINK_IN_RECURSIVE_READDIR'\n export async function recursiveReaddir(dir: string): Promise<string[]> {\n",
+    "status": "modified"
+  }
+]

@@ -1,0 +1,42 @@
+{
+  "inline": [
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Violates .review-rules/copy.md — replaces copyDir with fs.cpSync — The PR swaps `copyDir(publicDir, outDir)` for `fs.cpSync(publicDir, outDir, …)` and removes the `copyDir` import. The rule in `.review-rules/copy.md` explicitly states: 'A change that removes copyDir or swaps it for fs.cpSync must be flagged.' This is exactly that prohibited change, and the prepareOutDir path is the public-dir copy the rule was written to protect.",
+      "line": 86,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Symlink-dereference behavior regression — fs.cpSync defaults to dereference: false — The deleted `copyDir` used `fs.statSync(srcFile)` which follows symlinks, so symlinks pointing at directories were dereferenced and their target contents copied as real files. `fs.cpSync` defaults to `dereference: false`, copying symlinks as symlinks. This changes observable build output for any publicDir/template entry that is a symlink. Preserving old behavior would require `dereference: true` (and likely `verbatimSymlinks: true`).",
+      "line": 86,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Same symlink-dereference regression in create-vite copy replacement — The deleted local `copy`/`copyDir` in create-vite also used `fs.statSync` (follows symlinks). Replacing it with `fs.cpSync` without `dereference: true` produces the same behavioral regression. Outside the literal scope of the `.review-rules/copy.md` rule (which targets `packages/vite/src/node/utils.ts`), but the dereference issue is identical.",
+      "line": 647,
+      "path": "packages/create-vite/src/index.ts"
+    }
+  ],
+  "sticky": "<!-- squarewright:review -->\n\n## Squarewright review\n\nThis PR should not merge as written. It directly violates the precedence-taking project rule in `.review-rules/copy.md` by removing `copyDir` in favor of `fs.cpSync`, introduces a real symlink-dereference behavioral regression in the build output, loses a self-copy guard that prevents hard errors when src/dest overlap, and may be missing an `fs` import in prepareOutDir.ts.\n\n**5** finding(s): 🔴 2  ·  🟡 1  ·  🔵 2\n\n- 🔴 `packages/vite/src/node/plugins/prepareOutDir.ts:86` _[Correctness, Security]_ — Violates .review-rules/copy.md — replaces copyDir with fs.cpSync — The PR swaps `copyDir(publicDir, outDir)` for `fs.cpSync(publicDir, outDir, …)` and removes the `copyDir` import. The rule in `.review-rules/copy.md` explicitly states: 'A change that removes copyDir or swaps it for fs.cpSync must be flagged.' This is exactly that prohibited change, and the prepareOutDir path is the public-dir copy the rule was written to protect.\n- 🔴 `packages/vite/src/node/plugins/prepareOutDir.ts:86` _[Correctness, Security]_ — Symlink-dereference behavior regression — fs.cpSync defaults to dereference: false — The deleted `copyDir` used `fs.statSync(srcFile)` which follows symlinks, so symlinks pointing at directories were dereferenced and their target contents copied as real files. `fs.cpSync` defaults to `dereference: false`, copying symlinks as symlinks. This changes observable build output for any publicDir/template entry that is a symlink. Preserving old behavior would require `dereference: true` (and likely `verbatimSymlinks: true`).\n- 🟡 `packages/create-vite/src/index.ts:647` _[Correctness, Security]_ — Same symlink-dereference regression in create-vite copy replacement — The deleted local `copy`/`copyDir` in create-vite also used `fs.statSync` (follows symlinks). Replacing it with `fs.cpSync` without `dereference: true` produces the same behavioral regression. Outside the literal scope of the `.review-rules/copy.md` rule (which targets `packages/vite/src/node/utils.ts`), but the dereference issue is identical.\n- 🔵 `packages/vite/src/node/utils.ts:630` _[Correctness, Security]_ — Lost self-copy guard: copyDir silently skipped src==dest; fs.cpSync throws — The deleted `copyDir` contained `if (srcFile === destDir) continue;` which silently skipped cases where the destination resolved inside the source. `fs.cpSync` does not replicate this — it throws `ERR_CP_COPY_TO_SUBDIRECTORY` when the destination is within the source. Any configuration where outDir/publicDir overlap would change from silent skip to a hard error.\n- 🔵 `packages/vite/src/node/plugins/prepareOutDir.ts:1` _[Correctness, Security]_ — Verify fs import exists in prepareOutDir.ts — The diff shows calls to `fs.cpSync` and `fs.constants.COPYFILE_FICLONE` but does not show a corresponding `fs`/`node:fs` import being added. If `fs` is not already imported on an unchanged line, this will be a ReferenceError at runtime or a typecheck failure. Worth confirming the import exists outside the shown hunks.\n\n---\n_Reviewed by: Correctness, Security · glm-5.2 · findings reflect the enabled lenses only_",
+  "unplaceable": [
+    {
+      "line": 630,
+      "message": "Lost self-copy guard: copyDir silently skipped src==dest; fs.cpSync throws — The deleted `copyDir` contained `if (srcFile === destDir) continue;` which silently skipped cases where the destination resolved inside the source. `fs.cpSync` does not replicate this — it throws `ERR_CP_COPY_TO_SUBDIRECTORY` when the destination is within the source. Any configuration where outDir/publicDir overlap would change from silent skip to a hard error.",
+      "path": "packages/vite/src/node/utils.ts",
+      "rule": "baseline",
+      "severity": "info",
+      "source": "baseline",
+      "consensus": 1,
+      "sources": ["baseline"]
+    },
+    {
+      "line": 1,
+      "message": "Verify fs import exists in prepareOutDir.ts — The diff shows calls to `fs.cpSync` and `fs.constants.COPYFILE_FICLONE` but does not show a corresponding `fs`/`node:fs` import being added. If `fs` is not already imported on an unchanged line, this will be a ReferenceError at runtime or a typecheck failure. Worth confirming the import exists outside the shown hunks.",
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts",
+      "rule": "baseline",
+      "severity": "info",
+      "source": "baseline",
+      "consensus": 1,
+      "sources": ["baseline"]
+    }
+  ]
+}

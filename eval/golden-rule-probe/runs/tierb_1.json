@@ -1,0 +1,33 @@
+{
+  "inline": [
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Symlink-following behavior dropped in publicDir copy — The previous `copyDir` helper used `fs.statSync(srcFile)` which follows symlinks, copying the target's contents. `fs.cpSync` defaults to `dereference: false`, so symlinks inside `publicDir` are now copied as symlinks rather than their resolved content. This violates the symlink-following guarantee documented in `CONVENTIONS.md`. The call needs `dereference: true` to preserve existing behavior.",
+      "line": 86,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Symlink-following behavior dropped in template scaffolding — The removed `copy()` helper used `fs.statSync(src)` to resolve symlinks before copying. The replacement `fs.cpSync(path.join(templateDir, file), targetPath, { recursive: true })` defaults to `dereference: false`, so symlinked template entries (e.g. asset aliases) are reproduced as links instead of their target content.",
+      "line": 647,
+      "path": "packages/create-vite/src/index.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Unannounced copy-mode change to COPYFILE_FICLONE — Both call sites add `mode: fs.constants.COPYFILE_FICLONE`, which requests copy-on-write reflink on supporting filesystems. The previous code used `fs.copyFileSync` with default mode `0`. This is an observable change to on-disk copy semantics not mentioned in the PR description.",
+      "line": 86,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    }
+  ],
+  "sticky": "<!-- squarewright:review -->\n\n## Squarewright review\n\nThis PR replaces the project's `copyDir` helper with `fs.cpSync`, which violates the project's own CONVENTIONS.md rule against direct `fs.cpSync` usage. Most critically, `fs.cpSync` defaults to `dereference: false`, dropping the symlink-following behavior that both the public-dir copy and template scaffolding depend on — a regression by the project's own definition. Additionally, a self-copy guard was removed without replacement, changing silent-skip to throw behavior, and an unannounced copy-mode change (`COPYFILE_FICLONE`) was introduced.\n\n**4** finding(s): 🔴 2  ·  🟡 1  ·  🔵 1\n\n- 🔴 `packages/vite/src/node/plugins/prepareOutDir.ts:86` _[Correctness, Security]_ — Symlink-following behavior dropped in publicDir copy — The previous `copyDir` helper used `fs.statSync(srcFile)` which follows symlinks, copying the target's contents. `fs.cpSync` defaults to `dereference: false`, so symlinks inside `publicDir` are now copied as symlinks rather than their resolved content. This violates the symlink-following guarantee documented in `CONVENTIONS.md`. The call needs `dereference: true` to preserve existing behavior.\n\n  ```suggestion\n  fs.cpSync(srcDir, destDir, { dereference: true, ... })\n  ```\n- 🔴 `packages/create-vite/src/index.ts:647` _[Correctness, Security]_ — Symlink-following behavior dropped in template scaffolding — The removed `copy()` helper used `fs.statSync(src)` to resolve symlinks before copying. The replacement `fs.cpSync(path.join(templateDir, file), targetPath, { recursive: true })` defaults to `dereference: false`, so symlinked template entries (e.g. asset aliases) are reproduced as links instead of their target content.\n\n  ```suggestion\n  fs.cpSync(path.join(templateDir, file), targetPath, { recursive: true, dereference: true })\n  ```\n- 🟡 `packages/vite/src/node/utils.ts:1` _[Correctness, Security]_ — Removed self-copy guard changes control flow from skip to throw — The deleted `copyDir` helper contained a guard that silently skipped entries where `srcFile === destDir` (relevant when `outDir` lives inside the copied tree). `fs.cpSync` does not skip this case — it throws `ERR_CP_COPY_TO_SUBDIRECTORY` and aborts the copy. No caller-level guard was added to compensate for this control-flow change.\n\n  ```suggestion\n  null\n  ```\n- 🔵 `packages/vite/src/node/plugins/prepareOutDir.ts:86` _[Correctness, Security]_ — Unannounced copy-mode change to COPYFILE_FICLONE — Both call sites add `mode: fs.constants.COPYFILE_FICLONE`, which requests copy-on-write reflink on supporting filesystems. The previous code used `fs.copyFileSync` with default mode `0`. This is an observable change to on-disk copy semantics not mentioned in the PR description.\n\n  ```suggestion\n  null\n  ```\n\n---\n_Reviewed by: Correctness, Security · glm-5.2 · findings reflect the enabled lenses only_",
+  "unplaceable": [
+    {
+      "line": 1,
+      "message": "Removed self-copy guard changes control flow from skip to throw — The deleted `copyDir` helper contained a guard that silently skipped entries where `srcFile === destDir` (relevant when `outDir` lives inside the copied tree). `fs.cpSync` does not skip this case — it throws `ERR_CP_COPY_TO_SUBDIRECTORY` and aborts the copy. No caller-level guard was added to compensate for this control-flow change.",
+      "path": "packages/vite/src/node/utils.ts",
+      "rule": "baseline",
+      "severity": "warning",
+      "source": "baseline",
+      "suggestion": "null",
+      "consensus": 1,
+      "sources": ["baseline"]
+    }
+  ]
+}
