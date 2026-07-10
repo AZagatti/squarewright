@@ -33,6 +33,16 @@ test("submittedToFinding leaves proposedRule undefined when absent or blank", ()
   ).toBeUndefined();
 });
 
+test("submittedToFinding HARD-drops proposedRule when allowRuleDrift is false", () => {
+  // Even if the model freelances the key (schema is non-strict), an opted-out repo never gets a proposal.
+  const f = submittedToFinding(
+    { ...base, proposedRule: "```md\nrule\n```" },
+    "p",
+    false
+  );
+  expect(f.proposedRule).toBeUndefined();
+});
+
 test("Pass-2 gating: structurer prompt + schema only offer proposedRule when enabled", () => {
   // ON: the structurer is told to carry a proposal, and the schema advertises the field.
   expect(buildStructurerSystem(true)).toContain("proposedRule");

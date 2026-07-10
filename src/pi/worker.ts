@@ -144,9 +144,11 @@ const proposedRuleField = Type.Optional(
 );
 
 /**
- * The submit_findings schema, built per-request. `proposedRule` is only offered when the request opts into
- * rule-drift — so a repo that didn't enable it can't have the structurer populate the field at all (defense in
- * depth alongside `buildStructurerSystem`, which also omits the instruction).
+ * The submit_findings schema, built per-request. `proposedRule` is only advertised when the request opts into
+ * rule-drift, alongside `buildStructurerSystem` which omits the instruction. This makes the model *unlikely* to
+ * emit the field when off, but it is not a hard guarantee — TypeBox schemas here don't set
+ * `additionalProperties:false` and Pi calls tools non-strict, so a model could still freelance the key. The hard
+ * gate lives in `submittedToFinding(..., allowRuleDrift)`, which drops `proposedRule` outright when off.
  */
 export function buildFindingsSchema(proposeRuleDrift: boolean) {
   const fields = proposeRuleDrift
@@ -180,16 +182,27 @@ function buildAnalysisSystem(request: WorkerRequest): string {
   );
 }
 
-/** Map one structurer-submitted finding to the canonical `Finding`, stamping persona provenance. Pure — exported for test. */
+/**
+ * Map one structurer-submitted finding to the canonical `Finding`, stamping persona provenance. Pure — exported
+ * for test. `allowRuleDrift` is the HARD gate on `proposedRule`: when false it is always dropped, regardless of
+ * what the model emitted. The schema/prompt already omit it when off, but TypeBox tool schemas here don't set
+ * `additionalProperties:false` and Pi calls tools non-strict, so a model could still freelance the key — this
+ * strip makes "no rule-drift when off" a real guarantee, not a soft one.
+ */
 export function submittedToFinding(
   f: SubmittedFinding,
-  persona: string
+  persona: string,
+  allowRuleDrift = true
 ): Finding {
+  const proposedRule =
+    allowRuleDrift && f.proposedRule?.trim()
+      ? f.proposedRule.trim()
+      : undefined;
   return {
     line: f.line,
     message: f.detail ? `${f.title} — ${f.detail}` : f.title,
     path: f.path,
-    proposedRule: f.proposedRule?.trim() ? f.proposedRule.trim() : undefined,
+    proposedRule,
     rule: persona,
     severity: f.severity,
     source: persona,
@@ -493,7 +506,7 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
       // biome-ignore lint/suspicious/noUnnecessaryConditions: runtime guard — the model may still not have called submit_findings after the nudge loop exhausts its retries; Biome's flow analysis can't see that the while loop can exit with `captured` still undefined
       const submitted = captured?.findings ?? [];
       const findings: Finding[] = capRuleDrift(
-        submitted.map((f) => submittedToFinding(f, persona))
+        submitted.map((f) => submittedToFinding(f, persona, proposeRuleDrift))
       );
 
       return {
