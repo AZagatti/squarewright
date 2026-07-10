@@ -135,10 +135,26 @@ export function renderSticky(input: StickyInput): string {
 
   for (const f of findings) {
     const loc = `\`${mdSafe(f.path)}:${f.line}\``;
+    // A rule-drift proposal (ADR-0005 §2) gets the 📖 marker + a paste-ready block instead of the severity emoji.
+    const marker = f.proposedRule ? "📖 `rule-drift`" : SEV_EMOJI[f.severity];
     lines.push(
-      `- ${SEV_EMOJI[f.severity]} ${loc}${provenance(f, labelFor)} — ${mdSafe(f.message)}`
+      `- ${marker} ${loc}${provenance(f, labelFor)} — ${mdSafe(f.message)}`
     );
-    if (f.suggestion) {
+    if (f.proposedRule) {
+      // Paste-ready `.review-rules/*.md` block — a suggestion the human adds; never an auto-write. mdSafe
+      // neutralizes any fence-breaking content from the (model-authored) rule text.
+      const block = mdSafe(f.proposedRule)
+        .split("\n")
+        .map((l) => `  ${l}`);
+      lines.push(
+        "",
+        "  **Proposed rule** — paste into `.review-rules/`:",
+        "",
+        "  ```md",
+        ...block,
+        "  ```"
+      );
+    } else if (f.suggestion) {
       lines.push("", "  ```suggestion", `  ${mdSafe(f.suggestion)}`, "  ```");
     }
   }
