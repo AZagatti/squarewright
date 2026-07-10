@@ -102,3 +102,45 @@ export function renderRuleSuggestion(s: RuleSuggestion): string {
     block
   );
 }
+
+/** The outcome of handling one reply: either a comment body to post, or a skip with a reason (for logs). */
+export type TeachOutcome =
+  | { body: string; kind: "post" }
+  | { kind: "skip"; reason: string };
+
+/**
+ * Orchestrate one reply end-to-end (ADR-0005 §3): authorize → detect trigger → strip it → interpret (as DATA) →
+ * gate on confidence → render. Enforces gate-before-render structurally (nothing can render an ungated suggestion)
+ * and short-circuits before ever calling the model when the reply isn't a teach trigger or the caller isn't
+ * authorized. Pure orchestration — inject the `ReplyInterpreter`; the caller (CLI/workflow) posts the body via the
+ * `Poster` and does the *primary* permission gate in the workflow (`author_association`); `authorized` here is
+ * defense-in-depth so the model is never even invoked for an unauthorized reply.
+ */
+export async function handleTeachReply(input: {
+  /** already permission-checked upstream (workflow author_association); re-checked here as defense-in-depth */
+  authorized: boolean;
+  findingText?: string;
+  interpreter: ReplyInterpreter;
+  replyText: string;
+}): Promise<TeachOutcome> {
+  if (!input.authorized) {
+    return { kind: "skip", reason: "unauthorized" };
+  }
+  if (!hasTeachTrigger(input.replyText)) {
+    return { kind: "skip", reason: "no-trigger" };
+  }
+  const intent = stripTrigger(input.replyText);
+  if (!intent) {
+    return { kind: "skip", reason: "empty-after-trigger" };
+  }
+  const gated = gateSuggestion(
+    await input.interpreter.interpret({
+      findingText: input.findingText,
+      replyText: intent,
+    })
+  );
+  if (!gated) {
+    return { kind: "skip", reason: "no-durable-rule" };
+  }
+  return { body: renderRuleSuggestion(gated), kind: "post" };
+}
