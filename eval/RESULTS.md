@@ -482,6 +482,12 @@ cross-family deepseek judge:
 > ≥3 fresh reports/model, a **matched** structurer, a **cross-family non-Claude** judge, reasoning tested per
 > model, and a contamination-safe (post-cutoff/synthetic) locus set. Until then this is a **lead, not a result**.
 > The table below is kept as the record of what led here.
+>
+> **UPDATE (2026-07-10):** that prescription (matched structurer, 3 reports/model, cross-family judge, judge noise
+> averaged) was then **executed for the two models that matter** — see *"Matched-structurer, cross-family, N=3
+> re-test"* at the end of this file. Result: sonnet-5 keeps a **~0.5–1 locus median edge inside overlapping
+> ranges** — a lead within noise, not a separation, for $10/M vs free. The "no switch justified" call is now
+> **measured** for the live decision, not asserted. The full-field rank and contamination fix remain unrun.
 
 Full re-rank prompted by glm-5.2's honest ~3/11 recall. Ran candidate analysis models over the full golden
 corpus (real PRs), reasoning off, **deepseek-v3.2 structurer** (see the structurer note below), then judged.
@@ -519,3 +525,30 @@ Luna) — it can't extract findings from their output format → 0 recall, a mea
 Swapping to a **deepseek structurer** fixed it (deepseek 0→submits). Implication: the two-pass structurer is a
 recall lever in its own right — a weak structurer drops findings from a strong analysis model. Worth measuring a
 stronger default structurer across models (the pairing matrix at N=1 was inconclusive — needs a real sweep).
+
+### Matched-structurer, cross-family, N=3 re-test — the retraction's prescription, executed (2026-07-10)
+The retraction above said a real comparison needs: **matched structurer**, **≥3 fresh reports/model**, a
+**cross-family non-Claude judge**, judge stochasticity averaged. Ran exactly that for the **two models that
+matter** (the shipped default vs the strongest contender), both with the **same `deepseek-v3.2` structurer**,
+3 reports each, each report judged twice (`--judge-repeats 2`) by **two independent cross-family judges**:
+
+| model (matched deepseek struct) | deepseek judge (6 passes) | glm-5.2 judge (6 passes) | file-level (3 runs) | cost/M out |
+|---|---|---|---|---|
+| **claude-sonnet-5** | 2–4, **med 2** | 2–4, **med 3.5** | 7,7,7 (stable) | $10 |
+| **glm-5.2** (current default) | 1–3, **med 1.5** | 1–4, **med 3** | 4–7 (med 6) | **free** |
+
+- **Both cross-family judges agree on the shape:** sonnet-5 carries a **~0.5–1 locus median edge**, and the
+  ranges **overlap heavily** (sonnet low = 2 sits inside glm's 1–3 / 1–4). A lead within the noise band, **not a
+  separation** — the exact pattern the retraction predicted, now measured properly instead of at N=1.
+- **The money buys ~half a locus of median recall, maybe.** sonnet-5 is $10/M out; glm-5.2 is free (z.ai). On a
+  ~11-locus corpus that edge is not worth a paid dependency + rate-limit exposure. **No switch justified — and now
+  it's *shown*, not asserted.** Keep free glm-5.2 as the default.
+- **Judge choice shifts the absolute numbers, not the ranking.** The deepseek judge scores ~1 locus lower across
+  the board than the glm judge (harsher/noisier, consistent with earlier notes), but both put sonnet ≈ glm within
+  overlap. The ranking is judge-robust even though the point values aren't.
+- **This does NOT reproduce the earlier "sonnet 5 vs glm 4" subagent gap** — that was N=1. At N=3×2×2-judges the
+  gap shrinks to ~0.5–1 median inside the overlap. Higher N ate the apparent gap, as expected.
+- **Still open (unchanged):** contamination (famous reverted PRs) is unaddressed, so the shared ~2–4/11 band may
+  still be memorization-saturation not corpus difficulty; and this covers 2 models, not the whole field. But for
+  the one decision that was live — *switch off free glm-5.2 to a paid model for recall?* — the answer is now a
+  measured **no**. Judging spend for this section ~$0.3 (deepseek passes; glm judge free).
