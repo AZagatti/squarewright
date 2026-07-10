@@ -4,5 +4,5 @@
   "head_sha": "head",
   "number": 1,
   "repo": "acme/vite-fork",
-  "title": "Use fs.cpSync instead of custom copyDir"
+  "title": "Simplify recursive file copying in build output and template scaffolding"
 }

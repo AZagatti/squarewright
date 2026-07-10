@@ -1,57 +1,46 @@
 {
   "inline": [
     {
-      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Direct fs.cpSync call replaces copyDir at prepareOutDir call site — The copyDir(publicDir, outDir) call is replaced with a direct fs.cpSync(...), exactly the pattern the review rule prohibits.",
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Violates .review-rules/copy.md — deletes exported copyDir helper — The project's trusted review rule explicitly states: 'Recursive / directory file copies MUST go through the project's `copyDir` helper in `packages/vite/src/node/utils.ts`. Do NOT call `fs.cpSync` / `fs.cp` directly… A change that removes `copyDir` or swaps it for `fs.cpSync` must be flagged.' This PR deletes the exported `copyDir` function (lines 624–640), violating the rule directly.",
+      "line": 624,
+      "path": "packages/vite/src/node/utils.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Violates .review-rules/copy.md — swaps copyDir for raw fs.cpSync in public-dir copy — The diff replaces the `copyDir` call with a raw `fs.cpSync` at lines 86–90, directly contradicting the maintainer-authored rule that prohibits using `fs.cpSync`/`fs.cp` for directory copies.",
+      "line": 86,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Violates .review-rules/copy.md — swaps template copy for raw fs.cpSync — Lines 647–650 replace the template copy with `fs.cpSync`, and lines 717–738 delete the local `copy`/`copyDir` helpers. This violates the rule mandating use of the `copyDir` helper for recursive copies.",
+      "line": 647,
+      "path": "packages/create-vite/src/index.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Symlink-following behavior silently dropped — The original `copyDir` used `fs.statSync(srcFile)` which follows symlinks, then recursed into the link target. The replacement `fs.cpSync(publicDir, outDir, { recursive: true, mode: ... })` does not pass `followSymlinks: true`, and Node's default for this option has varied across versions. On a public dir containing symlinked assets, the output would now contain dangling symlinks instead of dereferenced files — an observable regression the rule explicitly flags.",
       "line": 89,
       "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
     },
     {
-      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Symlink-following behavior lost: dereference: true not set — The old copyDir used fs.statSync which follows symlinks, dereferencing and copying target content. The new fs.cpSync defaults to dereference: false, copying symlinks as symlinks. In monorepos or shared public dirs, symlinked entries are now emitted as dangling or out-of-root links instead of their resolved content — breaking served builds and potentially creating path-traversal artifacts in output.",
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Self-destination guard removed, risking infinite recursion — The original `copyDir` had an explicit guard (`if (srcFile === destDir) continue`) to prevent infinite recursion when `outDir` is nested inside `publicDir` (e.g., `public/dist`). The new `fs.cpSync` call has no equivalent explicit guard. While recent Node versions have some self-copy protection, silently changing the failure mode removes a deliberately placed safety check.",
       "line": 89,
       "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
     },
     {
-      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Unrelated COPYFILE_FICLONE mode introduced without justification — COPYFILE_FICLONE is passed here, requesting copy-on-write reflinks — a behavior change from the old default mode. It is unrelated to the PR's stated intent, untested, and undocumented. At minimum it should be dropped to keep the change purely a swap.",
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Removed export may break other consumers — `copyDir` was an exported function from `packages/vite/src/node/utils.ts`. The diff only shows `prepareOutDir.ts` dropping its import, but there is no evidence of a repo-wide grep or test removal to confirm no other module or downstream plugin depends on this export.",
+      "line": 624,
+      "path": "packages/vite/src/node/utils.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Unannounced COPYFILE_FICLONE mode change beyond stated 'simplify' intent — Both new call sites (`create-vite/src/index.ts:649`, `prepareOutDir.ts:90`) pass `mode: fs.constants.COPYFILE_FICLONE`, requesting copy-on-write cloning. The originals used the default mode (`0`). While largely a perf optimization with fallback, this is a behavior change not mentioned in the PR description.",
       "line": 90,
       "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
     },
     {
-      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Unrelated COPYFILE_FICLONE mode introduced without justification — Same as above — COPYFILE_FICLONE is passed here as well, introducing CoW reflink behavior not present before, with no test, no comment, and no justification in the PR description.",
-      "line": 647,
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Unannounced COPYFILE_FICLONE mode change beyond stated 'simplify' intent — Same as the prepareOutDir call site — the create-vite scaffolding at line 649 also introduces `COPYFILE_FICLONE`, which is an undocumented behavior change relative to the PR's stated intent.",
+      "line": 649,
       "path": "packages/create-vite/src/index.ts"
     }
   ],
-  "sticky": "<!-- squarewright:review -->\n\n## Squarewright review\n\nThis PR should not merge. It directly violates a trusted review rule (.review-rules/copy.md) by removing copyDir in favor of fs.cpSync, introduces a real behavioral regression (symlink dereference lost), adds unrelated copy-on-write behavior (COPYFILE_FICLONE), and silently changes the failure mode for overlapping public/out directory configurations. The maintainer should update or repeal the rule first, then reproduce the old semantics explicitly if the migration is still desired.\n\n**7** finding(s): 🔴 4  ·  🟡 2  ·  🔵 1\n\n- 🔴 `.review-rules/copy.md:1` _[Correctness, Security]_ — Violates trusted review rule: removes copyDir and replaces with fs.cpSync — .review-rules/copy.md states: \"Recursive / directory file copies MUST go through the project's `copyDir` helper in `packages/vite/src/node/utils.ts`. Do NOT call `fs.cpSync` / `fs.cp` directly… A change that removes `copyDir` or swaps it for `fs.cpSync` must be flagged.\" This PR does exactly that — deleting copyDir from utils.ts and replacing both call sites with direct fs.cpSync. The rule is maintainer-authored and intended to override a reviewer who would otherwise wave this through.\n- 🔴 `packages/vite/src/node/utils.ts:1` _[Correctness, Security]_ — copyDir helper deleted entirely — The exported copyDir function is removed from the utils module, violating the review rule that requires directory copies to go through this helper.\n- 🔴 `packages/vite/src/node/plugins/prepareOutDir.ts:89` _[Correctness, Security]_ — Direct fs.cpSync call replaces copyDir at prepareOutDir call site — The copyDir(publicDir, outDir) call is replaced with a direct fs.cpSync(...), exactly the pattern the review rule prohibits.\n- 🔴 `packages/vite/src/node/plugins/prepareOutDir.ts:89` _[Correctness, Security]_ — Symlink-following behavior lost: dereference: true not set — The old copyDir used fs.statSync which follows symlinks, dereferencing and copying target content. The new fs.cpSync defaults to dereference: false, copying symlinks as symlinks. In monorepos or shared public dirs, symlinked entries are now emitted as dangling or out-of-root links instead of their resolved content — breaking served builds and potentially creating path-traversal artifacts in output.\n\n  ```suggestion\n  fs.cpSync(src, dest, { recursive: true, dereference: true })\n  ```\n- 🟡 `packages/vite/src/node/plugins/prepareOutDir.ts:90` _[Correctness, Security]_ — Unrelated COPYFILE_FICLONE mode introduced without justification — COPYFILE_FICLONE is passed here, requesting copy-on-write reflinks — a behavior change from the old default mode. It is unrelated to the PR's stated intent, untested, and undocumented. At minimum it should be dropped to keep the change purely a swap.\n- 🟡 `packages/create-vite/src/index.ts:647` _[Correctness, Security]_ — Unrelated COPYFILE_FICLONE mode introduced without justification — Same as above — COPYFILE_FICLONE is passed here as well, introducing CoW reflink behavior not present before, with no test, no comment, and no justification in the PR description.\n- 🔵 `packages/vite/src/node/utils.ts:1` _[Correctness, Security]_ — Self-copy guard silently removed — failure mode changed from skip to abort — The deleted copyDir had a `if (srcFile === destDir) continue` guard that silently skipped entries when destDir was nested inside srcDir (e.g., public dir configured under out dir). fs.cpSync throws ERR_FS_CP_DIR_TO_BE_BELOW_SRC instead, aborting the whole build. Combined with the symlink issue, an overlapping public/out configuration now fails where it previously succeeded. This requires a deliberate decision, not a silent side effect.\n\n---\n_Reviewed by: Correctness, Security · glm-5.2 · findings reflect the enabled lenses only_",
-  "unplaceable": [
-    {
-      "line": 1,
-      "message": "Violates trusted review rule: removes copyDir and replaces with fs.cpSync — .review-rules/copy.md states: \"Recursive / directory file copies MUST go through the project's `copyDir` helper in `packages/vite/src/node/utils.ts`. Do NOT call `fs.cpSync` / `fs.cp` directly… A change that removes `copyDir` or swaps it for `fs.cpSync` must be flagged.\" This PR does exactly that — deleting copyDir from utils.ts and replacing both call sites with direct fs.cpSync. The rule is maintainer-authored and intended to override a reviewer who would otherwise wave this through.",
-      "path": ".review-rules/copy.md",
-      "rule": "baseline",
-      "severity": "error",
-      "source": "baseline",
-      "consensus": 1,
-      "sources": ["baseline"]
-    },
-    {
-      "line": 1,
-      "message": "copyDir helper deleted entirely — The exported copyDir function is removed from the utils module, violating the review rule that requires directory copies to go through this helper.",
-      "path": "packages/vite/src/node/utils.ts",
-      "rule": "baseline",
-      "severity": "error",
-      "source": "baseline",
-      "consensus": 1,
-      "sources": ["baseline"]
-    },
-    {
-      "line": 1,
-      "message": "Self-copy guard silently removed — failure mode changed from skip to abort — The deleted copyDir had a `if (srcFile === destDir) continue` guard that silently skipped entries when destDir was nested inside srcDir (e.g., public dir configured under out dir). fs.cpSync throws ERR_FS_CP_DIR_TO_BE_BELOW_SRC instead, aborting the whole build. Combined with the symlink issue, an overlapping public/out configuration now fails where it previously succeeded. This requires a deliberate decision, not a silent side effect.",
-      "path": "packages/vite/src/node/utils.ts",
-      "rule": "baseline",
-      "severity": "info",
-      "source": "baseline",
-      "consensus": 1,
-      "sources": ["baseline"]
-    }
-  ]
+  "sticky": "<!-- squarewright:review -->\n\n## Squarewright review\n\nThis PR directly violates the trusted `.review-rules/copy.md` rule by deleting `copyDir` and replacing all call sites with raw `fs.cpSync`, drops symlink-following and self-destination safety guards, and risks silent breakage from removing an exported function. The reviewer recommends reverting or reworking to restore `copyDir` usage, updating the rule first if a deliberate migration to `fs.cpSync` is desired.\n\n**8** finding(s): 🔴 4  ·  🟡 2  ·  🔵 2\n\n- 🔴 `packages/vite/src/node/utils.ts:624` _[Correctness, Security]_ — Violates .review-rules/copy.md — deletes exported copyDir helper — The project's trusted review rule explicitly states: 'Recursive / directory file copies MUST go through the project's `copyDir` helper in `packages/vite/src/node/utils.ts`. Do NOT call `fs.cpSync` / `fs.cp` directly… A change that removes `copyDir` or swaps it for `fs.cpSync` must be flagged.' This PR deletes the exported `copyDir` function (lines 624–640), violating the rule directly.\n- 🔴 `packages/vite/src/node/plugins/prepareOutDir.ts:86` _[Correctness, Security]_ — Violates .review-rules/copy.md — swaps copyDir for raw fs.cpSync in public-dir copy — The diff replaces the `copyDir` call with a raw `fs.cpSync` at lines 86–90, directly contradicting the maintainer-authored rule that prohibits using `fs.cpSync`/`fs.cp` for directory copies.\n- 🔴 `packages/create-vite/src/index.ts:647` _[Correctness, Security]_ — Violates .review-rules/copy.md — swaps template copy for raw fs.cpSync — Lines 647–650 replace the template copy with `fs.cpSync`, and lines 717–738 delete the local `copy`/`copyDir` helpers. This violates the rule mandating use of the `copyDir` helper for recursive copies.\n- 🔴 `packages/vite/src/node/plugins/prepareOutDir.ts:89` _[Correctness, Security]_ — Symlink-following behavior silently dropped — The original `copyDir` used `fs.statSync(srcFile)` which follows symlinks, then recursed into the link target. The replacement `fs.cpSync(publicDir, outDir, { recursive: true, mode: ... })` does not pass `followSymlinks: true`, and Node's default for this option has varied across versions. On a public dir containing symlinked assets, the output would now contain dangling symlinks instead of dereferenced files — an observable regression the rule explicitly flags.\n- 🟡 `packages/vite/src/node/plugins/prepareOutDir.ts:89` _[Correctness, Security]_ — Self-destination guard removed, risking infinite recursion — The original `copyDir` had an explicit guard (`if (srcFile === destDir) continue`) to prevent infinite recursion when `outDir` is nested inside `publicDir` (e.g., `public/dist`). The new `fs.cpSync` call has no equivalent explicit guard. While recent Node versions have some self-copy protection, silently changing the failure mode removes a deliberately placed safety check.\n- 🟡 `packages/vite/src/node/utils.ts:624` _[Correctness, Security]_ — Removed export may break other consumers — `copyDir` was an exported function from `packages/vite/src/node/utils.ts`. The diff only shows `prepareOutDir.ts` dropping its import, but there is no evidence of a repo-wide grep or test removal to confirm no other module or downstream plugin depends on this export.\n- 🔵 `packages/vite/src/node/plugins/prepareOutDir.ts:90` _[Correctness, Security]_ — Unannounced COPYFILE_FICLONE mode change beyond stated 'simplify' intent — Both new call sites (`create-vite/src/index.ts:649`, `prepareOutDir.ts:90`) pass `mode: fs.constants.COPYFILE_FICLONE`, requesting copy-on-write cloning. The originals used the default mode (`0`). While largely a perf optimization with fallback, this is a behavior change not mentioned in the PR description.\n- 🔵 `packages/create-vite/src/index.ts:649` _[Correctness, Security]_ — Unannounced COPYFILE_FICLONE mode change beyond stated 'simplify' intent — Same as the prepareOutDir call site — the create-vite scaffolding at line 649 also introduces `COPYFILE_FICLONE`, which is an undocumented behavior change relative to the PR's stated intent.\n\n---\n_Reviewed by: Correctness, Security · glm-5.2 · findings reflect the enabled lenses only_",
+  "unplaceable": []
 }
