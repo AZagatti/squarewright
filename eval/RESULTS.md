@@ -450,3 +450,42 @@ cross-family deepseek judge:
 - **Confirmed (2 reports).** Both samples=3 reports undershoot the baseline; the direction is stable even with
   judge variance. This closes the free-lever question — recall needs a model change, which is a maintainer
   go/no-go on the paid sweep.
+
+## Model re-rank for recall — no premium model beats free glm-5.2 (2026-07-10, #49 AC4 / #45)
+
+Full re-rank prompted by glm-5.2's honest ~3/11 recall. Ran candidate analysis models over the full golden
+corpus (real PRs), reasoning off, **deepseek-v3.2 structurer** (see the structurer note below), then judged.
+**The judge choice dominated the result** — the paid deepseek judge is noisy/harsh (same model swings 1↔4);
+the reliable read is a **Claude subagent judge** (free, cross-family, reads the diffs), 1 strong report/model,
+one identical strict defect-match rubric:
+
+| model | subagent-judged | deepseek-judged (noisy) | file-level (≥2 runs) | cost/M (in–out) |
+|---|---|---|---|---|
+| **claude-sonnet-5** | **5/11** | 1–4 | 7 (stable) | $2 / $10 |
+| **glm-5.2** (current default) | **4/11** | 1–4 (med 3) | 6–7 | **free (z.ai)** |
+| **claude-opus-4.8** | **4/11** | 3–4 | 6–7 | $5 / $25 |
+| deepseek-v3.2 | (mid) | 1–3 | 3–6 (med 6) | $0.21 / $0.32 |
+| gpt-5.6-luna | (mid) | 1–3 | 3–5 (med 4) | $1 / $6 |
+| llama-4-maverick | ~1 (file was noise) | ~1 | 5–8 (med 6) | $0.30 / $1.2 |
+| gemini-3.5-flash | **blocked** — mandatory reasoning (guard refused) | — | — | $1.5 / $9 |
+
+- **No premium model decisively wins.** sonnet-5 (5) leads by **one locus** (N=1 report — not significant), and
+  the **free glm-5.2 (4) ties opus-4.8 (4)** which costs $25/M out. The money buys marginal-at-best recall.
+- **The recall ceiling is ~4–5/11** even for top models (opus 4, sonnet 5) — it's **corpus difficulty** (subtle,
+  cross-domain, real reverted defects), not model choice. This redirects #45 away from "pick a better model."
+- **The judge matters more than the model here.** The deepseek judge under-credited everything ~2× (glm 1–4 vs
+  subagent 4); reported ranges are dominated by judge stochasticity. A reliable judge (subagent, or the golden
+  diffs read directly) is the honest tool. glm-5.2's true recall is **~4/11, not 3** — the earlier deepseek
+  number was low.
+- **Caveats:** N=1 report/model on the subagent judge (a strong sample, not an interval); file-level overcounts
+  ~2× (llama's 6 file → ~1 judged); the deepseek-structurer pairing is fixed across candidates (a stronger
+  structurer might lift some — see the nosub note).
+- **Guards verified end-to-end:** reasoning-trap preflight (analysis + structurer, #79) auto-refused v4-flash,
+  kimi, grok, glm-on-OR, fable, gemini; credit breaker + `--max-spend` held; total session OR spend ~$3.6.
+
+### The structurer was silently capping recall (nosub, #78)
+The free `glm-5-turbo` structurer produces **empty reviews (`nosub`) for capable analysis models** (deepseek,
+Luna) — it can't extract findings from their output format → 0 recall, a measurement artifact, not the model.
+Swapping to a **deepseek structurer** fixed it (deepseek 0→submits). Implication: the two-pass structurer is a
+recall lever in its own right — a weak structurer drops findings from a strong analysis model. Worth measuring a
+stronger default structurer across models (the pairing matrix at N=1 was inconclusive — needs a real sweep).
