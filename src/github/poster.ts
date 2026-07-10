@@ -22,6 +22,16 @@ export type GhRunner = (
 /** Every GitHub write goes through here; the location is always a trust-checked `VerifiedTarget`. */
 export interface Poster {
   /**
+   * Post a standalone PR comment (teach-by-reply rule suggestion, ADR-0005 §3). Unlike `upsertSticky` this does
+   * NOT replace a prior comment — each accepted teach reply earns its own suggestion (the workflow fires once per
+   * comment, so there's no natural duplication). Takes only `repo`+`prNumber` (a `VerifiedTarget` satisfies it):
+   * a comment isn't pinned to a commit, and teach's trusted target carries no `commitSha`.
+   */
+  postComment: (
+    target: Pick<VerifiedTarget, "prNumber" | "repo">,
+    body: string
+  ) => Promise<void>;
+  /**
    * Make the PR's inline review reflect exactly `inline`: delete our prior inline comments (so a re-review
    * replaces, never accumulates), then post the current set as one atomic review. Clears even when `inline` is
    * empty, so a now-clean PR drops its stale inline comments.
@@ -96,6 +106,20 @@ async function clearPriorInline(
 /** A `Poster` backed by the `gh` CLI, driven through the injected `run`. */
 export function createGhPoster(run: GhRunner): Poster {
   return {
+    postComment: async (target, body) => {
+      const payload = JSON.stringify({ body });
+      await ghApi(
+        run,
+        [
+          `repos/${target.repo}/issues/${target.prNumber}/comments`,
+          "--method",
+          "POST",
+          "--input",
+          "-",
+        ],
+        payload
+      );
+    },
     postReview: async (target, inline) => {
       // replace, never accumulate: drop our prior inline comments before posting the current set
       await clearPriorInline(run, target);

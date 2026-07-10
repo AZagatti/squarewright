@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   type ClaimedTarget,
+  isAuthorizedTeachActor,
   type LookupPullsForCommit,
   type TrustedRunSignal,
   TrustViolation,
@@ -84,6 +85,37 @@ describe("verifyPostingTarget", () => {
 
     await expect(verifyPostingTarget(CLAIMED, TRUSTED, fn)).rejects.toThrow(
       TrustViolation
+    );
+  });
+});
+
+describe("isAuthorizedTeachActor", () => {
+  const ok = {
+    actorLogin: "maintainer",
+    association: "MEMBER",
+    permission: "write",
+    prAuthorLogin: "contributor",
+  };
+  test("authorizes a write-permission member who is not the PR author", () => {
+    expect(isAuthorizedTeachActor(ok)).toBe(true);
+    expect(isAuthorizedTeachActor({ ...ok, permission: "admin" })).toBe(true);
+    expect(isAuthorizedTeachActor({ ...ok, permission: "maintain" })).toBe(
+      true
+    );
+  });
+  test("rejects read/none permission even with a good association", () => {
+    expect(isAuthorizedTeachActor({ ...ok, permission: "read" })).toBe(false);
+    expect(isAuthorizedTeachActor({ ...ok, permission: "none" })).toBe(false);
+  });
+  test("rejects a non-teaching association even with write permission", () => {
+    expect(isAuthorizedTeachActor({ ...ok, association: "CONTRIBUTOR" })).toBe(
+      false
+    );
+    expect(isAuthorizedTeachActor({ ...ok, association: "NONE" })).toBe(false);
+  });
+  test("excludes the PR author teaching on their own PR", () => {
+    expect(isAuthorizedTeachActor({ ...ok, actorLogin: "contributor" })).toBe(
+      false
     );
   });
 });
