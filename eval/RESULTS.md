@@ -595,3 +595,33 @@ added to Pi via a `models.json` custom provider — Pi ships no first-party Saka
   reasoning, 40–847s/case, and a paid/quota dependency are the opposite of the free-glm thesis. But it's a solid
   **"premium recall option when recall matters more than cost/latency,"** and the strongest single argument that a
   better *reasoning* model — not a better *structurer* or *sampling* — is what moves the recall needle (#45).
+
+### #73 — precision cost of loading rules + rule-drift: none detectable above the noise (2026-07-10)
+Council-directed (all three lenses put this next; the skeptic made it a blocker on §3/§4). Measured clean-case
+false positives on the 10 clean golden cases, 3 arms × 3 runs, free glm-5.2 (z.ai), via new `scripts/eval.ts`
+flags `--rules <file>` (injects a `.review-rules` preamble faithfully, like `runReview`) and `--rule-drift`.
+Generic cross-language rules fixture (`eval/rules-precision-fixture.md`) — NOT the repo's own `architecture.md`,
+which targets `src/**` and wouldn't apply to the external corpus PRs.
+
+| arm | clean-FP (raw findings on 10 clean cases) | median |
+|---|---|---|
+| A — baseline (no rules, no drift) | 6–20 | 11 |
+| B — rules ON | 9–17 | 12 |
+| C — rules + rule-drift ON | 9–15 | 9 |
+
+- **No measurable precision cost.** Rules-ON (med 12) ≈ baseline (med 11), and rules+drift (med 9) is if anything
+  lower — all three intervals overlap almost entirely. Loading a plausible rules file, and enabling the §2
+  rule-drift shipped this session, did **not** detectably increase clean-case false positives.
+- **Run-to-run variance SWAMPS any effect.** Baseline alone swung **6 → 20** on identical config. The noise floor
+  is far larger than any arm-to-arm gap, so a *small* precision cost can't be ruled out without many more runs —
+  but nothing at the scale that would matter is visible. (Same N-dominated-by-variance lesson as the whole
+  session; do not over-claim "rules are free," only "no cost detectable at this N.")
+- **Rule-drift's anti-noise gating holds empirically.** Its marginal clean-FP is ~0 — proposals are gated on
+  rules + capped ≤1/pass + "only when a pattern clearly qualifies," so on clean external PRs they rarely fire.
+- **What "clean-FP" is / isn't:** raw findings on real merged PRs with no *known* defect — many are legit nits,
+  not false alarms; this is a relative ON-vs-OFF precision signal, not an absolute error rate. The real takeaway
+  for precision is the **large raw-nit floor (6–20) of glm-5.2**, which a verifier/nit-suppression pass would move
+  far more than anything rules-related.
+- **Consequence:** the skeptic's blocker is cleared — §2 rule-drift doesn't measurably add noise, so building
+  §3/§4 on top isn't compounding an unmeasured problem. Recall side of rules (do they get *flagged*) is the
+  separate `scripts/measure-rules.ts` probe (already shows rules lift recall). #73 precision half: **answered.**

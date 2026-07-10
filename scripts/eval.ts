@@ -32,6 +32,7 @@ import { selectPersonas } from "../src/personas/routing.js";
 import type { RepoReader } from "../src/pi/session.js";
 import { createVerifier } from "../src/pi/verifier.js";
 import { createPiWorker } from "../src/pi/worker.js";
+import { renderReviewRules } from "../src/rules/review-rules.js";
 import {
   estimatePassSpend,
   openrouterPrice,
@@ -56,6 +57,8 @@ findings over many nits. If the change looks fine, submit an empty findings arra
 const ROOT = new URL("..", import.meta.url).pathname;
 const DIFF_DIR = `${ROOT}eval/golden/diffs`;
 const REPORT_DIR = `${ROOT}eval/reports`;
+/** Strip a leading YAML frontmatter block from a `.review-rules` file, matching loadReviewRules. */
+const FRONTMATTER_RE = /^---\n[\s\S]*?\n---\n/;
 
 interface Locus {
   about: string;
@@ -406,6 +409,22 @@ async function main() {
   // to think less). Applies to whatever model this run uses; note it is a DELIBERATE bias when comparing runs.
   const note = arg("note") ?? "";
   const withNote = (prompt: string) => (note ? `${note}\n\n${prompt}` : prompt);
+  // --rules <path>: inject a `.review-rules` file as the trusted preamble (faithful to runReview's rule loading)
+  // so precision cost of loading rules can be measured (#73). --rule-drift: enable rule-drift emission (§2), which
+  // runReview gates on rules being present — so it's only meaningful together with --rules.
+  const rulesPath = arg("rules");
+  const rulesPreamble = rulesPath
+    ? renderReviewRules([
+        {
+          // strip YAML frontmatter the way loadReviewRules does, so only the rule body is injected
+          body: readFileSync(rulesPath, "utf8").replace(FRONTMATTER_RE, ""),
+          globs: [],
+          path: rulesPath,
+        },
+      ])
+    : "";
+  const proposeRuleDrift = flag("rule-drift");
+  const withContext = (prompt: string) => rulesPreamble + withNote(prompt);
   const spendGuard = () => {
     if (aborted || localSpend <= maxSpend) {
       return;
@@ -484,8 +503,9 @@ async function main() {
                 context,
                 lane: passLane,
                 persona: pass.id,
+                proposeRuleDrift,
                 repoReader,
-                systemPrompt: withNote(pass.prompt),
+                systemPrompt: withContext(pass.prompt),
               });
               all.push(...pr.findings);
               workerCost += pr.usage?.costUsd ?? 0;
@@ -513,8 +533,9 @@ async function main() {
             context,
             lane,
             persona: "persona:general",
+            proposeRuleDrift,
             repoReader,
-            systemPrompt: withNote(PERSONA),
+            systemPrompt: withContext(PERSONA),
           });
           ({ findings } = pr);
           workerCost += pr.usage?.costUsd ?? 0;
