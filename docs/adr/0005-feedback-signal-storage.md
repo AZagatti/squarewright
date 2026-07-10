@@ -1,6 +1,6 @@
 # ADR 0005 — How Squarewright improves over time (M6)
 
-Status: Proposed · 2026-07-09
+Status: Accepted · 2026-07-09 · §1 (rules + docs loading) shipped + measured (#65/#66/#67/#68/#69)
 
 ## Context
 
