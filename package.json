@@ -27,7 +27,7 @@
     "prepare": "lefthook install"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.3",
+    "@earendil-works/pi-coding-agent": "0.80.6",
     "commander": "^12.0.0",
     "typebox": "^1.1.38",
     "yaml": "^2.4.0",
