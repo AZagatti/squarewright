@@ -228,6 +228,8 @@ describe("runReview", () => {
     expect(received?.systemPrompt).not.toContain("CSS RULE");
     // the persona's own prompt is still present, after the rule preamble
     expect(received?.systemPrompt).toContain("review it");
+    // rules were adopted → rule-drift emission is enabled for this pass
+    expect(received?.proposeRuleDrift).toBe(true);
   });
 
   test("injects Tier-B contextDocs as background, ordered after Tier-A rules", async () => {
@@ -273,6 +275,8 @@ describe("runReview", () => {
     expect(prompt.indexOf("AGENTS DOC TEXT here.")).toBeLessThan(
       prompt.indexOf("review it")
     );
+    // docs (Tier-B) count as adoption too → rule-drift enabled
+    expect(received?.proposeRuleDrift).toBe(true);
   });
 
   test("no repoReader leaves the systemPrompt untouched (bare persona prompt)", async () => {
@@ -288,6 +292,8 @@ describe("runReview", () => {
     };
     await runReview(CONTEXT, CONFIG, worker);
     expect(received?.systemPrompt).toBe("review it");
+    // no rules/docs adopted (empty preamble) → rule-drift emission stays OFF (no drift-noise for opted-out repos)
+    expect(received?.proposeRuleDrift).toBe(false);
   });
 
   test("docs-only PR selects no personas and never calls the worker", async () => {

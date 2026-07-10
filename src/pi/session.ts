@@ -27,6 +27,16 @@ export interface WorkerRequest {
   lane: ModelLane;
   /** persona id, stamped onto findings for provenance/feedback */
   persona?: string;
+  /**
+   * Enable rule-drift proposals (ADR-0005 §2): when true, the analysis pass MAY attach one ready-to-paste
+   * `.review-rules` block to a finding (`proposedRule`) for an undocumented recurring pattern / stale rule. The
+   * assembly turns this on only when the repo has adopted the rules/docs system, so drift-noise never reaches
+   * repos that opted out. When false/undefined BOTH passes omit rule-drift entirely — Pass 1 drops the
+   * instruction and Pass 2's structurer prompt + schema drop the `proposedRule` field — so it is a pure no-op,
+   * not merely an unprompted-but-still-extractable path. The Worker also caps proposals at one per pass
+   * (`capRuleDrift`).
+   */
+  proposeRuleDrift?: boolean;
   /** read-only repo access for grounding; when present the Worker gets read_repo_file/list_repo_dir tools */
   repoReader?: RepoReader;
   /** the persona/system prompt that defines the review lens */
