@@ -146,6 +146,10 @@ export async function runReview(
       context,
       lane,
       persona: pass.id,
+      // Rule-drift proposals (ADR-0005 §2) only when the repo has adopted the rules/docs system — a non-empty
+      // preamble means Tier-A rules and/or Tier-B docs were loaded, so "propose a rule the loaded set misses" is
+      // meaningful. Repos that opted out never see drift-noise.
+      proposeRuleDrift: preamble.length > 0,
       systemPrompt: preamble + pass.prompt,
     });
     all.push(...result.findings);

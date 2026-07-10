@@ -70,7 +70,34 @@ the wider repository for unrelated issues.`;
 const STRUCTURER_SYSTEM = `You convert a code-review analysis into structured data. You are given one
 reviewer's prose analysis of a pull request. Extract EVERY distinct issue it identifies — preserving the file
 path, line number, severity, and explanation — and call submit_findings exactly once. If the analysis reports
-no issues, call submit_findings with an empty findings array. Do not add issues the analysis didn't raise.`;
+no issues, call submit_findings with an empty findings array. Do not add issues the analysis didn't raise. If
+the analysis proposes a ready-to-paste project-rule block (a "rule-drift" proposal), copy that block verbatim
+into \`proposedRule\` on the single most relevant finding; never invent one the analysis didn't write.`;
+
+/**
+ * Rule-drift instruction (ADR-0005 §2), appended to the analysis system prompt ONLY when the assembly enables it
+ * (the repo has adopted the rules/docs system). Encodes the ADR's anti-noise discipline: at most one proposal, and
+ * only for a pattern no already-loaded rule covers. The Worker also enforces the one-per-pass cap deterministically
+ * (`capRuleDrift`) so a disobedient model can't spam proposals.
+ */
+const RULE_DRIFT_NOTE = `
+
+Rule drift — read this after listing your issues. If one of your issues reflects a pattern that (a) shows up in
+MORE THAN ONE place in this diff or is a general project convention, AND (b) is NOT already covered by any project
+rule listed above, then propose ONE ready-to-paste \`.review-rules\` entry a maintainer could adopt so future PRs
+are checked for it automatically. Propose AT MOST ONE for the whole review, and only when a pattern clearly
+qualifies — if nothing does, say nothing. Write it as a fenced markdown block in this exact shape, right after the
+issue it came from:
+
+\`\`\`md
+---
+description: <one line: what this rule enforces>
+globs: <comma-separated file globs it applies to>
+---
+<one or two sentences stating the rule imperatively>
+\`\`\`
+
+Do not propose a rule that merely restates an existing one, and never propose more than one.`;
 
 const findingsSchema = Type.Object({
   findings: Type.Array(
@@ -82,6 +109,12 @@ const findingsSchema = Type.Object({
         description: "1-indexed line on the new side the finding applies to.",
       }),
       path: Type.String({ description: "Repo-relative file path (new side)." }),
+      proposedRule: Type.Optional(
+        Type.String({
+          description:
+            "Only if the analysis proposed a ready-to-paste `.review-rules` block for an undocumented recurring pattern (rule drift). Copy that block verbatim. At most one finding across the whole review may set this.",
+        })
+      ),
       severity: Type.Union([
         Type.Literal("error"),
         Type.Literal("warning"),
@@ -107,9 +140,58 @@ interface SubmittedFinding {
   detail: string;
   line: number;
   path: string;
+  proposedRule?: string;
   severity: Severity;
   suggestion?: string;
   title: string;
+}
+
+/** Assemble the Pass-1 analysis system prompt: the persona/rules preamble plus the grounding + rule-drift notes the request opts into. */
+function buildAnalysisSystem(request: WorkerRequest): string {
+  return (
+    request.systemPrompt +
+    (request.repoReader ? GROUNDING_NOTE : "") +
+    ANALYSIS_NOTE +
+    (request.proposeRuleDrift ? RULE_DRIFT_NOTE : "")
+  );
+}
+
+/** Map one structurer-submitted finding to the canonical `Finding`, stamping persona provenance. Pure — exported for test. */
+export function submittedToFinding(
+  f: SubmittedFinding,
+  persona: string
+): Finding {
+  return {
+    line: f.line,
+    message: f.detail ? `${f.title} — ${f.detail}` : f.title,
+    path: f.path,
+    proposedRule: f.proposedRule?.trim() ? f.proposedRule : undefined,
+    rule: persona,
+    severity: f.severity,
+    source: persona,
+    suggestion: f.suggestion,
+  };
+}
+
+/**
+ * Enforce ADR-0005 §2's anti-noise cap: at most ONE rule-drift proposal per pass. A model may disobey the prompt
+ * and attach `proposedRule` to several findings; keep it on the first (highest-priority, since findings arrive in
+ * the analysis's own order) and strip it from the rest. Pure — exported for test. Returns a new array; inputs
+ * without any proposal pass through untouched.
+ */
+export function capRuleDrift(findings: Finding[]): Finding[] {
+  let kept = false;
+  return findings.map((f) => {
+    if (!f.proposedRule) {
+      return f;
+    }
+    if (kept) {
+      const { proposedRule: _dropped, ...rest } = f;
+      return rest;
+    }
+    kept = true;
+    return f;
+  });
 }
 
 /** Read-only repo tools that let Pass 1 ground its analysis. */
@@ -275,10 +357,7 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
       const groundingTools = request.repoReader
         ? buildRepoTools(request.repoReader)
         : [];
-      const analysisSystem =
-        request.systemPrompt +
-        (request.repoReader ? GROUNDING_NOTE : "") +
-        ANALYSIS_NOTE;
+      const analysisSystem = buildAnalysisSystem(request);
       const loader1 = new DefaultResourceLoader({
         agentDir: getAgentDir(),
         cwd: process.cwd(),
@@ -385,16 +464,12 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
       const structTokens = sumTokens(s2.messages);
       s2.dispose();
 
+      const persona = request.persona ?? "persona:general";
       // biome-ignore lint/suspicious/noUnnecessaryConditions: runtime guard — the model may still not have called submit_findings after the nudge loop exhausts its retries; Biome's flow analysis can't see that the while loop can exit with `captured` still undefined
-      const findings: Finding[] = (captured?.findings ?? []).map((f) => ({
-        line: f.line,
-        message: f.detail ? `${f.title} — ${f.detail}` : f.title,
-        path: f.path,
-        rule: request.persona ?? "persona:general",
-        severity: f.severity,
-        source: request.persona ?? "persona:general",
-        suggestion: f.suggestion,
-      }));
+      const submitted = captured?.findings ?? [];
+      const findings: Finding[] = capRuleDrift(
+        submitted.map((f) => submittedToFinding(f, persona))
+      );
 
       return {
         findings,
