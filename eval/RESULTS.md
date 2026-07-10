@@ -451,7 +451,37 @@ cross-family deepseek judge:
   judge variance. This closes the free-lever question — recall needs a model change, which is a maintainer
   go/no-go on the paid sweep.
 
-## Model re-rank for recall — no premium model beats free glm-5.2 (2026-07-10, #49 AC4 / #45)
+## Model re-rank for recall — RETRACTED as a rank; N=1-noise-dominated (2026-07-10, #49 AC4 / #45)
+
+> **⚠️ CORRECTION (2026-07-10, adversarial re-review — the section below overstated its conclusion; read this
+> first).** An adversarial critic + follow-up confound tests showed the "no premium model beats free glm-5.2"
+> headline is **not supported at the resolution claimed** — it was a single noisy draw per model inside a band the
+> data itself can't separate. What actually holds:
+> - **N=1 variance is enormous and dominates everything.** Judging *the same model* (sonnet-5) across three
+>   configs gave **5 → 3 → 2 /11** (reasoning-off+deepseek-struct → reasoning-off+self-struct →
+>   reasoning-low+deepseek-struct). glm-5.2's own honest interval is 1–4/11. The reported 5-vs-4 "win" is **inside
+>   the noise** — a coin-flip, not a rank.
+> - **The file metric is ANTI-correlated with judged recall at the top.** Those same sonnet configs scored
+>   **7 → 8 → 9 /11 file-level** while judging **5 → 3 → 2** — i.e. the config that found the *most* file-matching
+>   findings caught the *fewest* real defects (the extra findings were hedged/wrong-root-cause noise that hit the
+>   right file). **Never rank on file recall; it can invert the true order.**
+> - **Un-handicapping premium did NOT rescue it.** Reasoning-on and a matched self-structurer *raised file recall
+>   but lowered judged recall* — so the confounds are real (they change the numbers) yet don't produce a premium
+>   win; they add noise.
+> - **Structurer mismatch + unauditability (fixed):** glm-5.2 ran with its shipped `glm-5-turbo` structurer, the
+>   premium models with `deepseek-v3.2` — not apples-to-apples, and `eval.ts` never even recorded the structurer
+>   in the report (now fixed — the report `config` persists `structurer`).
+> - **Contamination unaddressed:** the corpus is *famous, publicly-reverted* PRs (tokio/vite/rails…) — maximally
+>   likely in pretraining. A "shared ~3/11 ceiling" could be memorization saturation, not corpus difficulty. The
+>   "ceiling = corpus difficulty" sub-claim is **unsupported**.
+> - **Judge = same family as 2/7 candidates** (Claude judging sonnet-5/opus-4.8), never cross-checked for that pair.
+>
+> **The ONLY defensible takeaway:** glm-5.2 (free) is **competitive in this ~2–5/11 band — not shown to be beaten**
+> by any paid model tested. So there's **no evidence a switch is justified** (keep free glm-5.2 by default) — but
+> that is "no paid model has been *shown* better," NOT "no model *can* beat it." A real rank is **unrun**: it needs
+> ≥3 fresh reports/model, a **matched** structurer, a **cross-family non-Claude** judge, reasoning tested per
+> model, and a contamination-safe (post-cutoff/synthetic) locus set. Until then this is a **lead, not a result**.
+> The table below is kept as the record of what led here.
 
 Full re-rank prompted by glm-5.2's honest ~3/11 recall. Ran candidate analysis models over the full golden
 corpus (real PRs), reasoning off, **deepseek-v3.2 structurer** (see the structurer note below), then judged.

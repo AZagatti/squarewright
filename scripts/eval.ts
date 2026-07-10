@@ -598,6 +598,11 @@ async function main() {
       personas: doPersonas,
       provider,
       samples: doPersonas ? samples : undefined,
+      // the structurer (pass 2) is part of what's measured — a weak structurer silently drops findings from a
+      // capable analysis model (the nosub bug), so a rank is only auditable if the report records which one ran.
+      structurer: structurerLane
+        ? `${structurerLane.provider}/${structurerLane.model}`
+        : "zai/glm-5-turbo",
       thinking: thinkingSet ? thinking : "per-persona",
       verify: doVerify,
     };
