@@ -1,0 +1,21 @@
+{
+  "inline": [
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — cpSync no longer dereferences symlinks in publicDir copy — The removed copyDir used fs.statSync (which follows symlinks), so symlinked directories were recursed into and symlinked files had their target content copied. The replacement cpSync defaults to dereference: false, preserving symlinks instead of materializing their targets. This is a regression for monorepo/pnpm setups where shared assets or package files are symlinked into public/. Before: resolved content landed in outDir. After: a dangling/preserved symlink lands there (or nothing does), breaking the built output.",
+      "line": 89,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Overlap skip turned into a thrown error — The removed copyDir silently skipped entries when src === dest (i.e. outDir nested inside publicDir). cpSync has a built-in isSrcSubdir check but throws ERR_FS_CP_DIR_TO_SUBDIRECTORY instead of skipping. A previously-tolerated (unusual) config now fails the build hard instead of degrading gracefully.",
+      "line": 89,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — cpSync in create-vite also defaults to dereference: false — Same dereference difference as prepareOutDir.ts. The removed copy used fs.statSync(src) (follows links), while the new cpSync defaults to dereference: false. Impact is lower because template directories rarely contain symlinks, but the observable behavior changed for any symlinked template entry.",
+      "line": 647,
+      "path": "packages/create-vite/src/index.ts"
+    }
+  ],
+  "sticky": "<!-- squarewright:review -->\n\n## Squarewright review\n\nThe refactor from hand-rolled recursive copy to fs.cpSync is sound in principle but introduces two behavioral regressions: symlinks are no longer dereferenced (warning-level for prepareOutDir.ts where monorepo public dirs commonly use symlinks; info-level for create-vite), and an overlap skip silently tolerated by the old code now throws an error. Both should get a conscious decision—most likely adding dereference: true to both cpSync calls.\n\n**3** finding(s): 🔴 0  ·  🟡 1  ·  🔵 2\n\n- 🟡 `packages/vite/src/node/plugins/prepareOutDir.ts:89` _[Correctness, Security]_ — cpSync no longer dereferences symlinks in publicDir copy — The removed copyDir used fs.statSync (which follows symlinks), so symlinked directories were recursed into and symlinked files had their target content copied. The replacement cpSync defaults to dereference: false, preserving symlinks instead of materializing their targets. This is a regression for monorepo/pnpm setups where shared assets or package files are symlinked into public/. Before: resolved content landed in outDir. After: a dangling/preserved symlink lands there (or nothing does), breaking the built output.\n\n  ```suggestion\n  fs.cpSync(publicDir, outDir, { recursive: true, mode: fs.constants.COPYFILE_FICLONE, dereference: true })\n  ```\n- 🔵 `packages/vite/src/node/plugins/prepareOutDir.ts:89` _[Correctness, Security]_ — Overlap skip turned into a thrown error — The removed copyDir silently skipped entries when src === dest (i.e. outDir nested inside publicDir). cpSync has a built-in isSrcSubdir check but throws ERR_FS_CP_DIR_TO_SUBDIRECTORY instead of skipping. A previously-tolerated (unusual) config now fails the build hard instead of degrading gracefully.\n- 🔵 `packages/create-vite/src/index.ts:647` _[Correctness, Security]_ — cpSync in create-vite also defaults to dereference: false — Same dereference difference as prepareOutDir.ts. The removed copy used fs.statSync(src) (follows links), while the new cpSync defaults to dereference: false. Impact is lower because template directories rarely contain symlinks, but the observable behavior changed for any symlinked template entry.\n\n  ```suggestion\n  fs.cpSync(src, dest, { recursive: true, mode: COPYFILE_FICLONE, dereference: true })\n  ```\n\n---\n_Reviewed by: Correctness, Security · glm-5.2 · findings reflect the enabled lenses only_",
+  "unplaceable": []
+}

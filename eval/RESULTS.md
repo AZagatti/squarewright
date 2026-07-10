@@ -364,3 +364,38 @@ glm-5.2, 5 runs/arm.
   variant** (a real corpus defect + a rule targeting it) is the next measurement — more realistic, at the cost of
   possible training-leak on real conventions. Extending this fixture with drift-trigger cases is the base for
   rule-drift (ADR-0005 §2).
+
+## Golden-PR rules probe — baseline × Tier-A × Tier-B × A+B on a REAL defect (2026-07-10)
+
+Does a rule help catch a **real, documented** defect (not just a made-up one)? Case **`ts-vite-21019`** (a
+`copyDir` → `fs.cpSync` refactor vite reverted: omits `dereference: true` so symlinks stop being followed, + a
+Windows non-ASCII `fs.cpSync` bug). The real diff → an artifact (`scripts/diff-to-artifact.ts`), reviewed through
+the product path in four arms — **same convention content, different delivery** — via `eval/golden-rule-probe/run-arms.sh`.
+glm-5.2, 3 runs/arm; graded by one consistent Claude subagent judge (defect-match: independently names the
+concrete symlink/dereference or Windows regression, NOT merely "violates the rule").
+
+| arm | delivery | caught the real defect |
+|---|---|---|
+| Baseline | nothing | **1/3** |
+| Tier-A | convention as `.review-rules` **precedence rule** | **3/3** |
+| Tier-B | same convention as a **background doc** (`contextDocs`) | **3/3** |
+| A+B | both | **2/3** |
+
+- **Rules help on a REAL defect, not just synthetic ones:** unaided, glm-5.2 catches this `fs.cpSync` symlink
+  regression only **1/3**; with the rule OR the doc it's **3/3**. Combined with the synthetic made-up rule
+  (prior section, **0/5 → 5/5**), the honest story is: **rules meaningfully lift recall — decisively for
+  conventions the model can't infer, and materially even for a real defect it only *sometimes* catches unaided.**
+- **⚠️ This corrects a confounded earlier run.** A first pass used the PR title *"Use fs.cpSync instead of custom
+  copyDir"* — which **names both functions**, a strong hint. Under that leading title the baseline scored **3/3**
+  and the probe wrongly read as a "ceiling effect (rules add nothing on real defects)." Re-run with a **neutral**
+  title (*"Simplify recursive file copying…"*) the baseline dropped to **1/3** and the rules' lift appeared. The
+  PR title is a real signal the reviewer uses — a lesson for corpus design, and a reminder to distrust a single
+  arrangement. (sqw-reviewer on PR #69 caught the title confound.)
+- **Over-loading (A+B) is no better, maybe slightly worse:** A+B **2/3** vs A or B alone **3/3** — one run
+  (`ab_3`) stayed generic ("defaults have shifted across Node versions") without asserting the concrete regression.
+  Small, within N=3 noise, but consistent with "don't stack context reflexively" — supports Tier-B off-by-default.
+- **Caveats:** one case, one model, **N=3/arm** (a 1/3 baseline could be 0–2/3 with more runs — direction is the
+  signal, not the exact count); grading is by subagent judge (documented protocol), not a committed deterministic
+  script; judge stochasticity is real (an earlier per-arm-judge pass read A+B as 1/3, a consistent judge 2/3).
+  The 12 graded outputs are committed under `eval/golden-rule-probe/runs/` for audit; reviews reproduce via
+  `RUNS=3 bash eval/golden-rule-probe/run-arms.sh` + `scripts/diff-to-artifact.ts`.

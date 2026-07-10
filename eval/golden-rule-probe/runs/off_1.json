@@ -1,0 +1,37 @@
+{
+  "inline": [],
+  "sticky": "<!-- squarewright:review -->\n\n## Squarewright review\n\nThe create-vite change and COPYFILE_FICLONE optimization are sound. The one real regression is in Vite's `prepareOutDir`: replacing `copyDir` with `fs.cpSync` silently drops a guard that prevented copying the output directory into itself when `outDir` is nested inside `publicDir`, changing observable behavior for those users. An equivalent pre-check should be restored.\n\n**3** finding(s): 🔴 0  ·  🟡 1  ·  🔵 2\n\n- 🟡 `packages/vite/src/node/plugins/prepareOutDir.ts:1` _[Correctness, Security]_ — Lost self-copy guard when replacing copyDir with fs.cpSync — The old `copyDir` in `utils.ts` contained a guard (`if (srcFile === destDir) continue`) that prevented copying the destination into itself when `outDir` is nested inside `publicDir`. `fs.cpSync` has no equivalent guard and will recurse into the destination (e.g., `public/dist` → `public/dist/dist`), producing duplicated content or errors. An equivalent pre-check (e.g., skip the copy if `outDir` is nested under `publicDir`) should be added to preserve the old contract.\n\n  ```suggestion\n  Add a pre-check before `fs.cpSync` that skips the copy when `outDir` starts with `publicDir` + path.sep, or filter the offending entry from the source directory listing.\n  ```\n- 🔵 `packages/vite/src/node/plugins/prepareOutDir.ts:1` _[Correctness, Security]_ — fs.cpSync emits ExperimentalWarning on Node 18–22.2 — The eslint-disable comment acknowledges that `fs.cpSync` with `recursive: true` was only stabilized in Node 22.3. On Node 18.x (a commonly supported minimum), it emits an `ExperimentalWarning` to stderr on every build invocation, which is noisy for end users. Worth confirming against the declared `engines.node` minimum before merging.\n- 🔵 `packages/create-vite/src/index.ts:1` _[Correctness, Security]_ — fs.cpSync emits ExperimentalWarning on older Node versions — Same as the Vite note — `fs.cpSync` with `recursive: true` fires an `ExperimentalWarning` on Node 18–22.2. For create-vite this only fires once per scaffolding, so it is tolerable. Confirm against declared `engines.node` minimum.\n\n---\n_Reviewed by: Correctness, Security · glm-5.2 · findings reflect the enabled lenses only_",
+  "unplaceable": [
+    {
+      "line": 1,
+      "message": "Lost self-copy guard when replacing copyDir with fs.cpSync — The old `copyDir` in `utils.ts` contained a guard (`if (srcFile === destDir) continue`) that prevented copying the destination into itself when `outDir` is nested inside `publicDir`. `fs.cpSync` has no equivalent guard and will recurse into the destination (e.g., `public/dist` → `public/dist/dist`), producing duplicated content or errors. An equivalent pre-check (e.g., skip the copy if `outDir` is nested under `publicDir`) should be added to preserve the old contract.",
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts",
+      "rule": "baseline",
+      "severity": "warning",
+      "source": "baseline",
+      "suggestion": "Add a pre-check before `fs.cpSync` that skips the copy when `outDir` starts with `publicDir` + path.sep, or filter the offending entry from the source directory listing.",
+      "consensus": 1,
+      "sources": ["baseline"]
+    },
+    {
+      "line": 1,
+      "message": "fs.cpSync emits ExperimentalWarning on Node 18–22.2 — The eslint-disable comment acknowledges that `fs.cpSync` with `recursive: true` was only stabilized in Node 22.3. On Node 18.x (a commonly supported minimum), it emits an `ExperimentalWarning` to stderr on every build invocation, which is noisy for end users. Worth confirming against the declared `engines.node` minimum before merging.",
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts",
+      "rule": "baseline",
+      "severity": "info",
+      "source": "baseline",
+      "consensus": 1,
+      "sources": ["baseline"]
+    },
+    {
+      "line": 1,
+      "message": "fs.cpSync emits ExperimentalWarning on older Node versions — Same as the Vite note — `fs.cpSync` with `recursive: true` fires an `ExperimentalWarning` on Node 18–22.2. For create-vite this only fires once per scaffolding, so it is tolerable. Confirm against declared `engines.node` minimum.",
+      "path": "packages/create-vite/src/index.ts",
+      "rule": "baseline",
+      "severity": "info",
+      "source": "baseline",
+      "consensus": 1,
+      "sources": ["baseline"]
+    }
+  ]
+}

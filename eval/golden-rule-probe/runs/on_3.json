@@ -1,0 +1,42 @@
+{
+  "inline": [
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Symlink behavior regression: symlinks now copied as symlinks instead of dereferenced — The old `copyDir`/`copy` helpers dereferenced symlinks via `fs.statSync` (follows links) then `fs.copyFileSync` (copies target content). `fs.cpSync` defaults to `dereference: false`, so a symlinked entry in `publicDir` is now copied as a symlink — potentially dangling or semantically different. This is an observable change to build output and scaffolded template output.",
+      "line": 86,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Symlink behavior regression in create-vite scaffolding — Same symlink regression as in prepareOutDir.ts. create-vite's old `copy`/`copyDir` used `fs.statSync` + `fs.copyFileSync` which dereferenced symlinks. The replacement `fs.cpSync(...)` at ~line 644 defaults to `dereference: false`, changing template scaffolding behavior.",
+      "line": 644,
+      "path": "packages/create-vite/src/index.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Lost self-copy guard: fs.cpSync can recurse into the destination directory — Vite's old `copyDir` had a guard `if (srcFile === destDir) continue` preventing recursive descent into the destination when `destDir` is nested inside `srcDir` (e.g. `public/` containing the configured `outDir`). `fs.cpSync` has no equivalent protection. At minimum this is a behavior change for the overlap case; in the worst case it can recurse into the copy of itself.",
+      "line": 86,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Cross-platform / Windows non-ASCII path risk from switching to fs.cpSync — The rule cites Windows non-ASCII (Unicode) path bugs as a reason `copyDir` is required. `fs.cpSync`'s recursive mode has a long history of such issues that the `readdirSync` + `path.resolve` + `copyFileSync` approach sidesteps. Dropping `copyDir` reintroduces that risk surface for both the public-dir copy and template scaffolding.",
+      "line": 86,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Windows non-ASCII path risk in create-vite scaffolding from fs.cpSync swap — Same Windows non-ASCII path risk as in prepareOutDir.ts. The replacement of `copyDir`/`copy` with `fs.cpSync` in template scaffolding reintroduces the risk surface that the helper was designed to avoid.",
+      "line": 644,
+      "path": "packages/create-vite/src/index.ts"
+    }
+  ],
+  "sticky": "<!-- squarewright:review -->\n\n## Squarewright review\n\nThis PR must not merge as-is. It directly violates a trusted, precedence-taking review rule by deleting `copyDir` and replacing it with `fs.cpSync` across three files. The swap introduces at least three behavioral regressions: symlinks are no longer dereferenced (affecting build and scaffold output), the self-copy guard that prevents recursion into the destination directory is lost, and Windows non-ASCII path risks are reintroduced. Either revert to `copyDir` or open an ADR-level decision to justify the change and update the rule.\n\n**6** finding(s): 🔴 4  ·  🟡 2  ·  🔵 0\n\n- 🔴 `.review-rules/copy.md:1` _[Correctness, Security]_ — Removes copyDir helper and replaces with fs.cpSync, violating .review-rules/copy.md — The project's trusted rule `.review-rules/copy.md` explicitly forbids removing `copyDir` or swapping it for `fs.cpSync`. This PR deletes the `copyDir` export from `utils.ts` (~line 624), removes the import and replaces `copyDir(publicDir, outDir)` with `fs.cpSync(...)` in `prepareOutDir.ts` (line 7 import, ~line 86 body), and replaces the `copy(...)` call with `fs.cpSync(...)` while deleting both local `copy` and `copyDir` helpers in `create-vite/src/index.ts` (~line 644, deletions ~710–742). Because the rule is trusted and precedence-taking, this alone is sufficient to block.\n- 🔴 `packages/vite/src/node/plugins/prepareOutDir.ts:86` _[Correctness, Security]_ — Symlink behavior regression: symlinks now copied as symlinks instead of dereferenced — The old `copyDir`/`copy` helpers dereferenced symlinks via `fs.statSync` (follows links) then `fs.copyFileSync` (copies target content). `fs.cpSync` defaults to `dereference: false`, so a symlinked entry in `publicDir` is now copied as a symlink — potentially dangling or semantically different. This is an observable change to build output and scaffolded template output.\n- 🔴 `packages/create-vite/src/index.ts:644` _[Correctness, Security]_ — Symlink behavior regression in create-vite scaffolding — Same symlink regression as in prepareOutDir.ts. create-vite's old `copy`/`copyDir` used `fs.statSync` + `fs.copyFileSync` which dereferenced symlinks. The replacement `fs.cpSync(...)` at ~line 644 defaults to `dereference: false`, changing template scaffolding behavior.\n- 🔴 `packages/vite/src/node/plugins/prepareOutDir.ts:86` _[Correctness, Security]_ — Lost self-copy guard: fs.cpSync can recurse into the destination directory — Vite's old `copyDir` had a guard `if (srcFile === destDir) continue` preventing recursive descent into the destination when `destDir` is nested inside `srcDir` (e.g. `public/` containing the configured `outDir`). `fs.cpSync` has no equivalent protection. At minimum this is a behavior change for the overlap case; in the worst case it can recurse into the copy of itself.\n- 🟡 `packages/vite/src/node/plugins/prepareOutDir.ts:86` _[Correctness, Security]_ — Cross-platform / Windows non-ASCII path risk from switching to fs.cpSync — The rule cites Windows non-ASCII (Unicode) path bugs as a reason `copyDir` is required. `fs.cpSync`'s recursive mode has a long history of such issues that the `readdirSync` + `path.resolve` + `copyFileSync` approach sidesteps. Dropping `copyDir` reintroduces that risk surface for both the public-dir copy and template scaffolding.\n- 🟡 `packages/create-vite/src/index.ts:644` _[Correctness, Security]_ — Windows non-ASCII path risk in create-vite scaffolding from fs.cpSync swap — Same Windows non-ASCII path risk as in prepareOutDir.ts. The replacement of `copyDir`/`copy` with `fs.cpSync` in template scaffolding reintroduces the risk surface that the helper was designed to avoid.\n\n---\n_Reviewed by: Correctness, Security · glm-5.2 · findings reflect the enabled lenses only_",
+  "unplaceable": [
+    {
+      "line": 1,
+      "message": "Removes copyDir helper and replaces with fs.cpSync, violating .review-rules/copy.md — The project's trusted rule `.review-rules/copy.md` explicitly forbids removing `copyDir` or swapping it for `fs.cpSync`. This PR deletes the `copyDir` export from `utils.ts` (~line 624), removes the import and replaces `copyDir(publicDir, outDir)` with `fs.cpSync(...)` in `prepareOutDir.ts` (line 7 import, ~line 86 body), and replaces the `copy(...)` call with `fs.cpSync(...)` while deleting both local `copy` and `copyDir` helpers in `create-vite/src/index.ts` (~line 644, deletions ~710–742). Because the rule is trusted and precedence-taking, this alone is sufficient to block.",
+      "path": ".review-rules/copy.md",
+      "rule": "baseline",
+      "severity": "error",
+      "source": "baseline",
+      "consensus": 1,
+      "sources": ["baseline"]
+    }
+  ]
+}

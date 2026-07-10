@@ -1,0 +1,37 @@
+{
+  "inline": [
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Convention violation: copyDir removed, call sites swapped to fs.cpSync — CONVENTIONS.md explicitly requires that recursive directory copies go through the project's `copyDir` helper in `packages/vite/src/node/utils.ts` and forbids calling `fs.cpSync`/`fs.cp` directly, citing symlink-following and cross-platform (Windows non-ASCII path) behavior. This PR deletes `copyDir` from `utils.ts` (lines ~624–642) and replaces the public-dir copy at prepareOutDir.ts:89 with `fs.cpSync`. By stated project policy, this is a regression. `copyDir` should be restored and both call sites should route through it.",
+      "line": 89,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Symlink semantics silently changed: fs.cpSync defaults to dereference: false — The old `copyDir` used `fs.statSync` (follows symlinks) and `fs.copyFileSync` (copies target contents, not the link), materializing symlinks as real files/directories. `fs.cpSync` defaults to `dereference: false`, so symlinks in `publicDir` would now be copied as symlinks — potentially dangling or repo-relative — changing observable build/dev output. The convention's 'symlink-following' wording confirms this was intentional. If the swap ever lands, `dereference: true` must be passed.",
+      "line": 89,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Self-into-subtree guard removed from copyDir replacement — The old `copyDir` in utils.ts silently skipped when `srcFile === destDir`, protecting against cases where `outDir` is nested under `publicDir` or a misconfigured root. `fs.cpSync` has its own subtree detection but throws exceptions (`ERR_FS_CP_DIR_TO_SUBDIR`) instead of silently skipping — a control-flow/exception-handling change that should be verified against Vite's existing tests for nested outDir/publicDir configs.",
+      "line": 86,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    },
+    {
+      "body": "<!-- squarewright:inline -->\n\n**Correctness, Security** — Unstated behavioral change: COPYFILE_FICLONE mode added — Both new call sites pass `mode: fs.constants.COPYFILE_FICLONE`, requesting copy-on-write where the filesystem supports it. The old code did not use this flag. This is a behavioral diff unrelated to the PR's stated goal of 'simplifying' — on CoW-capable filesystems (btrfs, XFS, APFS), copied files may share extents with the source and behave differently under later in-place writes. It should be justified or dropped to match prior behavior.",
+      "line": 89,
+      "path": "packages/vite/src/node/plugins/prepareOutDir.ts"
+    }
+  ],
+  "sticky": "<!-- squarewright:review -->\n\n## Squarewright review\n\nThe PR violates an explicit project convention by deleting the `copyDir` helper and replacing it with raw `fs.cpSync` calls. This introduces a symlink-dereference regression (symlinks copied as links instead of materialized), removes a self-into-subtree guard (changing exception behavior), and silently adds COPYFILE_FICLONE mode. The `copyDir` helper must be restored and both call sites routed through it.\n\n**5** finding(s): 🔴 1  ·  🟡 2  ·  🔵 2\n\n- 🔴 `packages/vite/src/node/plugins/prepareOutDir.ts:89` _[Correctness, Security]_ — Convention violation: copyDir removed, call sites swapped to fs.cpSync — CONVENTIONS.md explicitly requires that recursive directory copies go through the project's `copyDir` helper in `packages/vite/src/node/utils.ts` and forbids calling `fs.cpSync`/`fs.cp` directly, citing symlink-following and cross-platform (Windows non-ASCII path) behavior. This PR deletes `copyDir` from `utils.ts` (lines ~624–642) and replaces the public-dir copy at prepareOutDir.ts:89 with `fs.cpSync`. By stated project policy, this is a regression. `copyDir` should be restored and both call sites should route through it.\n- 🟡 `packages/vite/src/node/plugins/prepareOutDir.ts:89` _[Correctness, Security]_ — Symlink semantics silently changed: fs.cpSync defaults to dereference: false — The old `copyDir` used `fs.statSync` (follows symlinks) and `fs.copyFileSync` (copies target contents, not the link), materializing symlinks as real files/directories. `fs.cpSync` defaults to `dereference: false`, so symlinks in `publicDir` would now be copied as symlinks — potentially dangling or repo-relative — changing observable build/dev output. The convention's 'symlink-following' wording confirms this was intentional. If the swap ever lands, `dereference: true` must be passed.\n- 🟡 `packages/create-vite/src/index.ts:86` _[Correctness, Security]_ — Symlink semantics silently changed in create-vite template scaffolding — Same symlink regression as prepareOutDir: the old create-vite `copy()` used `fs.statSync` + `fs.copyFileSync`, materializing symlink targets. The new `fs.cpSync` call without `dereference: true` would scaffold symlinks instead of inlined file content for any template containing symlinks.\n- 🔵 `packages/vite/src/node/plugins/prepareOutDir.ts:86` _[Correctness, Security]_ — Self-into-subtree guard removed from copyDir replacement — The old `copyDir` in utils.ts silently skipped when `srcFile === destDir`, protecting against cases where `outDir` is nested under `publicDir` or a misconfigured root. `fs.cpSync` has its own subtree detection but throws exceptions (`ERR_FS_CP_DIR_TO_SUBDIR`) instead of silently skipping — a control-flow/exception-handling change that should be verified against Vite's existing tests for nested outDir/publicDir configs.\n- 🔵 `packages/vite/src/node/plugins/prepareOutDir.ts:89` _[Correctness, Security]_ — Unstated behavioral change: COPYFILE_FICLONE mode added — Both new call sites pass `mode: fs.constants.COPYFILE_FICLONE`, requesting copy-on-write where the filesystem supports it. The old code did not use this flag. This is a behavioral diff unrelated to the PR's stated goal of 'simplifying' — on CoW-capable filesystems (btrfs, XFS, APFS), copied files may share extents with the source and behave differently under later in-place writes. It should be justified or dropped to match prior behavior.\n\n---\n_Reviewed by: Correctness, Security · glm-5.2 · findings reflect the enabled lenses only_",
+  "unplaceable": [
+    {
+      "line": 86,
+      "message": "Symlink semantics silently changed in create-vite template scaffolding — Same symlink regression as prepareOutDir: the old create-vite `copy()` used `fs.statSync` + `fs.copyFileSync`, materializing symlink targets. The new `fs.cpSync` call without `dereference: true` would scaffold symlinks instead of inlined file content for any template containing symlinks.",
+      "path": "packages/create-vite/src/index.ts",
+      "rule": "baseline",
+      "severity": "warning",
+      "source": "baseline",
+      "consensus": 1,
+      "sources": ["baseline"]
+    }
+  ]
+}
