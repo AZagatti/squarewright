@@ -399,3 +399,32 @@ concrete symlink/dereference or Windows regression, NOT merely "violates the rul
   script; judge stochasticity is real (an earlier per-arm-judge pass read A+B as 1/3, a consistent judge 2/3).
   The 12 graded outputs are committed under `eval/golden-rule-probe/runs/` for audit; reviews reproduce via
   `RUNS=3 bash eval/golden-rule-probe/run-arms.sh` + `scripts/diff-to-artifact.ts`.
+
+## Honest interval on the SHIPPED default glm-5.2 (2026-07-10, #49 AC4 first step)
+
+Before treating any v0.1 dogfood finding as representative, an honest committed number for the current default
+(council 2026-07-10). Protocol: **3 fresh `eval --repeat` analysis reports** (free z.ai glm-5.2, reasoning-off,
+grounding off) **× 2 judge passes** with a **cross-family** judge (deepseek-v3.2, avoids GLM self-preference,
+#49 AC2). Report×judge matrix via `scripts/judge.ts --reports … --judge-repeats 2`.
+
+| metric | glm-5.2 (shipped default) |
+|---|---|
+| **defect-match recall (judged, cross-family)** | **1–4 / 11 · median 3** |
+| file-level locus recall (inflated ~2×) | 6–7 / 11 · median 6 |
+| clean-case false positives (file-level, raw) | 13–25 · median 14 |
+| judge spend | ~$0.02 (deepseek, capped) |
+
+Per-report judged pairs: [1,3] · [3,3] · [4,1]. Analysis variance (per-report medians) 2.5–3; judge variance
+within a report 0–3 (report 3 swung 4→1 — the judge is itself stochastic, HR#5). 
+
+- **This is the recall bottleneck, measured on the shipped default:** the reviewer catches a **median ~3 of 11
+  real defects (~27%)**. The file metric (6–7) overstates it ~2×, exactly as AGENTS.md warns — do NOT quote the
+  file number as recall.
+- **Implication (council):** recall — not the feedback loop (M6 §2–4) — is the v0.1 blocker. The next lever is
+  self-consistency sampling (`--samples`/`--consensus`) promoted to the review path with a precision guard, or a
+  model re-rank (the full #49 AC4). A dogfood reviewer at ~3/11 recall will *look* quiet/clean, which reads as
+  "well-calibrated" unless you already know to distrust the silence.
+- **Caveats:** N=3 reports, one model; the interval is wide (1–4) and both analysis + judge contribute variance.
+  This is a first honest AC4 step, not the full multi-model rank. Reports are gitignored; re-run:
+  `ZAI_API_KEY=… bun run scripts/eval.ts --provider zai --model glm-5.2 --repeat 3 --concurrency 5` then
+  `bun run scripts/judge.ts --reports "<3 paths>" --judge-repeats 2 --model openrouter:deepseek/deepseek-v3.2`.
