@@ -64,9 +64,14 @@ export async function runTeachCommand(
     permission: env.TEACH_PERMISSION ?? "",
     prAuthorLogin: env.TEACH_PR_AUTHOR ?? "",
   });
-  const findingText = deps.fetchFinding
-    ? await deps.fetchFinding(env)
-    : env.TEACH_FINDING;
+  // Fetch the grounding finding only for an authorized actor — an unauthorized reply short-circuits below, so a
+  // fetch here would be wasted work (and shouldn't touch the API on their behalf at all).
+  let findingText: string | undefined;
+  if (authorized) {
+    findingText = deps.fetchFinding
+      ? await deps.fetchFinding(env)
+      : env.TEACH_FINDING;
+  }
 
   const outcome = await handleTeachReply({
     authorized,

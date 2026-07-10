@@ -95,14 +95,42 @@ describe("runTeachCommand", () => {
   });
 
   test("fails closed when a required trusted signal is missing", () => {
-    const { TEACH_REPO: _drop, ...noRepo } = authedEnv();
+    for (const key of ["TEACH_REPO", "TEACH_ISSUE", "TEACH_BODY"] as const) {
+      const env = authedEnv();
+      delete env[key];
+      expect(
+        runTeachCommand({
+          env,
+          interpreter: stubInterpreter(RULE),
+          poster: stubPoster(),
+        })
+      ).rejects.toThrow(key);
+    }
+  });
+
+  test("fails closed on a non-numeric issue number", () => {
     expect(
       runTeachCommand({
-        env: noRepo,
+        env: { ...authedEnv(), TEACH_ISSUE: "not-a-number" },
         interpreter: stubInterpreter(RULE),
         poster: stubPoster(),
       })
-    ).rejects.toThrow("TEACH_REPO");
+    ).rejects.toThrow("TEACH_ISSUE");
+  });
+
+  test("does not fetch the finding for an unauthorized actor", async () => {
+    let fetched = 0;
+    const res = await runTeachCommand({
+      env: { ...authedEnv(), TEACH_PERMISSION: "read" },
+      fetchFinding: () => {
+        fetched += 1;
+        return Promise.resolve("finding");
+      },
+      interpreter: stubInterpreter(RULE),
+      poster: stubPoster(),
+    });
+    expect(res.outcome).toEqual({ kind: "skip", reason: "unauthorized" });
+    expect(fetched).toBe(0);
   });
 
   test("uses fetchFinding for the grounding text when provided", async () => {
