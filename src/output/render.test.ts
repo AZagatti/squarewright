@@ -50,6 +50,33 @@ test("renderSticky: marker first, honest (not overclaiming) clean verdict", () =
   expect(out).toContain("findings reflect the enabled lenses only");
 });
 
+test("renderSticky: a rule-drift finding renders the 📖 marker + a paste-ready block", () => {
+  const findings: AggregatedFinding[] = [
+    {
+      consensus: 1,
+      line: 15,
+      message: "New auth pattern should be a documented project rule",
+      path: "src/api.ts",
+      proposedRule:
+        '---\nglobs: ["src/**"]\n---\n- Use fetchWithAuth for protected endpoints.',
+      rule: "rule-drift",
+      severity: "info",
+      sources: ["baseline"],
+    },
+  ];
+  const out = renderSticky({
+    findings,
+    lenses: [{ id: "baseline", label: "Correctness" }],
+    summary: "",
+  });
+  expect(out).toContain("📖 `rule-drift`");
+  expect(out).toContain("Proposed rule");
+  expect(out).toContain("```md");
+  expect(out).toContain("Use fetchWithAuth for protected endpoints.");
+  // it must NOT render as a one-click code ```suggestion (that's for single-line replacements)
+  expect(out).not.toContain("```suggestion");
+});
+
 test("renderSticky: attributes findings to their lens(es) and names the agreeing lenses", () => {
   const findings: AggregatedFinding[] = [
     {

@@ -14,6 +14,12 @@ export interface Finding {
   message: string;
   /** repo-relative path (new side) */
   path: string;
+  /**
+   * Rule-drift proposal (ADR-0005 §2): a ready-to-paste `.review-rules/*.md` block a human adds to make an
+   * undocumented pattern a project rule. When set, the finding renders as a 📖 rule-drift proposal (a suggestion
+   * a human acts on — never an auto-write). The reviewer proposes; the human edits the rule file.
+   */
+  proposedRule?: string;
   /** stable rule/persona id, e.g. "persona:security" or "grounder:breaking-change" */
   rule: string;
   severity: Severity;
