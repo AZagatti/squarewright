@@ -560,3 +560,38 @@ matter** (the shipped default vs the strongest contender), both with the **same 
   still be memorization-saturation not corpus difficulty; and this covers 2 models, not the whole field. But for
   the one decision that was live — *switch off free glm-5.2 to a paid model for recall?* — the answer is now a
   measured **no**. Judging spend for this section ~$0.3 (deepseek passes; glm judge free).
+
+### Sakana Fugu — the first model that clearly beats free glm-5.2 on judged recall (2026-07-10)
+Tested Sakana AI's **Fugu** + **Fugu Ultra** (new reasoning models; `https://api.sakana.ai/v1`, OpenAI-compatible,
+added to Pi via a `models.json` custom provider — Pi ships no first-party Sakana). Full golden corpus (Fugu) /
+8 has-issue cases (Ultra), matched **deepseek-v3.2 structurer**, both cross-family judges, `--judge-repeats 2`:
+
+| model (reasoning) | deepseek judge | glm-5.2 judge | file | latency/case |
+|---|---|---|---|---|
+| **fugu** (high) | **[5,5] med 5** | **[6,6] med 6** | 8/11 | 40–263s |
+| **fugu-ultra** (high, +concise-note) | [4,6] med 5 | [6,6] med 6 | 8/11 | 116–847s |
+| glm-5.2 (free) | 1–3 med 1.5 | 1–4 med 3 | 6 | ~10–60s |
+| sonnet-5 | 2–4 med 2 | 2–4 med 3.5 | 7 | ~10–60s |
+
+- **Fugu roughly DOUBLES judged recall over free glm-5.2** (~5–6 vs ~1.5–3), and it's the most judge-robust
+  result of the session: BOTH cross-family judges agree, and within-report variance is ~0 ([5,5], [6,6], [6,6])
+  — the findings are unambiguous enough that judges don't waver. This is the **first real evidence that recall is
+  model-liftable, not a pure corpus-difficulty ceiling** — it partially walks back the "ceiling ≈ corpus
+  difficulty" reading above. Still **N=1 analysis report/model** (run-to-run analysis variance untested — the
+  session's standing caveat; needs ≥3 reports to be a settled rank), but it clears the bar the retracted N=1
+  claim failed: two-judge agreement + zero within-report wobble + a *large* gap (5–6 vs 1.5–3, not 5-vs-4).
+- **Fugu Ultra ≈ Fugu at the same effort.** Both ~5 (deepseek) / 6 (glm). The pricier tier ($5/$30 per M vs
+  Fugu's unpublished/subscription price) buys **nothing** here — **effort level, not model tier, is the lever**.
+- **Reasoning is MANDATORY — a trap by our rule.** No "off" mode; only `high`/`xhigh` accepted (others rejected);
+  Pi's "off" degrades to the server default (high/ultra→xhigh), still billing reasoning. Our OpenRouter
+  reasoning-trap preflight can't see it (Sakana ≠ OpenRouter) → **no automatic guard**. Fugu Ultra is $30/M out on
+  pay-as-you-go; both are free but quota-heavy on a Sakana subscription (one full-corpus + partial Ultra run ate
+  ~62% of a 5h quota window).
+- **A "be concise, don't overthink, limit multi-agent exploration" system-prompt note did NOT reduce the burn.**
+  ts-vite: with-note **225s** vs without **226s** — identical. `reasoning_effort:high` owns the reasoning budget
+  server-side; you can't prompt Fugu out of it (rust-tokio still took **847s** with the note). It nudged quality
+  slightly (ts-vite 0/2→1/2). Recorded as a deliberately-biased exploratory run (`--note`, only on this Ultra run).
+- **Verdict for THIS project (free-glm-on-a-personal-sub):** Fugu is **not a default switch** — mandatory
+  reasoning, 40–847s/case, and a paid/quota dependency are the opposite of the free-glm thesis. But it's a solid
+  **"premium recall option when recall matters more than cost/latency,"** and the strongest single argument that a
+  better *reasoning* model — not a better *structurer* or *sampling* — is what moves the recall needle (#45).
