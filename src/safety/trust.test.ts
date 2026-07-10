@@ -118,4 +118,9 @@ describe("isAuthorizedTeachActor", () => {
       false
     );
   });
+  test("fails closed when actor or PR-author login is missing (lookup failure)", () => {
+    // an unknown PR author (e.g. the workflow's author lookup failed) must NOT silently disable the exclusion
+    expect(isAuthorizedTeachActor({ ...ok, prAuthorLogin: "" })).toBe(false);
+    expect(isAuthorizedTeachActor({ ...ok, actorLogin: "" })).toBe(false);
+  });
 });

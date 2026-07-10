@@ -126,6 +126,9 @@ const TEACH_PERMISSIONS: ReadonlySet<string> = new Set([
  * the actor's association must be in {@link TEACH_ASSOCIATIONS} (cheap pre-filter) AND their repo permission must
  * grant write (the authoritative check — a COLLABORATOR can be read-only) AND they must not be the PR author (a
  * PR author teaching rules on their own PR is excluded per ADR-0005 §3). Pure; the workflow supplies the values.
+ *
+ * FAILS CLOSED: a missing actor OR a missing PR-author login (e.g. the workflow's author lookup failed) returns
+ * false — an unknown PR author must not silently disable the author-exclusion rule.
  */
 export function isAuthorizedTeachActor(input: {
   association: string;
@@ -136,7 +139,8 @@ export function isAuthorizedTeachActor(input: {
   return (
     TEACH_ASSOCIATIONS.has(input.association) &&
     TEACH_PERMISSIONS.has(input.permission) &&
-    input.actorLogin !== input.prAuthorLogin &&
-    input.actorLogin.length > 0
+    input.actorLogin.length > 0 &&
+    input.prAuthorLogin.length > 0 &&
+    input.actorLogin !== input.prAuthorLogin
   );
 }
