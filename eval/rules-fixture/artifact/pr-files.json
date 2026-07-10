@@ -1,0 +1,7 @@
+[
+  {
+    "filename": "src/session/expiry.ts",
+    "status": "added",
+    "patch": "@@ -0,0 +1,7 @@\n+export function isExpired(deadlineMs: number): boolean {\n+  return Date.now() > deadlineMs;\n+}\n+\n+export function stampNow(): number {\n+  return Date.now();\n+}\n"
+  }
+]
