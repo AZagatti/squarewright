@@ -29,8 +29,11 @@ const FIXTURE = join(ROOT, "eval/rules-fixture");
 const ARTIFACT = join(FIXTURE, "artifact");
 const RUNS = Number(process.env.RUNS ?? "5");
 
-const target = JSON.parse(
+const ruleTarget = JSON.parse(
   readFileSync(join(FIXTURE, "target.json"), "utf8")
+) as RuleTarget;
+const inclusiveTarget = JSON.parse(
+  readFileSync(join(FIXTURE, "target-inclusive.json"), "utf8")
 ) as RuleTarget;
 const zaiKey = (
   process.env.ZAI_API_KEY ?? readFileSync(join(homedir(), ".zai_key"), "utf8")
@@ -50,7 +53,11 @@ function armDir(withRule: boolean): string {
   return dir;
 }
 
-function runOnce(armCwd: string): boolean {
+/** One review → both detectors (rule-specific convention citation, and any generic Date.now mention). */
+function runOnce(armCwd: string): {
+  inclusive: boolean;
+  ruleSpecific: boolean;
+} {
   const out = execFileSync(
     "bun",
     [
@@ -72,25 +79,33 @@ function runOnce(armCwd: string): boolean {
       stdio: ["ignore", "pipe", "ignore"],
     }
   );
-  return detectRuleFinding(toProbeFindings(JSON.parse(out)), target);
+  const findings = toProbeFindings(JSON.parse(out));
+  return {
+    inclusive: detectRuleFinding(findings, inclusiveTarget),
+    ruleSpecific: detectRuleFinding(findings, ruleTarget),
+  };
 }
 
-function measure(withRule: boolean): number {
+function measure(withRule: boolean): {
+  inclusive: number;
+  ruleSpecific: number;
+} {
   const dir = armDir(withRule);
   const label = withRule ? "ON " : "OFF";
-  let flagged = 0;
+  const tally = { inclusive: 0, ruleSpecific: 0 };
   try {
     for (let i = 0; i < RUNS; i += 1) {
       const hit = runOnce(dir);
-      flagged += hit ? 1 : 0;
+      tally.ruleSpecific += hit.ruleSpecific ? 1 : 0;
+      tally.inclusive += hit.inclusive ? 1 : 0;
       process.stderr.write(
-        `  rule ${label} run ${i + 1}/${RUNS}: ${hit ? "FLAGGED" : "not flagged"}\n`
+        `  rule ${label} run ${i + 1}/${RUNS}: rule-specific=${hit.ruleSpecific ? "Y" : "n"} inclusive=${hit.inclusive ? "Y" : "n"}\n`
       );
     }
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
-  return flagged;
+  return tally;
 }
 
 process.stderr.write(
@@ -99,5 +114,7 @@ process.stderr.write(
 const on = measure(true);
 const off = measure(false);
 process.stdout.write(
-  `\nRESULT (rule-violation flagged): ON = ${on}/${RUNS} · OFF = ${off}/${RUNS}\n`
+  `\nRESULT (flagged / ${RUNS}):\n` +
+    `  rule-specific (cites clock.ts/replay): ON ${on.ruleSpecific} · OFF ${off.ruleSpecific}\n` +
+    `  inclusive (any Date.now flag):         ON ${on.inclusive} · OFF ${off.inclusive}\n`
 );

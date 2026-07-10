@@ -1,5 +1,5 @@
 {
   "path": "src/session/expiry.ts",
   "line": 2,
-  "keywords": ["clock.ts", "replay"]
+  "keywords": ["Date.now", "new Date"]
 }

@@ -341,20 +341,26 @@ The first honest before/after of the shipped rule-loading feature (ADR-0005 §1)
 **cannot** measure this — those external repos have no `.review-rules/`, and `scripts/eval.ts` drives the Worker
 directly, never the `runReview` rule-injection path. So `scripts/measure-rules.ts` + `eval/rules-fixture/` drive
 the **real product path** (`cli.ts review` → `runReview` → `fsRepoReader`) over a **made-up** rule (`Date.now()`
-→ a fictional `clock.ts`, fake repo `acme/widget`) the model cannot know from training. Detector is the
-deterministic `detectRuleFinding` (unit-tested), so the reviewer run is the only variable. glm-5.2, 5 runs/arm.
+→ a fictional `clock.ts`, fake repo `acme/widget`) the model cannot know from training. Both detectors are the
+deterministic `detectRuleFinding` (unit-tested) over two committed targets, so the reviewer run is the only
+variable and **the whole table reproduces from one command:** `RUNS=5 bun run scripts/measure-rules.ts`.
+glm-5.2, 5 runs/arm.
 
 | detector | rule ON | rule OFF | what it measures |
 |---|---|---|---|
-| **rule-specific** (finding cites `clock.ts`/`replay`/`deterministic`) | **4/5** | **0/5** | did the rule make the reviewer invoke the *documented convention*? |
-| inclusive (any `Date.now`-adjacent flag) | 5/5 | 2/5 | did the violation get flagged *at all*? |
+| **rule-specific** (cites `clock.ts`/`replay` — `target.json`) | **5/5** | **0/5** | did the rule make the reviewer invoke the *documented convention*? |
+| inclusive (any `Date.now` flag — `target-inclusive.json`) | 5/5 | **1/5** | did the violation get flagged *at all*? |
 
-- **The rule works, cleanly:** the reviewer invokes the project-specific convention **4/5 with the rule, 0/5
+- **The rule works, cleanly:** the reviewer invokes the project-specific convention **5/5 with the rule, 0/5
   without** — impossible to mention `clock.ts`/`replay` without the injected rule, so OFF=0/5 is the honest floor.
-- **The baseline is NOT zero on the inclusive measure:** the model flags `Date.now()` on its own ~**2/5**
-  (generic testability concern), so a naive "flagged?" metric overstates the rule's effect. An earlier
-  hand-rolled **3/0** single sample was over-optimistic — exactly the single-flattering-number trap Hard Rule #5
-  warns against; ≥3 runs + the split detector corrected it.
-- **Caveats:** one fixture, one model, N=5 — a *directional* result, not a precision/recall number. Re-run:
-  `RUNS=5 bun run scripts/measure-rules.ts`. Extending this fixture with drift-trigger cases is the measurement
-  base for rule-drift (ADR-0005 §2) next.
+- **The baseline is NOT zero on the inclusive measure:** the model flags `Date.now()` on its own (1/5 this run,
+  2/5 an earlier run — generic testability concern), so a naive "flagged?" metric overstates the rule's effect.
+  An earlier hand-rolled **3/0** single sample was over-optimistic — exactly the single-flattering-number trap
+  Hard Rule #5 warns against; ≥3 runs + the split detector corrected it.
+- **Run-to-run variance is real:** a prior 5-run pass gave rule-specific **4/5** (vs 5/5 here) and inclusive-OFF
+  **2/5** (vs 1/5); the *direction* is stable (rule-specific ON ≫ OFF ≈ 0), the exact counts are not — report the
+  range, never a single count.
+- **Caveats:** one fixture, one model, N=5 — a *directional* result, not a precision/recall number. A **golden-PR
+  variant** (a real corpus defect + a rule targeting it) is the next measurement — more realistic, at the cost of
+  possible training-leak on real conventions. Extending this fixture with drift-trigger cases is the base for
+  rule-drift (ADR-0005 §2).
