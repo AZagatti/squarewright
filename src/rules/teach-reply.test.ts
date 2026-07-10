@@ -139,6 +139,17 @@ test("handleTeachReply: strips the trigger before handing intent to the interpre
   });
 });
 
+test("handleTeachReply: a trigger with no content after it is skipped before the model", async () => {
+  const interp = stubInterpreter(goodRule);
+  const out = await handleTeachReply({
+    authorized: true,
+    interpreter: interp,
+    replyText: "@squarewright   ",
+  });
+  expect(out).toEqual({ kind: "skip", reason: "empty-after-trigger" });
+  expect(interp.calls).toHaveLength(0);
+});
+
 test("handleTeachReply: a low-confidence / no-rule reply is skipped (gate before render)", async () => {
   const out = await handleTeachReply({
     authorized: true,
