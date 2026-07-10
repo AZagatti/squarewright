@@ -67,12 +67,26 @@ diff, or "this other file should also be fixed" observations — those are out o
 finding is valid only if this PR's changed lines cause it. If the change is sound, say so; do not go hunting
 the wider repository for unrelated issues.`;
 
-const STRUCTURER_SYSTEM = `You convert a code-review analysis into structured data. You are given one
+const STRUCTURER_BASE = `You convert a code-review analysis into structured data. You are given one
 reviewer's prose analysis of a pull request. Extract EVERY distinct issue it identifies — preserving the file
 path, line number, severity, and explanation — and call submit_findings exactly once. If the analysis reports
-no issues, call submit_findings with an empty findings array. Do not add issues the analysis didn't raise. If
-the analysis proposes a ready-to-paste project-rule block (a "rule-drift" proposal), copy that block verbatim
-into \`proposedRule\` on the single most relevant finding; never invent one the analysis didn't write.`;
+no issues, call submit_findings with an empty findings array. Do not add issues the analysis didn't raise.`;
+
+const STRUCTURER_DRIFT_ADDENDUM = ` If the analysis proposes a ready-to-paste project-rule block (a
+"rule-drift" proposal), copy that block verbatim into \`proposedRule\` on the single most relevant finding;
+never invent one the analysis didn't write.`;
+
+/**
+ * The Pass-2 structurer prompt, built per-request. The rule-drift sentence (and the schema's `proposedRule`
+ * field, see `buildFindingsSchema`) are added ONLY when the request opts in — so a repo that didn't enable
+ * rule-drift can't have a stray fenced block in the analysis prose extracted into a proposal. Symmetric to how
+ * `buildAnalysisSystem` gates Pass 1.
+ */
+export function buildStructurerSystem(proposeRuleDrift: boolean): string {
+  return proposeRuleDrift
+    ? STRUCTURER_BASE + STRUCTURER_DRIFT_ADDENDUM
+    : STRUCTURER_BASE;
+}
 
 /**
  * Rule-drift instruction (ADR-0005 §2), appended to the analysis system prompt ONLY when the assembly enables it
@@ -85,7 +99,7 @@ const RULE_DRIFT_NOTE = `
 Rule drift — read this after listing your issues. If one of your issues reflects a pattern that (a) shows up in
 MORE THAN ONE place in this diff or is a general project convention, AND (b) is NOT already covered by any project
 rule listed above, then propose ONE ready-to-paste \`.review-rules\` entry a maintainer could adopt so future PRs
-are checked for it automatically. Propose AT MOST ONE for the whole review, and only when a pattern clearly
+are checked for it automatically. Propose AT MOST ONE in this response, and only when a pattern clearly
 qualifies — if nothing does, say nothing. Write it as a fenced markdown block in this exact shape, right after the
 issue it came from:
 
@@ -99,42 +113,52 @@ globs: <comma-separated file globs it applies to>
 
 Do not propose a rule that merely restates an existing one, and never propose more than one.`;
 
-const findingsSchema = Type.Object({
-  findings: Type.Array(
-    Type.Object({
-      detail: Type.String({
-        description: "Why it matters, grounded in the diff/code.",
-      }),
-      line: Type.Integer({
-        description: "1-indexed line on the new side the finding applies to.",
-      }),
-      path: Type.String({ description: "Repo-relative file path (new side)." }),
-      proposedRule: Type.Optional(
-        Type.String({
-          description:
-            "Only if the analysis proposed a ready-to-paste `.review-rules` block for an undocumented recurring pattern (rule drift). Copy that block verbatim. At most one finding across the whole review may set this.",
-        })
-      ),
-      severity: Type.Union([
-        Type.Literal("error"),
-        Type.Literal("warning"),
-        Type.Literal("info"),
-      ]),
-      suggestion: Type.Optional(
-        Type.String({
-          description:
-            "Exact single-line replacement, only for mechanical fixes.",
-        })
-      ),
-      title: Type.String({
-        description: "Short one-line summary of the issue.",
-      }),
+const findingFields = {
+  detail: Type.String({
+    description: "Why it matters, grounded in the diff/code.",
+  }),
+  line: Type.Integer({
+    description: "1-indexed line on the new side the finding applies to.",
+  }),
+  path: Type.String({ description: "Repo-relative file path (new side)." }),
+  severity: Type.Union([
+    Type.Literal("error"),
+    Type.Literal("warning"),
+    Type.Literal("info"),
+  ]),
+  suggestion: Type.Optional(
+    Type.String({
+      description: "Exact single-line replacement, only for mechanical fixes.",
     })
   ),
-  summary: Type.String({
-    description: "One or two sentences: the overall verdict on this change.",
+  title: Type.String({
+    description: "Short one-line summary of the issue.",
   }),
-});
+};
+
+const proposedRuleField = Type.Optional(
+  Type.String({
+    description:
+      "Only if the analysis proposed a ready-to-paste `.review-rules` block for an undocumented recurring pattern (rule drift). Copy that block verbatim. At most one finding may set this.",
+  })
+);
+
+/**
+ * The submit_findings schema, built per-request. `proposedRule` is only offered when the request opts into
+ * rule-drift — so a repo that didn't enable it can't have the structurer populate the field at all (defense in
+ * depth alongside `buildStructurerSystem`, which also omits the instruction).
+ */
+export function buildFindingsSchema(proposeRuleDrift: boolean) {
+  const fields = proposeRuleDrift
+    ? { ...findingFields, proposedRule: proposedRuleField }
+    : findingFields;
+  return Type.Object({
+    findings: Type.Array(Type.Object(fields)),
+    summary: Type.String({
+      description: "One or two sentences: the overall verdict on this change.",
+    }),
+  });
+}
 
 interface SubmittedFinding {
   detail: string;
@@ -165,7 +189,7 @@ export function submittedToFinding(
     line: f.line,
     message: f.detail ? `${f.title} — ${f.detail}` : f.title,
     path: f.path,
-    proposedRule: f.proposedRule?.trim() ? f.proposedRule : undefined,
+    proposedRule: f.proposedRule?.trim() ? f.proposedRule.trim() : undefined,
     rule: persona,
     severity: f.severity,
     source: persona,
@@ -397,6 +421,7 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
           `Structurer model not found: ${structLane.provider}/${structLane.model}.`
         );
       }
+      const proposeRuleDrift = request.proposeRuleDrift ?? false;
       let captured:
         | { summary: string; findings: SubmittedFinding[] }
         | undefined;
@@ -420,12 +445,12 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
         },
         label: "Submit findings",
         name: "submit_findings",
-        parameters: findingsSchema,
+        parameters: buildFindingsSchema(proposeRuleDrift),
       });
       const loader2 = new DefaultResourceLoader({
         agentDir: getAgentDir(),
         cwd: process.cwd(),
-        systemPromptOverride: () => STRUCTURER_SYSTEM,
+        systemPromptOverride: () => buildStructurerSystem(proposeRuleDrift),
       });
       await loader2.reload();
       const { session: s2 } = await createAgentSession({

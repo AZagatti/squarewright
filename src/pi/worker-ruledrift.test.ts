@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import type { Finding } from "../core/types.js";
-import { capRuleDrift, submittedToFinding } from "./worker.js";
+import {
+  buildFindingsSchema,
+  buildStructurerSystem,
+  capRuleDrift,
+  submittedToFinding,
+} from "./worker.js";
 
 const base = {
   detail: "reason",
@@ -26,6 +31,18 @@ test("submittedToFinding leaves proposedRule undefined when absent or blank", ()
   expect(
     submittedToFinding({ ...base, proposedRule: "   " }, "p").proposedRule
   ).toBeUndefined();
+});
+
+test("Pass-2 gating: structurer prompt + schema only offer proposedRule when enabled", () => {
+  // ON: the structurer is told to carry a proposal, and the schema advertises the field.
+  expect(buildStructurerSystem(true)).toContain("proposedRule");
+  expect(JSON.stringify(buildFindingsSchema(true))).toContain("proposedRule");
+  // OFF: neither mentions it — a repo that opted out cannot have a stray fenced block extracted.
+  expect(buildStructurerSystem(false)).not.toContain("proposedRule");
+  expect(buildStructurerSystem(false)).not.toContain("rule-drift");
+  expect(JSON.stringify(buildFindingsSchema(false))).not.toContain(
+    "proposedRule"
+  );
 });
 
 test("capRuleDrift keeps the FIRST proposal and strips the rest (≤1 per pass)", () => {

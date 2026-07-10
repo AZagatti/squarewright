@@ -49,26 +49,37 @@ function isSame(a: AggregatedFinding, b: Finding): boolean {
   return overlap(tokens(a.message), tokens(b.message)) >= 0.4;
 }
 
+/** Fold a duplicate `f` into the surviving `existing`: bump consensus, keep the strongest/richest fields. */
+function mergeInto(existing: AggregatedFinding, f: Finding): void {
+  existing.consensus += 1;
+  const src = f.source ?? f.rule;
+  if (!existing.sources.includes(src)) {
+    existing.sources.push(src);
+  }
+  // keep the highest severity and the longer (richer) message
+  if (SEV_RANK[f.severity] > SEV_RANK[existing.severity]) {
+    existing.severity = f.severity;
+  }
+  if (f.message.length > existing.message.length) {
+    existing.message = f.message;
+  }
+  if (!existing.suggestion && f.suggestion) {
+    existing.suggestion = f.suggestion;
+  }
+  // A rule-drift proposal (ADR-0005 §2) attaches to "the issue it came from" — which another persona may
+  // independently flag nearby and land first as `existing`. Carry the proposal over so the cap's single
+  // survivor still reaches render instead of being silently dropped in the same-issue collapse.
+  if (!existing.proposedRule && f.proposedRule) {
+    existing.proposedRule = f.proposedRule;
+  }
+}
+
 export function aggregateFindings(findings: Finding[]): AggregatedFinding[] {
   const out: AggregatedFinding[] = [];
   for (const f of findings) {
     const existing = out.find((e) => isSame(e, f));
     if (existing) {
-      existing.consensus += 1;
-      const src = f.source ?? f.rule;
-      if (!existing.sources.includes(src)) {
-        existing.sources.push(src);
-      }
-      // keep the highest severity and the longer (richer) message
-      if (SEV_RANK[f.severity] > SEV_RANK[existing.severity]) {
-        existing.severity = f.severity;
-      }
-      if (f.message.length > existing.message.length) {
-        existing.message = f.message;
-      }
-      if (!existing.suggestion && f.suggestion) {
-        existing.suggestion = f.suggestion;
-      }
+      mergeInto(existing, f);
     } else {
       out.push({ ...f, consensus: 1, sources: [f.source ?? f.rule] });
     }
