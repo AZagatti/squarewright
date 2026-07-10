@@ -245,3 +245,29 @@ describe("createGhPullLookup", () => {
     ]);
   });
 });
+
+describe("createGhPoster.postComment", () => {
+  test("posts a standalone PR comment (single POST, body as JSON over stdin)", async () => {
+    const { run, calls } = fakeRunner(() => ({ stdout: "{}" }));
+
+    await createGhPoster(run).postComment(TARGET, "a rule suggestion");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.args).toEqual([
+      "api",
+      "repos/o/r/issues/7/comments",
+      "--method",
+      "POST",
+      "--input",
+      "-",
+    ]);
+    expect(JSON.parse(calls[0]?.input ?? "{}").body).toBe("a rule suggestion");
+  });
+
+  test("surfaces a non-zero exit as a thrown error", () => {
+    const { run } = fakeRunner(() => ({ code: 1, stderr: "boom" }));
+    expect(createGhPoster(run).postComment(TARGET, "x")).rejects.toThrow(
+      "boom"
+    );
+  });
+});

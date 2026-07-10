@@ -25,6 +25,10 @@ const SCAFFOLD: CopySpec[] = [
     from: "workflows/squarewright-review.yml",
     to: ".github/workflows/squarewright-review.yml",
   },
+  {
+    from: "workflows/squarewright-teach.yml",
+    to: ".github/workflows/squarewright-teach.yml",
+  },
   { from: "review-rules/README.md", to: ".review-rules/README.md" },
 ];
 

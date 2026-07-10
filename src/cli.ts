@@ -5,6 +5,7 @@
  * Commands:
  *   init     scaffold a reviewer assembly into the current repo   [implemented]
  *   review   run a review over a gathered PR                      [--phase post implemented; --post posts to GitHub]
+ *   teach    interpret a reply to a finding into a rule suggestion (ADR-0005 §3) [implemented; driven by the Teach workflow]
  *   doctor   check config + provider setup                        [implemented]
  */
 import { Command } from "commander";
@@ -12,6 +13,7 @@ import { readGatherArtifact } from "./assembly/artifact.js";
 import { loadAssemblyConfig } from "./assembly/config.js";
 import { doctorProblems, renderDoctor, runDoctor } from "./assembly/doctor.js";
 import { runReviewCommand, runReviewPost } from "./assembly/review-post.js";
+import { runTeachCommand } from "./assembly/teach-post.js";
 import {
   createGhPoster,
   createGhPullLookup,
@@ -21,7 +23,26 @@ import {
 import { scaffold } from "./init/scaffold.js";
 import { fsRepoReader } from "./pi/fs-reader.js";
 import { resolveProviderKeys } from "./pi/keys.js";
+import { createReplyInterpreter } from "./pi/reply-interpreter.js";
 import { createPiWorker } from "./pi/worker.js";
+
+/** Fetch the parent review-comment's body (the finding a reply is attached to) when the event carried one. */
+function teachFindingFetcher(env: NodeJS.ProcessEnv) {
+  return async (): Promise<string | undefined> => {
+    const id = env.TEACH_IN_REPLY_TO_ID;
+    const repo = env.TEACH_REPO;
+    if (!(id && repo)) {
+      return env.TEACH_FINDING || undefined;
+    }
+    const { code, stdout } = await ghRunner([
+      "api",
+      `repos/${repo}/pulls/comments/${id}`,
+      "--jq",
+      ".body",
+    ]);
+    return code === 0 ? stdout.trim() || undefined : undefined;
+  };
+}
 
 const program = new Command();
 
@@ -100,6 +121,42 @@ program
       }
     }
   );
+
+program
+  .command("teach")
+  .description(
+    "Interpret a maintainer's reply to a finding into a rule suggestion and post it (ADR-0005 §3). Driven by the Teach workflow via TEACH_* env; posts only for an authorized actor and a confident, durable rule."
+  )
+  .action(async () => {
+    try {
+      const { apiKeys, missing } = await resolveProviderKeys(["zai"]);
+      if (missing.length > 0) {
+        console.error(
+          `teach: missing provider key(s): ${missing.join(", ")}. Set ZAI_API_KEY.`
+        );
+        process.exitCode = 2;
+        return;
+      }
+      const res = await runTeachCommand({
+        env: process.env,
+        fetchFinding: teachFindingFetcher(process.env),
+        interpreter: createReplyInterpreter({ apiKeys }),
+        poster: createGhPoster(ghRunner),
+      });
+      if (res.posted) {
+        console.error(
+          `Posted a rule suggestion to ${res.posted.repo}#${res.posted.issueNumber}.`
+        );
+      } else {
+        console.error(
+          `No suggestion posted (${res.outcome.kind === "skip" ? res.outcome.reason : "no-post"}).`
+        );
+      }
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : String(e));
+      process.exitCode = 2;
+    }
+  });
 
 program
   .command("doctor")

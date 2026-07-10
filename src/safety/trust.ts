@@ -94,3 +94,49 @@ export async function verifyPostingTarget(
     repo: trusted.baseRepo,
   };
 }
+
+/**
+ * Teach-by-reply (ADR-0005 §3) posts a standalone PR comment, so its target is lighter than a review's: no
+ * `commitSha` (nothing is pinned to a line). Built directly from the `issue_comment`/`pull_request_review_comment`
+ * event payload, which is SAFE without a cross-check — GitHub runs these events from the base repo's DEFAULT
+ * branch (never a fork's copy) and computes `repository`/`issue.number`/`comment.*` server-side, so none of it is
+ * attacker-settable (unlike the gather artifact above).
+ */
+export interface TeachTarget {
+  issueNumber: number;
+  repo: string;
+}
+
+/** Author-association values that MAY teach — a cheap pre-filter; the authoritative gate is the permission level. */
+export const TEACH_ASSOCIATIONS: ReadonlySet<string> = new Set([
+  "OWNER",
+  "MEMBER",
+  "COLLABORATOR",
+]);
+
+/** Repo permission levels that grant write — the authoritative teach gate (association alone doesn't imply write). */
+const TEACH_PERMISSIONS: ReadonlySet<string> = new Set([
+  "admin",
+  "write",
+  "maintain",
+]);
+
+/**
+ * May this actor teach a rule via reply? A WRITE+SPEND action, so it is gated harder than a read-only phase:
+ * the actor's association must be in {@link TEACH_ASSOCIATIONS} (cheap pre-filter) AND their repo permission must
+ * grant write (the authoritative check — a COLLABORATOR can be read-only) AND they must not be the PR author (a
+ * PR author teaching rules on their own PR is excluded per ADR-0005 §3). Pure; the workflow supplies the values.
+ */
+export function isAuthorizedTeachActor(input: {
+  association: string;
+  actorLogin: string;
+  permission: string;
+  prAuthorLogin: string;
+}): boolean {
+  return (
+    TEACH_ASSOCIATIONS.has(input.association) &&
+    TEACH_PERMISSIONS.has(input.permission) &&
+    input.actorLogin !== input.prAuthorLogin &&
+    input.actorLogin.length > 0
+  );
+}
