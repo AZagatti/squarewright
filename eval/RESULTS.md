@@ -526,6 +526,19 @@ Swapping to a **deepseek structurer** fixed it (deepseek 0→submits). Implicati
 recall lever in its own right — a weak structurer drops findings from a strong analysis model. Worth measuring a
 stronger default structurer across models (the pairing matrix at N=1 was inconclusive — needs a real sweep).
 
+**#78 close-out (2026-07-10, decided — keep the default).** A 3-structurer probe on deepseek-v3.2 *analysis*
+(glm-5-turbo vs glm-5.2 vs deepseek-v3.2 structurer, 2 has-issue cases) was **too confounded to rank cleanly**:
+the eval re-runs the analysis pass per arm, so it never feeds the *same* analysis text to each structurer, and
+deepseek analysis is itself noisy/nosub-prone (even the paid deepseek structurer got 0/4 that run; glm-5.2
+structurer recovered one case at raw 7). Takeaway: part of "nosub" is **analysis variance**, not purely the
+structurer, and **no cheap structurer reliably fixes capable-model nosub**. Decision: **keep the free
+`glm-5-turbo` structurer default** — the shipped default (glm-5.2 analysis) is unaffected; nosub only bites
+*capable/paid* analysis models, which aren't the default. A clean structurer rank would need a **fixed-analysis
+eval mode** (run analysis once → feed N structurers) — deferred, not worth it while capable models aren't the
+default. **Operational note:** to run a capable model (e.g. **Sakana Fugu**) usefully, pair it with
+`--structurer openrouter:deepseek/deepseek-v3.2` — that pairing produced Fugu's 8/11 file / 5–6 judged; the
+default glm-5-turbo structurer would nosub it.
+
 ### Matched-structurer, cross-family, N=3 re-test — the retraction's prescription, executed (2026-07-10)
 The retraction above said a real comparison needs: **matched structurer**, **≥3 fresh reports/model**, a
 **cross-family non-Claude judge**, judge stochasticity averaged. Ran exactly that for the **two models that
