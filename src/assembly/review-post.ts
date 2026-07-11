@@ -31,8 +31,8 @@ interface ReviewPostDeps {
   ) => PiWorker;
   /**
    * Reasoning-trap preflight for OpenRouter lanes (analysis + structurer). When set, a model whose reasoning can't
-   * be disabled cheaply is REFUSED before any model call — the same guard the eval has had for months, now on the
-   * product path (issue #36). Absent => no check (behavior unchanged for callers that don't wire it).
+   * be disabled cheaply is REFUSED before any model call (the classifier is `src/safety/spend-guard.ts`, shared
+   * with the eval). Absent => no check (behavior unchanged for callers that don't wire it).
    */
   reasoningRisk?: ReasoningRisk;
   /**
