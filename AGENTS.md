@@ -39,8 +39,9 @@ single maintainer, **public** repo.
 - **Improve on references, don't copy them.** (Prior art like trimwire is input, not a template — adopt a
   pattern only if you can't do better.)
 - **Don't bloat or bias subagents** — give them grounded context and a tight task, nothing leading.
-- **Ask, don't guess**, on: the trust boundary, secrets, ADR-level decisions, golden-corpus ground truth, and
-  product/API-shape choices. Surface the decision as a crisp question — don't bury it in prose or pick silently.
+- **Ask, don't guess.** Some forks are the maintainer's call, not yours — surface them as a crisp question,
+  never bury one in prose or resolve it silently by picking an answer. The canonical list of these stop
+  conditions lives in [`docs/WORKFLOW.md`](docs/WORKFLOW.md) under "Stop conditions — ask, don't guess".
 - **All GitHub writes go through the `Poster` interface** (`gh api` is the first impl, swappable to Octokit) —
   never scatter raw `gh`/HTTP calls through the code.
 - **Check `docs/adr/` before an architectural change; propose a new ADR before making one.**
