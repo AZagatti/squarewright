@@ -39,6 +39,14 @@ export interface WorkerRequest {
   proposeRuleDrift?: boolean;
   /** read-only repo access for grounding; when present the Worker gets read_repo_file/list_repo_dir tools */
   repoReader?: RepoReader;
+  /**
+   * Enable the SURVEYOR coverage pass (recall lever, #45): when true, the analysis prompt instructs the model to,
+   * before finishing, re-scan EVERY other changed file/hunk for the same root cause as each issue it found and
+   * report the recurrences — a same-call forced enumeration (not a second pass; a separate re-check call is a
+   * proven no-op). Targets the enumeration miss-class where the same bug recurs across sibling files and is found
+   * once but not everywhere. Opt-in + measured so its recall gain and any precision cost are visible.
+   */
+  surveyor?: boolean;
   /** the persona/system prompt that defines the review lens */
   systemPrompt: string;
   /** extra custom tools to expose to the Worker (registered into Pi via defineTool) */

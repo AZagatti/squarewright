@@ -54,6 +54,19 @@ Write your review as prose. For every issue you find, state: the file path, the 
 (error / warning / info), and a grounded explanation of why it is a problem. If the change is sound, say
 clearly that you found no issues. Do NOT output JSON — just your analysis.`;
 
+/**
+ * SURVEYOR coverage pass (recall lever, #45): a same-call forced enumeration appended when a request opts in.
+ * It targets the enumeration miss-class — the same root cause changed in one file but not its siblings, found
+ * once and not everywhere (e.g. an alpha-composition fix applied to one CSS rule but not the mirrored one).
+ * Deliberately in-call and BEFORE the model concludes: a separate re-check pass is a proven no-op here.
+ */
+const SURVEYOR_NOTE = `
+
+Before you finish, do a coverage pass: for EACH issue you identified, check EVERY other changed file and hunk in
+this diff for the SAME underlying root cause, and report each additional occurrence as its own finding. A change
+applied in one place but not its siblings is a common defect, so a bug you found once may recur elsewhere in this
+diff. Do this now, in this same response, before concluding.`;
+
 const GROUNDING_NOTE = `
 
 You can inspect the repository at this PR's revision with tools: read_repo_file(path) reads a file's full
@@ -172,13 +185,17 @@ interface SubmittedFinding {
   title: string;
 }
 
-/** Assemble the Pass-1 analysis system prompt: the persona/rules preamble plus the grounding + rule-drift notes the request opts into. */
-function buildAnalysisSystem(request: WorkerRequest): string {
+/**
+ * Assemble the Pass-1 analysis system prompt: the persona/rules preamble plus the grounding, rule-drift, and
+ * SURVEYOR notes the request opts into. Exported for test — the opt-in notes must be present iff their flag is.
+ */
+export function buildAnalysisSystem(request: WorkerRequest): string {
   return (
     request.systemPrompt +
     (request.repoReader ? GROUNDING_NOTE : "") +
     ANALYSIS_NOTE +
-    (request.proposeRuleDrift ? RULE_DRIFT_NOTE : "")
+    (request.proposeRuleDrift ? RULE_DRIFT_NOTE : "") +
+    (request.surveyor ? SURVEYOR_NOTE : "")
   );
 }
 
