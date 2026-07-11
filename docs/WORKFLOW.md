@@ -75,6 +75,8 @@ or before starting if it blocks the whole issue) whenever a task needs:
 
 - **product or API-shape judgment** (a public interface, a CLI flag's behavior, a config schema choice),
 - a **trust-boundary** decision (anything touching gather/review, secrets, permissions, the head-SHA check),
+- an **ADR-level / architectural** decision (check `docs/adr/` first; propose a new ADR before making one),
+- **golden-corpus ground truth** (labeling or inventing an eval case's expected defect),
 - a change beyond the issue's stated acceptance criteria or non-goals,
 - a **paid** model run.
 
