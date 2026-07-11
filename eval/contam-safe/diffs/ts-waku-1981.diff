@@ -1,0 +1,469 @@
+diff --git a/e2e/fixtures/broken-links/package.json b/e2e/fixtures/broken-links/package.json
+index d9cbf4a1df..80279f1a99 100644
+--- a/e2e/fixtures/broken-links/package.json
++++ b/e2e/fixtures/broken-links/package.json
+@@ -9,7 +9,7 @@
+     "start": "waku start"
+   },
+   "dependencies": {
+-    "hono": "^4.10.0",
++    "hono": "^4.12.5",
+     "react": "~19.2.4",
+     "react-dom": "~19.2.4",
+     "react-server-dom-webpack": "~19.2.4",
+diff --git a/e2e/fixtures/ssr-catch-error/package.json b/e2e/fixtures/ssr-catch-error/package.json
+index 4245b29167..7356328a38 100644
+--- a/e2e/fixtures/ssr-catch-error/package.json
++++ b/e2e/fixtures/ssr-catch-error/package.json
+@@ -9,7 +9,7 @@
+     "start": "waku start"
+   },
+   "dependencies": {
+-    "hono": "^4.10.0",
++    "hono": "^4.12.5",
+     "react": "~19.2.4",
+     "react-dom": "~19.2.4",
+     "react-error-boundary": "^6.1.1",
+diff --git a/e2e/fixtures/ssr-nonce-middleware/package.json b/e2e/fixtures/ssr-nonce-middleware/package.json
+index f354732268..db03ba6038 100644
+--- a/e2e/fixtures/ssr-nonce-middleware/package.json
++++ b/e2e/fixtures/ssr-nonce-middleware/package.json
+@@ -9,7 +9,7 @@
+     "start": "waku start"
+   },
+   "dependencies": {
+-    "hono": "^4.10.0",
++    "hono": "^4.12.5",
+     "react": "~19.2.4",
+     "react-dom": "~19.2.4",
+     "react-server-dom-webpack": "~19.2.4",
+diff --git a/examples/01_template/package.json b/examples/01_template/package.json
+index d9fa7787ce..798e0aa8f2 100644
+--- a/examples/01_template/package.json
++++ b/examples/01_template/package.json
+@@ -9,6 +9,7 @@
+     "start": "waku start"
+   },
+   "dependencies": {
++    "hono": "^4.12.5",
+     "react": "~19.2.4",
+     "react-dom": "~19.2.4",
+     "react-server-dom-webpack": "~19.2.4",
+diff --git a/examples/01_template/src/middleware/no-trailing-slash.ts b/examples/01_template/src/middleware/no-trailing-slash.ts
+new file mode 100644
+index 0000000000..f1eb597aa0
+--- /dev/null
++++ b/examples/01_template/src/middleware/no-trailing-slash.ts
+@@ -0,0 +1,3 @@
++import { trimTrailingSlash } from 'hono/trailing-slash';
++
++export default () => trimTrailingSlash({ alwaysRedirect: true });
+diff --git a/examples/02_template_js/package.json b/examples/02_template_js/package.json
+index a15a2af113..a04c45fbc9 100644
+--- a/examples/02_template_js/package.json
++++ b/examples/02_template_js/package.json
+@@ -9,6 +9,7 @@
+     "start": "waku start"
+   },
+   "dependencies": {
++    "hono": "^4.12.5",
+     "react": "~19.2.4",
+     "react-dom": "~19.2.4",
+     "react-server-dom-webpack": "~19.2.4",
+diff --git a/examples/02_template_js/src/middleware/no-trailing-slash.js b/examples/02_template_js/src/middleware/no-trailing-slash.js
+new file mode 100644
+index 0000000000..f1eb597aa0
+--- /dev/null
++++ b/examples/02_template_js/src/middleware/no-trailing-slash.js
+@@ -0,0 +1,3 @@
++import { trimTrailingSlash } from 'hono/trailing-slash';
++
++export default () => trimTrailingSlash({ alwaysRedirect: true });
+diff --git a/examples/07_cloudflare/package.json b/examples/07_cloudflare/package.json
+index 9bb297409b..8bbb50095e 100644
+--- a/examples/07_cloudflare/package.json
++++ b/examples/07_cloudflare/package.json
+@@ -10,7 +10,7 @@
+     "start": "wrangler dev"
+   },
+   "dependencies": {
+-    "hono": "^4.10.0",
++    "hono": "^4.12.5",
+     "react": "~19.2.4",
+     "react-dom": "~19.2.4",
+     "react-server-dom-webpack": "~19.2.4",
+diff --git a/examples/38_cookies/package.json b/examples/38_cookies/package.json
+index f93118cd32..07d1a56aa4 100644
+--- a/examples/38_cookies/package.json
++++ b/examples/38_cookies/package.json
+@@ -10,7 +10,7 @@
+   },
+   "dependencies": {
+     "cookie": "^1.1.1",
+-    "hono": "^4.10.0",
++    "hono": "^4.12.5",
+     "react": "~19.2.4",
+     "react-dom": "~19.2.4",
+     "react-server-dom-webpack": "~19.2.4",
+diff --git a/packages/waku/package.json b/packages/waku/package.json
+index 806fb9f900..6c8ccd5b93 100644
+--- a/packages/waku/package.json
++++ b/packages/waku/package.json
+@@ -90,11 +90,11 @@
+     "node": "^24.0.0 || ^22.12.0 || ^20.19.0"
+   },
+   "dependencies": {
+-    "@hono/node-server": "^1.19.0",
++    "@hono/node-server": "^1.19.11",
+     "@vitejs/plugin-react": "^5.1.0",
+     "@vitejs/plugin-rsc": "^0.5.19",
+     "dotenv": "^17.3.1",
+-    "hono": "^4.10.0",
++    "hono": "^4.12.5",
+     "magic-string": "^0.30.21",
+     "picocolors": "^1.1.1",
+     "rsc-html-stream": "^0.0.7",
+diff --git a/packages/waku/src/adapters/aws-lambda.ts b/packages/waku/src/adapters/aws-lambda.ts
+index 6b999b9e7d..22518147fa 100644
+--- a/packages/waku/src/adapters/aws-lambda.ts
++++ b/packages/waku/src/adapters/aws-lambda.ts
+@@ -30,14 +30,14 @@ export default createServerEntryAdapter(
+       }
+       return c.text('404 Not Found', 404);
+     });
+-    if (isBuild) {
+-      app.use(serveStatic({ root: path.join(config.distDir, DIST_PUBLIC) }));
+-    }
+     app.use(contextMiddleware());
+     for (const middlewareFn of middlewareFns) {
+       app.use(middlewareFn());
+     }
+     app.use(middlewareRunner(middlewareModules as never));
++    if (isBuild) {
++      app.use(serveStatic({ root: path.join(config.distDir, DIST_PUBLIC) }));
++    }
+     app.use(rscMiddleware({ processRequest }));
+     const buildOptions: BuildOptions = {
+       distDir: config.distDir,
+diff --git a/packages/waku/src/adapters/bun.ts b/packages/waku/src/adapters/bun.ts
+index c011a63320..7706c553d0 100644
+--- a/packages/waku/src/adapters/bun.ts
++++ b/packages/waku/src/adapters/bun.ts
+@@ -28,6 +28,11 @@ export default createServerEntryAdapter(
+       }
+       return c.text('404 Not Found', 404);
+     });
++    app.use(contextMiddleware());
++    for (const middlewareFn of middlewareFns) {
++      app.use(middlewareFn());
++    }
++    app.use(middlewareRunner(middlewareModules as never));
+     if (isBuild) {
+       app.use(
+         `${config.basePath}*`,
+@@ -37,11 +42,6 @@ export default createServerEntryAdapter(
+         }),
+       );
+     }
+-    app.use(contextMiddleware());
+-    for (const middlewareFn of middlewareFns) {
+-      app.use(middlewareFn());
+-    }
+-    app.use(middlewareRunner(middlewareModules as never));
+     app.use(rscMiddleware({ processRequest }));
+     const buildOptions: BuildOptions = {
+       distDir: config.distDir,
+diff --git a/packages/waku/src/adapters/deno.ts b/packages/waku/src/adapters/deno.ts
+index fb4977af0d..13ebe0b9df 100644
+--- a/packages/waku/src/adapters/deno.ts
++++ b/packages/waku/src/adapters/deno.ts
+@@ -32,14 +32,14 @@ export default createServerEntryAdapter(
+       }
+       return c.text('404 Not Found', 404);
+     });
+-    if (serveStatic) {
+-      app.use(serveStatic({ root: path.join(config.distDir, DIST_PUBLIC) }));
+-    }
+     app.use(contextMiddleware());
+     for (const middlewareFn of middlewareFns) {
+       app.use(middlewareFn());
+     }
+     app.use(middlewareRunner(middlewareModules as never));
++    if (serveStatic) {
++      app.use(serveStatic({ root: path.join(config.distDir, DIST_PUBLIC) }));
++    }
+     app.use(rscMiddleware({ processRequest }));
+     const buildOptions: BuildOptions = {
+       distDir: config.distDir,
+diff --git a/packages/waku/src/adapters/node.ts b/packages/waku/src/adapters/node.ts
+index ed7c7c181c..fd2f45cfad 100644
+--- a/packages/waku/src/adapters/node.ts
++++ b/packages/waku/src/adapters/node.ts
+@@ -29,6 +29,11 @@ export default createServerEntryAdapter(
+       }
+       return c.text('404 Not Found', 404);
+     });
++    app.use(contextMiddleware());
++    for (const middlewareFn of middlewareFns) {
++      app.use(middlewareFn());
++    }
++    app.use(middlewareRunner(middlewareModules as never));
+     if (isBuild) {
+       app.use(
+         `${config.basePath}*`,
+@@ -38,11 +43,6 @@ export default createServerEntryAdapter(
+         }),
+       );
+     }
+-    app.use(contextMiddleware());
+-    for (const middlewareFn of middlewareFns) {
+-      app.use(middlewareFn());
+-    }
+-    app.use(middlewareRunner(middlewareModules as never));
+     app.use(rscMiddleware({ processRequest }));
+     const buildOptions: BuildOptions = {
+       distDir: config.distDir,
+diff --git a/packages/waku/src/lib/hono/middleware.ts b/packages/waku/src/lib/hono/middleware.ts
+index d12a7c786d..ef9d59dc01 100644
+--- a/packages/waku/src/lib/hono/middleware.ts
++++ b/packages/waku/src/lib/hono/middleware.ts
+@@ -43,14 +43,19 @@ export function middlewareRunner(
+       );
+     }
+     const handlers = await handlersPromise;
++    let response: Response | undefined;
+     const run = async (index: number) => {
+       const handler = handlers[index];
+       if (handler) {
+-        await handler(c, () => run(index + 1));
++        const result = await handler(c, () => run(index + 1));
++        if (result && !response) {
++          response = result;
++        }
+       } else {
+         await next();
+       }
+     };
+     await run(0);
++    return response;
+   };
+ }
+diff --git a/packages/waku/tests/hono-middleware.test.ts b/packages/waku/tests/hono-middleware.test.ts
+new file mode 100644
+index 0000000000..f4e41864b4
+--- /dev/null
++++ b/packages/waku/tests/hono-middleware.test.ts
+@@ -0,0 +1,69 @@
++import { Hono } from 'hono';
++import { describe, expect, test } from 'vitest';
++import { middlewareRunner } from '../src/lib/hono/middleware.js';
++
++describe('middlewareRunner', () => {
++  test('preserves response returned by a middleware module', async () => {
++    const app = new Hono();
++    app.use(
++      middlewareRunner({
++        '/src/middleware/no-trailing-slash.ts': async () => ({
++          default: () => async (c) =>
++            c.redirect(new URL('/about', c.req.url).toString(), 301),
++        }),
++      }),
++    );
++    app.get('*', (c) => c.text('ok'));
++
++    const res = await app.request('http://example.com/about/');
++
++    expect(res.status).toBe(301);
++    expect(res.headers.get('location')).toBe('http://example.com/about');
++  });
++
++  test('preserves response returned by an inner middleware module', async () => {
++    const app = new Hono();
++    app.use(
++      middlewareRunner({
++        '/src/middleware/outer.ts': async () => ({
++          default: () => async (_c, next) => {
++            await next();
++          },
++        }),
++        '/src/middleware/no-trailing-slash.ts': async () => ({
++          default: () => async (c) =>
++            c.redirect(new URL('/about', c.req.url).toString(), 301),
++        }),
++      }),
++    );
++    app.get('*', (c) => c.text('ok'));
++
++    const res = await app.request('http://example.com/about/');
++
++    expect(res.status).toBe(301);
++    expect(res.headers.get('location')).toBe('http://example.com/about');
++  });
++
++  test('keeps inner response even if outer middleware returns after next', async () => {
++    const app = new Hono();
++    app.use(
++      middlewareRunner({
++        '/src/middleware/outer.ts': async () => ({
++          default: () => async (_c, next) => {
++            await next();
++            return new Response('outer', { status: 202 });
++          },
++        }),
++        '/src/middleware/inner.ts': async () => ({
++          default: () => async () => new Response('inner', { status: 201 }),
++        }),
++      }),
++    );
++    app.get('*', (c) => c.text('ok'));
++
++    const res = await app.request('http://example.com/about/');
++
++    expect(res.status).toBe(201);
++    expect(await res.text()).toBe('inner');
++  });
++});
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index b02a90a69d..cd6925e0cd 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -94,8 +94,8 @@ importers:
+   e2e/fixtures/broken-links:
+     dependencies:
+       hono:
+-        specifier: ^4.10.0
+-        version: 4.10.0
++        specifier: ^4.12.5
++        version: 4.12.5
+       react:
+         specifier: ~19.2.4
+         version: 19.2.4
+@@ -567,8 +567,8 @@ importers:
+   e2e/fixtures/ssr-catch-error:
+     dependencies:
+       hono:
+-        specifier: ^4.10.0
+-        version: 4.10.0
++        specifier: ^4.12.5
++        version: 4.12.5
+       react:
+         specifier: ~19.2.4
+         version: 19.2.4
+@@ -648,8 +648,8 @@ importers:
+   e2e/fixtures/ssr-nonce-middleware:
+     dependencies:
+       hono:
+-        specifier: ^4.10.0
+-        version: 4.10.0
++        specifier: ^4.12.5
++        version: 4.12.5
+       react:
+         specifier: ~19.2.4
+         version: 19.2.4
+@@ -899,6 +899,9 @@ importers:
+ 
+   examples/01_template:
+     dependencies:
++      hono:
++        specifier: ^4.12.5
++        version: 4.12.5
+       react:
+         specifier: ~19.2.4
+         version: 19.2.4
+@@ -936,6 +939,9 @@ importers:
+ 
+   examples/02_template_js:
+     dependencies:
++      hono:
++        specifier: ^4.12.5
++        version: 4.12.5
+       react:
+         specifier: ~19.2.4
+         version: 19.2.4
+@@ -1070,8 +1076,8 @@ importers:
+   examples/07_cloudflare:
+     dependencies:
+       hono:
+-        specifier: ^4.10.0
+-        version: 4.10.0
++        specifier: ^4.12.5
++        version: 4.12.5
+       react:
+         specifier: ~19.2.4
+         version: 19.2.4
+@@ -1513,8 +1519,8 @@ importers:
+         specifier: ^1.1.1
+         version: 1.1.1
+       hono:
+-        specifier: ^4.10.0
+-        version: 4.10.0
++        specifier: ^4.12.5
++        version: 4.12.5
+       react:
+         specifier: ~19.2.4
+         version: 19.2.4
+@@ -1832,8 +1838,8 @@ importers:
+   packages/waku:
+     dependencies:
+       '@hono/node-server':
+-        specifier: ^1.19.0
+-        version: 1.19.0(hono@4.10.0)
++        specifier: ^1.19.11
++        version: 1.19.11(hono@4.12.5)
+       '@vitejs/plugin-react':
+         specifier: ^5.1.0
+         version: 5.1.0(vite@7.3.1(@types/node@25.3.2)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.19.4)(yaml@2.8.2))
+@@ -1844,8 +1850,8 @@ importers:
+         specifier: ^17.3.1
+         version: 17.3.1
+       hono:
+-        specifier: ^4.10.0
+-        version: 4.10.0
++        specifier: ^4.12.5
++        version: 4.12.5
+       magic-string:
+         specifier: ^0.30.21
+         version: 0.30.21
+@@ -2786,8 +2792,8 @@ packages:
+   '@fontsource/inter@5.2.8':
+     resolution: {integrity: sha512-P6r5WnJoKiNVV+zvW2xM13gNdFhAEpQ9dQJHt3naLvfg+LkF2ldgSLiF4T41lf1SQCM9QmkqPTn4TH568IRagg==}
+ 
+-  '@hono/node-server@1.19.0':
+-    resolution: {integrity: sha512-1k8/8OHf5VIymJEcJyVksFpT+AQ5euY0VA5hUkCnlKpD4mr8FSbvXaHblxeTTEr90OaqWzAkQaqD80qHZQKxBA==}
++  '@hono/node-server@1.19.11':
++    resolution: {integrity: sha512-dr8/3zEaB+p0D2n/IUrlPF1HZm586qgJNXK1a9fhg/PzdtkK7Ksd5l312tJX2yBuALqDYBlG20QEbayqPyxn+g==}
+     engines: {node: '>=18.14.1'}
+     peerDependencies:
+       hono: ^4
+@@ -5158,8 +5164,8 @@ packages:
+     resolution: {integrity: sha512-Ox1pJVrDCyGHMG9CFg1tmrRUMRPRsAWYc/PinY0XzJU4K7y7vjNoLKIQ7BR5UJMCxNN8EM1MNDmHWA/B3aZUuw==}
+     engines: {node: '>=6'}
+ 
+-  hono@4.10.0:
+-    resolution: {integrity: sha512-V/S2IyKL6fk5+bEjiQzg74r5BglqAwU20IX3WjdTUFgvmtSqAZjSxN/Zb5lr6/JXVmH0aqkqOq++3UgzOi9+4Q==}
++  hono@4.12.5:
++    resolution: {integrity: sha512-3qq+FUBtlTHhtYxbxheZgY8NIFnkkC/MR8u5TTsr7YZ3wixryQ3cCwn3iZbg8p8B88iDBBAYSfZDS75t8MN7Vg==}
+     engines: {node: '>=16.9.0'}
+ 
+   html-void-elements@3.0.0:
+@@ -7901,9 +7907,9 @@ snapshots:
+ 
+   '@fontsource/inter@5.2.8': {}
+ 
+-  '@hono/node-server@1.19.0(hono@4.10.0)':
++  '@hono/node-server@1.19.11(hono@4.12.5)':
+     dependencies:
+-      hono: 4.10.0
++      hono: 4.12.5
+ 
+   '@humanfs/core@0.19.1': {}
+ 
+@@ -10519,7 +10525,7 @@ snapshots:
+ 
+   hex-rgb@4.3.0: {}
+ 
+-  hono@4.10.0: {}
++  hono@4.12.5: {}
+ 
+   html-void-elements@3.0.0: {}
+ 

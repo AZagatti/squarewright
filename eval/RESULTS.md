@@ -638,3 +638,30 @@ which targets `src/**` and wouldn't apply to the external corpus PRs.
 - **Consequence:** the skeptic's blocker is cleared — §2 rule-drift doesn't measurably add noise, so building
   §3/§4 on top isn't compounding an unmeasured problem. Recall side of rules (do they get *flagged*) is the
   separate `scripts/measure-rules.ts` probe (already shows rules lift recall). #73 precision half: **answered.**
+
+### Contamination-safe corpus — first build + first signal (2026-07-11)
+Council thrust: the golden corpus is **famous** reverted PRs (tokio/vite/rails), near-certainly in every model's
+pretraining, so a "catch" there might be recall-of-training-data, not review skill — which makes golden a poor
+instrument for ranking models (esp. frontier ones that may memorize harder). Built a second corpus
+(`eval/contam-safe/`, run via the new `scripts/eval.ts --manifest <path>` flag) of the **same kind** of case — a
+real bug-introducing PR, evidence-backed by a later revert or a regression-fix PR that names it — but from
+**obscure/medium repos** (124–2337★): `Khan/genqlient` (ws deadlock), `tafia/calamine` (whitespace eaten),
+`Riey/kime` (Hangul layout regression), `jelmer/dulwich` (>8KB loose-object parse regression), `inokawa/editate`
+(collapsed-cursor format no-op), `wakujs/waku` (middleware-order static-file hijack; 6363★ — flagged, higher
+contamination risk). 6 has-issue (7 loci) + 3 clean. All curated via GitHub PR archaeology (subagents), each
+introducing-PR verified to exist, be <60K after the diff slice, and touch its locus (dropped `hauler#515`: 176K
+diff, locus beyond the slice).
+
+**The instrument works:** free glm-5.2 (thinking off) shows real **spread** — file recall **2/4** (6-case subset)
+and **1/7** (full 9-case) across two runs, catching calamine + dulwich, missing the deadlock / ordering / cursor
+bugs. Not all-caught (would mean too-easy/memorized), not all-missed (too-hard). Gradeable.
+
+**First memorization-vs-difficulty signal (a LEAD, not a result):** glm-5.2's file recall here (~15–30%, 1–2/7)
+is **proportionally LOWER than on golden** (~55%, median 6/11). That gap is *consistent with* golden recall being
+partly familiarity-inflated — a model does worse on defects it can't have memorized. BUT it is **not proof**: the
+contam-safe bugs may simply be harder (subtle concurrency/encoding/ordering defects), N is 1 run × file-level ×
+7 loci (variance is enormous — the same corpus swung 2/4→1/7), and clean-FP was inflated by one 85K truncated
+clean diff (`waku-1493`, 11 of 17 FPs). The **real** memorization test is the *model-ranking gap*: run ≥3 judged
+reports of glm-5.2 AND a frontier model on BOTH corpora — if the frontier model's advantage over glm SHRINKS on
+contam-safe, golden's frontier ranking was memorization. That comparison is the next step; this build makes it
+runnable. Reproduce: `bun run scripts/eval.ts --manifest eval/contam-safe/manifest.yaml --provider zai --model glm-5.2 --thinking off`.

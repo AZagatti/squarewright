@@ -1,0 +1,801 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index a6794e3c..5b95cc72 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -285,9 +285,9 @@ checksum = "8f1fe948ff07f4bd06c30984e69f5b4899c516a3ef74f34df92a2df2ab535495"
+ 
+ [[package]]
+ name = "bytes"
+-version = "1.11.0"
++version = "1.12.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b35204fbdc0b3f4446b89fc1ac2cf84a8a68971995d0bf2e925ec7cd960f9cb3"
++checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
+ 
+ [[package]]
+ name = "calloop"
+@@ -718,12 +718,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "deranged"
+-version = "0.5.5"
++version = "0.5.8"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ececcb659e7ba858fb4f10388c250a7252eb0a27373f1a72b8748afdd248e587"
+-dependencies = [
+- "powerfmt",
+-]
++checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
+ 
+ [[package]]
+ name = "diff"
+@@ -1643,9 +1640,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "imageproc"
+-version = "0.26.0"
++version = "0.26.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "3880a67ffee492100224b2ff31f4220ade971fc327c3c96faa63095a3825ea4d"
++checksum = "645329c490783f3ea465d2b6c7c08286fece97f15e714fd533b6c70a3ead2252"
+ dependencies = [
+  "ab_glyph",
+  "approx",
+@@ -1821,6 +1818,7 @@ name = "kime-engine-backend-latin"
+ version = "0.1.0"
+ dependencies = [
+  "kime-engine-backend",
++ "log",
+  "serde",
+  "serde_yaml",
+ ]
+@@ -2276,9 +2274,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "num-conv"
+-version = "0.1.0"
++version = "0.2.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "51d515d32fb182ee37cda2ccdcb92950d6a3c2893aa280e540671c2cd0f3b1d9"
++checksum = "521739c6d2bac4aa25192232afe6841231376b2b26d4d9fae5ecf8ca5772e441"
+ 
+ [[package]]
+ name = "num-derive"
+@@ -3553,12 +3551,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "time"
+-version = "0.3.45"
++version = "0.3.51"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f9e442fc33d7fdb45aa9bfeb312c095964abdf596f7567261062b2a7107aaabd"
++checksum = "85c17d80feb7334b40c484e45ed1a5273dfd8bfda537c3be2e74a06a6686f327"
+ dependencies = [
+  "deranged",
+- "itoa",
+  "libc",
+  "num-conv",
+  "num_threads",
+@@ -3570,15 +3567,15 @@ dependencies = [
+ 
+ [[package]]
+ name = "time-core"
+-version = "0.1.7"
++version = "0.1.9"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "8b36ee98fd31ec7426d599183e8fe26932a8dc1fb76ddb6214d05493377d34ca"
++checksum = "9e1c906769ad99c88eaa54e728060edef082f8e358ff32030cb7c7d315e81109"
+ 
+ [[package]]
+ name = "time-macros"
+-version = "0.2.25"
++version = "0.2.30"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "71e552d1249bf61ac2a52db88179fd0673def1e1ad8243a00d9ec9ed71fee3dd"
++checksum = "dcef1a61bdb119096e153208ec5cbec23944ce8bca13be5c7f60c634f7403935"
+ dependencies = [
+  "num-conv",
+  "time-core",
+diff --git a/docs/CHANGELOG.md b/docs/CHANGELOG.md
+index 586b0170..5339ea73 100644
+--- a/docs/CHANGELOG.md
++++ b/docs/CHANGELOG.md
+@@ -21,6 +21,7 @@
+ * Remove `kime-engine-cffi`
+ * fix(wayland input_method_v2): not return unwarp **[@racakenon]** [#715](https://github.com/Riey/kime/715)
+ * feat(engine): Let default `Alt_R` hotkey accept `Alt` modifier [#719](https://github.com/Riey/kime/719)
++* fix(hangul): Don't consume pass keys (numbers, symbols) so app shortcuts like `@`/`#` fire in Hangul mode [#719](https://github.com/Riey/kime/719)
+ * Add Opensuse Build Service repository and modify README
+ * fix(xim): handle None from from_hardware_code without panic [#721](https://github.com/Riey/kime/721)
+ * Update dependencies:
+diff --git a/docs/CONFIGURATION.ko.md b/docs/CONFIGURATION.ko.md
+index 67bf4115..bea9d46c 100644
+--- a/docs/CONFIGURATION.ko.md
++++ b/docs/CONFIGURATION.ko.md
+@@ -210,6 +210,8 @@ all:
+   - ComposeChoseongSsang
+ dubeolsik:
+   - TreatJongseongAsChoseong
++sebeolsik-3sin-p2:
++  - ComposeJongseongSsang
+ ```
+ 
+ #### Addons
+diff --git a/docs/CONFIGURATION.md b/docs/CONFIGURATION.md
+index 8f1957d9..24816a59 100644
+--- a/docs/CONFIGURATION.md
++++ b/docs/CONFIGURATION.md
+@@ -141,11 +141,25 @@ Set latin setting
+ 
+ ### preferred_direct
+ 
+-Handling key event by external as possible
++Pass latin key events through to the application directly instead of letting
++kime remap them, so the OS/firmware keyboard layout is used as-is.
++
++| default |`true`|
++|---------|------|
++
++**Note:** when `preferred_direct` is `true` the embedded [`layout`](#layout)
++below is **ignored**, because keys are handed to the OS layout untouched. To use
++an embedded latin layout such as `Dvorak` or `Colemak`, set
++`preferred_direct: false`. (kime maps physical keycodes, so the hangul layout is
++unaffected by this setting.) See [#626].
++
++[#626]: https://github.com/Riey/kime/issues/626
+ 
+ ### layout
+ 
+-Set latin layout
++Set latin layout.
++
++Only takes effect when [`preferred_direct`](#preferred_direct) is `false`.
+ 
+ | default |`Qwerty`|
+ |---------|--------|
+@@ -211,6 +225,8 @@ all:
+   - ComposeChoseongSsang
+ dubeolsik:
+   - TreatJongseongAsChoseongg
++sebeolsik-3sin-p2:
++  - ComposeJongseongSsang
+ ```
+ 
+ #### Addons
+diff --git a/res/default_config.yaml b/res/default_config.yaml
+index c5e8ef18..990cf86d 100644
+--- a/res/default_config.yaml
++++ b/res/default_config.yaml
+@@ -95,3 +95,5 @@ engine:
+       - ComposeChoseongSsang
+       dubeolsik:
+       - TreatJongseongAsChoseong
++      sebeolsik-3sin-p2:
++      - ComposeJongseongSsang
+diff --git a/src/engine/backend/src/keycode.rs b/src/engine/backend/src/keycode.rs
+index f76ccff0..96905c10 100644
+--- a/src/engine/backend/src/keycode.rs
++++ b/src/engine/backend/src/keycode.rs
+@@ -124,6 +124,8 @@ pub enum KeyCode {
+     Henkan,
+     AltL,
+     AltR,
++    SuperL,
++    SuperR,
+     Hangul,
+     HangulHanja,
+ 
+@@ -230,6 +232,8 @@ impl KeyCode {
+             102 => Some(Self::Muhenkan),
+             64 => Some(Self::AltL),
+             108 => Some(Self::AltR),
++            133 => Some(Self::SuperL),
++            134 => Some(Self::SuperR),
+             122 | 130 => Some(Self::Hangul),
+             121 | 123 | 131 => Some(Self::HangulHanja),
+ 
+@@ -380,3 +384,26 @@ fn key_parse() {
+     assert_eq!("C-Space".parse::<Key>().unwrap(), Key::ctrl(KeyCode::Space));
+     assert_eq!("M-X".parse::<Key>().unwrap(), Key::alt(KeyCode::X));
+ }
++
++#[test]
++fn super_keys() {
++    // X11 hardware keycodes for Super_L (133) / Super_R (134),
++    // e.g. Apple right-command, so they can be bound as a category toggle.
++    assert_eq!(
++        KeyCode::from_hardware_code(133, false),
++        Some(KeyCode::SuperL)
++    );
++    assert_eq!(
++        KeyCode::from_hardware_code(134, false),
++        Some(KeyCode::SuperR)
++    );
++
++    // The variants must round-trip through their string form so they can be
++    // written in the config like the existing AltR toggle.
++    assert_eq!("SuperL".parse::<KeyCode>().unwrap(), KeyCode::SuperL);
++    assert_eq!("SuperR".parse::<KeyCode>().unwrap(), KeyCode::SuperR);
++    assert_eq!(
++        "SuperR".parse::<Key>().unwrap(),
++        Key::normal(KeyCode::SuperR)
++    );
++}
+diff --git a/src/engine/backends/hangul/src/lib.rs b/src/engine/backends/hangul/src/lib.rs
+index c4745f79..1555aece 100644
+--- a/src/engine/backends/hangul/src/lib.rs
++++ b/src/engine/backends/hangul/src/lib.rs
+@@ -65,6 +65,10 @@ impl Default for HangulConfig {
+             addons: vec![
+                 ("all".into(), Addon::ComposeChoseongSsang.into()),
+                 ("dubeolsik".into(), Addon::TreatJongseongAsChoseong.into()),
++                (
++                    "sebeolsik-3sin-p2".into(),
++                    Addon::ComposeJongseongSsang.into(),
++                ),
+             ]
+             .into_iter()
+             .collect(),
+diff --git a/src/engine/backends/hangul/src/state.rs b/src/engine/backends/hangul/src/state.rs
+index 93db1a5d..236b7edc 100644
+--- a/src/engine/backends/hangul/src/state.rs
++++ b/src/engine/backends/hangul/src/state.rs
+@@ -72,10 +72,13 @@ impl HangulEngine {
+ 
+     pub fn key(&mut self, kv: KeyValue, addons: EnumSet<Addon>, commit_buf: &mut String) -> bool {
+         let ret = match kv {
+-            KeyValue::Pass(pass) => {
++            KeyValue::Pass(_) => {
++                // Commit any pending composition, then leave the key unhandled
++                // (return false) so the original key event reaches the
++                // application. This lets shortcuts bound to special characters
++                // such as '@' or '#' fire even while in Hangul mode (issue #719).
+                 self.clear_preedit(commit_buf);
+-                commit_buf.push(pass);
+-                return true;
++                return false;
+             }
+             KeyValue::Choseong { cho } => self.state.cho(cho, addons),
+             KeyValue::Jungseong { jung, compose } => self.state.jung(jung, compose, addons),
+@@ -534,6 +537,34 @@ mod tests {
+         );
+     }
+ 
++    // issue #719: pass keys (numbers, symbols, ...) must not be consumed so that
++    // application shortcuts bound to keys like '@' or '#' fire in Hangul mode.
++    #[test]
++    fn pass_key_not_consumed() {
++        let mut engine = HangulEngine::new(false, PreeditJohabLevel::Needed);
++        let mut commit = String::new();
++
++        // compose ㄱ
++        assert!(engine.key(
++            KeyValue::Choseong {
++                cho: Choseong::Giyeok
++            },
++            EnumSet::empty(),
++            &mut commit
++        ));
++        assert!(engine.has_preedit());
++
++        // a pass key commits the pending preedit but is NOT consumed
++        assert!(!engine.key(KeyValue::Pass('@'), EnumSet::empty(), &mut commit));
++        assert_eq!(commit, "ㄱ");
++        assert!(!engine.has_preedit());
++
++        // with no pending preedit, a pass key is still not consumed and commits nothing
++        commit.clear();
++        assert!(!engine.key(KeyValue::Pass('@'), EnumSet::empty(), &mut commit));
++        assert_eq!(commit, "");
++    }
++
+     #[test]
+     fn filler() {
+         let state = CharacterState {
+diff --git a/src/engine/backends/latin/Cargo.toml b/src/engine/backends/latin/Cargo.toml
+index e1e25039..0d0b40e0 100644
+--- a/src/engine/backends/latin/Cargo.toml
++++ b/src/engine/backends/latin/Cargo.toml
+@@ -9,3 +9,4 @@ license = "GPL-3.0-or-later"
+ kime-engine-backend = { path = "../../backend" }
+ serde = { version = "1.0.124", features = ["derive"] }
+ serde_yaml = "0.9"
++log = "0.4"
+diff --git a/src/engine/backends/latin/data/dvorak.yaml b/src/engine/backends/latin/data/dvorak.yaml
+index 4b9aed61..dbcfedc1 100644
+--- a/src/engine/backends/latin/data/dvorak.yaml
++++ b/src/engine/backends/latin/data/dvorak.yaml
+@@ -1,9 +1,9 @@
+ Q: "'"
+ S-Q: '"'
+-W: \,
+-S-W: \<
+-E: \.
+-S-E: \>
++W: ','
++S-W: '<'
++E: '.'
++S-E: '>'
+ R: p
+ S-R: P
+ T: y
+@@ -37,7 +37,7 @@ S-K: T
+ L: n
+ S-L: N
+ Z: ':'
+-S-Z: \;
++S-Z: ';'
+ X: q
+ S-X: Q
+ C: j
+diff --git a/src/engine/backends/latin/src/lib.rs b/src/engine/backends/latin/src/lib.rs
+index aea8bf73..d87aee4a 100644
+--- a/src/engine/backends/latin/src/lib.rs
++++ b/src/engine/backends/latin/src/lib.rs
+@@ -30,12 +30,33 @@ impl Default for LatinConfig {
+     }
+ }
+ 
++impl LatinConfig {
++    /// Returns `true` when the configured `layout` has no effect.
++    ///
++    /// With `preferred_direct` enabled kime passes key events through to the
++    /// OS/firmware layout instead of applying the embedded latin layout, so a
++    /// non-`Qwerty` `layout` (e.g. `Dvorak`, `Colemak`) is silently ignored.
++    /// `Qwerty` is excluded because its mapping matches a plain pass-through.
++    /// See <https://github.com/Riey/kime/issues/626>.
++    pub fn layout_ignored(&self) -> bool {
++        self.preferred_direct && !matches!(self.layout, LatinLayout::Qwerty)
++    }
++}
++
+ pub struct LatinData {
+     keymap: KeyMap<char>,
+ }
+ 
+ impl LatinData {
+     pub fn new(config: &LatinConfig) -> Self {
++        if config.layout_ignored() {
++            log::warn!(
++                "latin.layout is set to a non-Qwerty layout but latin.preferred_direct is true, \
++                 so the layout is ignored and key events are passed through to the OS layout. \
++                 Set latin.preferred_direct to false to use the embedded latin layout."
++            );
++        }
++
+         Self {
+             keymap: load_layout(config),
+         }
+@@ -92,3 +113,104 @@ impl InputEngineBackend for LatinEngine {
+ 
+     fn preedit_str(&self, _buf: &mut String) {}
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use kime_engine_backend::KeyCode;
++
++    #[test]
++    fn embedded_dvorak_layout_is_loaded() {
++        // The embedded Dvorak layout remaps the physical `Q` key to `'`.
++        let data = LatinData::new(&LatinConfig {
++            layout: LatinLayout::Dvorak,
++            preferred_direct: false,
++        });
++        assert_eq!(data.lookup(Key::normal(KeyCode::Q)), Some('\''));
++        // Regression guard: these keys used invalid YAML backslash escapes
++        // (`\,`, `\<`, `\.`, `\>`, `\;`) which made the whole layout fail to
++        // parse and silently fall back to an empty keymap (#626).
++        assert_eq!(data.lookup(Key::normal(KeyCode::W)), Some(','));
++        assert_eq!(data.lookup(Key::shift(KeyCode::W)), Some('<'));
++        assert_eq!(data.lookup(Key::normal(KeyCode::E)), Some('.'));
++        assert_eq!(data.lookup(Key::shift(KeyCode::E)), Some('>'));
++        assert_eq!(data.lookup(Key::shift(KeyCode::Z)), Some(';'));
++        // And an ordinary letter mapping still works.
++        assert_eq!(data.lookup(Key::normal(KeyCode::K)), Some('t'));
++    }
++
++    #[test]
++    fn embedded_layouts_parse_completely() {
++        // A malformed entry makes serde fall back to an empty map via
++        // `unwrap_or_default()`, so a full keymap proves the file parsed.
++        for layout in [
++            LatinLayout::Qwerty,
++            LatinLayout::Dvorak,
++            LatinLayout::Colemak,
++        ] {
++            let data = LatinData::new(&LatinConfig {
++                layout,
++                preferred_direct: false,
++            });
++            assert!(
++                data.lookup(Key::normal(KeyCode::A)).is_some()
++                    && data.lookup(Key::normal(KeyCode::Backslash)).is_some(),
++                "embedded layout failed to parse and fell back to empty keymap",
++            );
++        }
++    }
++
++    #[test]
++    fn layout_ignored_detects_conflicting_config() {
++        // Non-Qwerty layout + preferred_direct => layout silently ignored (#626).
++        assert!(LatinConfig {
++            layout: LatinLayout::Dvorak,
++            preferred_direct: true,
++        }
++        .layout_ignored());
++        assert!(LatinConfig {
++            layout: LatinLayout::Colemak,
++            preferred_direct: true,
++        }
++        .layout_ignored());
++
++        // Qwerty + preferred_direct is fine: pass-through yields the same chars.
++        assert!(!LatinConfig {
++            layout: LatinLayout::Qwerty,
++            preferred_direct: true,
++        }
++        .layout_ignored());
++
++        // Non-Qwerty without preferred_direct actually applies the layout.
++        assert!(!LatinConfig {
++            layout: LatinLayout::Dvorak,
++            preferred_direct: false,
++        }
++        .layout_ignored());
++
++        // The default config (Qwerty + preferred_direct) must never warn.
++        assert!(!LatinConfig::default().layout_ignored());
++    }
++
++    #[test]
++    fn preferred_direct_bypasses_dvorak_layout() {
++        // Reproduces #626: with preferred_direct the Dvorak mapping never applies;
++        // the key is not consumed and nothing is committed.
++        let data = LatinData::new(&LatinConfig {
++            layout: LatinLayout::Dvorak,
++            preferred_direct: true,
++        });
++        let mut engine = LatinEngine::new(true);
++        let mut buf = String::new();
++        let consumed = engine.press_key(&data, Key::normal(KeyCode::Q), &mut buf);
++        assert!(!consumed);
++        assert!(buf.is_empty());
++
++        // Without preferred_direct the same key commits the Dvorak char.
++        let mut engine = LatinEngine::new(false);
++        let mut buf = String::new();
++        let consumed = engine.press_key(&data, Key::normal(KeyCode::Q), &mut buf);
++        assert!(consumed);
++        assert_eq!(buf, "'");
++    }
++}
+diff --git a/src/engine/core/src/lib.rs b/src/engine/core/src/lib.rs
+index 47bc2e17..8db27a10 100644
+--- a/src/engine/core/src/lib.rs
++++ b/src/engine/core/src/lib.rs
+@@ -147,7 +147,13 @@ impl InputEngine {
+             // ignore shift key
+         } else if matches!(
+             key.code,
+-            KeyCode::ControlL | KeyCode::ControlR | KeyCode::AltL | KeyCode::AltR | KeyCode::Shift
++            KeyCode::ControlL
++                | KeyCode::ControlR
++                | KeyCode::AltL
++                | KeyCode::AltR
++                | KeyCode::SuperL
++                | KeyCode::SuperR
++                | KeyCode::Shift
+         ) {
+             ret |= self.current_result();
+             return ret;
+diff --git a/src/engine/core/tests/dubeolsik.rs b/src/engine/core/tests/dubeolsik.rs
+index 762ade16..f01d1740 100644
+--- a/src/engine/core/tests/dubeolsik.rs
++++ b/src/engine/core/tests/dubeolsik.rs
+@@ -146,13 +146,26 @@ fn number() {
+         (Key::normal(S), "안", ""),
+         (Key::normal(G), "않", ""),
+         (Key::normal(E), "ㄷ", "않"),
+-        (Key::normal(One), "", "ㄷ1"),
++        // issue #719: a pass key commits the pending preedit but is not consumed,
++        // so the key event passes through to the application.
++        (Key::normal(One), "", "ㄷPASS"),
+     ]);
+ }
+ 
+ #[test]
+ fn exclamation_mark() {
+-    test_input(&[(Key::shift(R), "ㄲ", ""), (Key::shift(One), "", "ㄲ!")]);
++    // issue #719: '!' commits the pending preedit and passes through (not consumed).
++    test_input(&[(Key::shift(R), "ㄲ", ""), (Key::shift(One), "", "ㄲPASS")]);
++}
++
++// issue #719: special-character shortcuts (@, #, ...) must fire in Hangul mode,
++// which requires the engine to leave the key unhandled (pass it through).
++#[test]
++fn special_char_bypass() {
++    // with a pending composition, '@' commits it and passes through (not consumed)
++    test_input(&[(Key::normal(R), "ㄱ", ""), (Key::shift(Two), "", "ㄱPASS")]);
++    // with no pending composition, '@' simply passes through
++    test_input(&[(Key::shift(Two), "", "PASS")]);
+ }
+ 
+ #[test]
+diff --git a/src/engine/core/tests/latin.rs b/src/engine/core/tests/latin.rs
+index a9ebd5b3..d502775b 100644
+--- a/src/engine/core/tests/latin.rs
++++ b/src/engine/core/tests/latin.rs
+@@ -11,3 +11,45 @@ fn qwerty() {
+         (Key::shift(SemiColon), "", "PASS"),
+     ]);
+ }
++
++fn dvorak_config(preferred_direct: bool) -> EngineConfig {
++    let mut config = EngineConfig::default();
++    config.latin.layout = LatinLayout::Dvorak;
++    config.latin.preferred_direct = preferred_direct;
++    config
++}
++
++/// With `preferred_direct: false` the embedded Dvorak layout is applied:
++/// physical QWERTY positions are remapped to their Dvorak characters.
++/// (`W` -> `,` used to be impossible because dvorak.yaml failed to parse, #626.)
++#[test]
++fn dvorak_applies_when_not_preferred_direct() {
++    test_input_impl(
++        dvorak_config(false),
++        InputCategory::Latin,
++        &[
++            (Key::normal(Q), "", "'"),
++            (Key::normal(W), "", ","),
++            (Key::shift(W), "", "<"),
++            (Key::normal(E), "", "."),
++            (Key::normal(K), "", "t"),
++            (Key::shift(Z), "", ";"),
++        ],
++    );
++}
++
++/// Reproduces the exact #626 configuration (Dvorak + `preferred_direct: true`,
++/// which is the default): keys are passed through to the OS layout untouched,
++/// so the embedded Dvorak layout has no effect.
++#[test]
++fn dvorak_ignored_when_preferred_direct() {
++    test_input_impl(
++        dvorak_config(true),
++        InputCategory::Latin,
++        &[
++            (Key::normal(Q), "", "PASS"),
++            (Key::normal(W), "", "PASS"),
++            (Key::normal(K), "", "PASS"),
++        ],
++    );
++}
+diff --git a/src/engine/core/tests/sebeolsik_3_90.rs b/src/engine/core/tests/sebeolsik_3_90.rs
+index c1b2795c..485a5a02 100644
+--- a/src/engine/core/tests/sebeolsik_3_90.rs
++++ b/src/engine/core/tests/sebeolsik_3_90.rs
+@@ -98,22 +98,23 @@ fn flexible_compose_order_jong_jung() {
+     );
+ }
+ 
++// issue #719: symbol pass keys are not consumed so the key event reaches the app.
+ #[test]
+ fn s_number() {
+     test_input(&[
+-        (Key::shift(Two), "", "@"),
+-        (Key::shift(Three), "", "#"),
+-        (Key::shift(Four), "", "$"),
+-        (Key::shift(Five), "", "%"),
+-        (Key::shift(Six), "", "^"),
+-        (Key::shift(Seven), "", "&"),
+-        (Key::shift(Eight), "", "*"),
+-        (Key::shift(Nine), "", "("),
+-        (Key::shift(Zero), "", ")"),
++        (Key::shift(Two), "", "PASS"),
++        (Key::shift(Three), "", "PASS"),
++        (Key::shift(Four), "", "PASS"),
++        (Key::shift(Five), "", "PASS"),
++        (Key::shift(Six), "", "PASS"),
++        (Key::shift(Seven), "", "PASS"),
++        (Key::shift(Eight), "", "PASS"),
++        (Key::shift(Nine), "", "PASS"),
++        (Key::shift(Zero), "", "PASS"),
+     ])
+ }
+ 
+ #[test]
+ fn colon() {
+-    test_input(&[(Key::shift(SemiColon), "", ":")]);
++    test_input(&[(Key::shift(SemiColon), "", "PASS")]);
+ }
+diff --git a/src/engine/core/tests/sebeolsik_3_91.rs b/src/engine/core/tests/sebeolsik_3_91.rs
+index bf140c24..77c32e13 100644
+--- a/src/engine/core/tests/sebeolsik_3_91.rs
++++ b/src/engine/core/tests/sebeolsik_3_91.rs
+@@ -46,9 +46,10 @@ fn issue_521() {
+     ]);
+ }
+ 
++// issue #719: symbol pass keys are not consumed so the key event reaches the app.
+ #[test]
+ fn colon() {
+-    test_input(&[(Key::normal(Backslash), "", ":")]);
++    test_input(&[(Key::normal(Backslash), "", "PASS")]);
+ }
+ 
+ // https://github.com/Riey/kime/issues/520
+diff --git a/src/engine/core/tests/sebeolsik_3sin_p2.rs b/src/engine/core/tests/sebeolsik_3sin_p2.rs
+index 19357ca2..2335b0a7 100644
+--- a/src/engine/core/tests/sebeolsik_3sin_p2.rs
++++ b/src/engine/core/tests/sebeolsik_3sin_p2.rs
+@@ -18,6 +18,17 @@ fn double_jongseong() {
+     test_input(&[(Key::normal(T), "ㅋ", ""), (Key::normal(T), "ㅋ", "ㅋ")]);
+ }
+ 
++#[test]
++fn compose_jongseong_ssang_giyeok() {
++    // 신세벌식 P2: 쌍기역 받침은 ㄱ 받침(C 키)을 두 번 눌러 입력한다.
++    test_input(&[
++        (Key::normal(J), "ㅇ", ""),
++        (Key::normal(F), "아", ""),
++        (Key::normal(C), "악", ""),
++        (Key::normal(C), "앆", ""),
++    ]);
++}
++
+ #[test]
+ fn hello() {
+     test_input(&[
+diff --git a/src/engine/core/tests/super_key.rs b/src/engine/core/tests/super_key.rs
+new file mode 100644
+index 00000000..cbd51339
+--- /dev/null
++++ b/src/engine/core/tests/super_key.rs
+@@ -0,0 +1,52 @@
++use kime_engine_config::{HotkeyBehavior, HotkeyResult};
++use kime_engine_core::{
++    Config, EngineConfig, Hotkey, InputCategory, InputEngine, InputResult, Key, KeyCode,
++    ModifierState,
++};
++use pretty_assertions::assert_eq;
++
++// X11 hardware keycodes (evdev + 8) for the Super keys.
++const SUPER_R: u16 = 134;
++// R key, which is `ㄱ` in dubeolsik (the default hangul layout).
++const KEY_R: u16 = 27;
++
++/// Right-Super (Apple right-command) can be bound as a category toggle, the
++/// exact use case requested in issue #640. This drives the full hardware-code
++/// path so it also proves `from_hardware_code(134)` resolves to `SuperR`.
++#[test]
++fn super_r_can_toggle_category() {
++    let mut engine_config = EngineConfig::default();
++    engine_config.global_hotkeys = std::iter::once((
++        Key::normal(KeyCode::SuperR),
++        Hotkey::new(HotkeyBehavior::toggle_hangul_latin(), HotkeyResult::Consume),
++    ))
++    .collect();
++
++    let config = Config::new(engine_config);
++    let mut engine = InputEngine::new(&config);
++    engine.set_input_category(InputCategory::Hangul);
++    assert_eq!(engine.category(), InputCategory::Hangul);
++
++    let ret = engine.press_key_code(SUPER_R, ModifierState::empty(), false, &config);
++    assert!(ret.contains(InputResult::CONSUMED));
++    assert_eq!(engine.category(), InputCategory::Latin);
++
++    engine.press_key_code(SUPER_R, ModifierState::empty(), false, &config);
++    assert_eq!(engine.category(), InputCategory::Hangul);
++}
++
++/// An unbound Super key press must behave like the other modifier keys
++/// (Alt/Control) and leave an in-progress preedit untouched instead of
++/// clearing it.
++#[test]
++fn unbound_super_keeps_preedit() {
++    let config = Config::new(EngineConfig::default());
++    let mut engine = InputEngine::new(&config);
++    engine.set_input_category(InputCategory::Hangul);
++
++    engine.press_key_code(KEY_R, ModifierState::empty(), false, &config);
++    assert_eq!(engine.preedit_str(), "ㄱ");
++
++    engine.press_key_code(SUPER_R, ModifierState::empty(), false, &config);
++    assert_eq!(engine.preedit_str(), "ㄱ");
++}
+diff --git a/src/frontends/xim/src/handler.rs b/src/frontends/xim/src/handler.rs
+index a05dbbd2..56537d77 100644
+--- a/src/frontends/xim/src/handler.rs
++++ b/src/frontends/xim/src/handler.rs
+@@ -33,7 +33,7 @@ impl KimeData {
+ 
+ pub struct KimeHandler {
+     preedit_windows: AHashMap<NonZeroU32, PeWindow>,
+-    font: (FontArc, f32),
++    font: Option<(FontArc, f32)>,
+     config: Config,
+     screen_num: usize,
+ }
+@@ -41,13 +41,25 @@ pub struct KimeHandler {
+ impl KimeHandler {
+     pub fn new(screen_num: usize, config: Config) -> Self {
+         let (font_data, index, font_size) = &config.xim_preedit_font;
+-        let font_vec = FontVec::try_from_vec_and_index(font_data.clone(), *index).unwrap();
+-        let font = FontArc::from(font_vec);
++        // The preedit font can be missing (e.g. neither the configured
++        // `xim_preedit_font` nor the fallback is installed), in which case
++        // `load_font` yields empty data and parsing fails. Degrade gracefully
++        // by disabling the preedit popup window instead of panicking. See #706.
++        let font = match FontVec::try_from_vec_and_index(font_data.clone(), *index) {
++            Ok(font_vec) => Some((FontArc::from(font_vec), *font_size)),
++            Err(err) => {
++                log::warn!(
++                    "Failed to load xim preedit font; preedit window is disabled: {}",
++                    err
++                );
++                None
++            }
++        };
+ 
+         Self {
+             preedit_windows: AHashMap::new(),
+             screen_num,
+-            font: (font, *font_size),
++            font,
+             config,
+         }
+     }
+@@ -109,6 +121,12 @@ impl KimeHandler {
+             return Ok(());
+         }
+ 
++        // No usable preedit font was loaded; skip the popup window. See #706.
++        let font = match self.font.clone() {
++            Some(font) => font,
++            None => return Ok(()),
++        };
++
+         if let Some(pe) = user_ic.user_data.pe.as_mut() {
+             // Draw in server (already have pe_window)
+             let pe = self.preedit_windows.get_mut(pe).unwrap();
+@@ -118,7 +136,7 @@ impl KimeHandler {
+             // Draw in server
+             let mut pe = PeWindow::new(
+                 server.conn(),
+-                self.font.clone(),
++                font,
+                 user_ic.ic.app_win(),
+                 user_ic.ic.preedit_spot(),
+                 self.screen_num,
+@@ -403,3 +421,27 @@ impl<C: HasConnection> ServerHandler<X11rbServer<C>> for KimeHandler {
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::KimeHandler;
++    use kime_engine_core::Config;
++
++    /// Regression test for #706: when the preedit font cannot be loaded
++    /// (`load_font` returns empty data because no matching font is installed),
++    /// constructing the handler must not panic. Instead the preedit window is
++    /// disabled (`font == None`).
++    #[test]
++    fn missing_preedit_font_does_not_panic() {
++        let mut config = Config::default();
++        // Simulate a missing font: empty data, as produced by
++        // `load_font(...).unwrap_or_default()` when no face matches.
++        config.xim_preedit_font = (Vec::new(), 0, 15.0);
++
++        let handler = KimeHandler::new(0, config);
++        assert!(
++            handler.font.is_none(),
++            "preedit window should be disabled when the font is missing"
++        );
++    }
++}

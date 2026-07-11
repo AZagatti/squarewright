@@ -1,0 +1,519 @@
+diff --git a/NEWS b/NEWS
+index 6c06850c99..b60e751ff2 100644
+--- a/NEWS
++++ b/NEWS
+@@ -1,5 +1,14 @@
+ 1.2.9	UNRELEASED
+ 
++ * SECURITY: Bound zlib decompression of pack entries and loose objects
++   against decompression-bomb DoS. ``read_zlib_chunks`` now caps the
++   inflated size at the declared ``decomp_len``, and loose-object parsing
++   (``ShaFile.from_file``/``from_path``) accepts a ``max_size`` argument
++   defaulting to Git's ``core.bigFileThreshold`` (512 MiB). The disk
++   object store reads ``core.bigFileThreshold`` from config and enforces
++   it on ``_get_loose_object``.
++   (reported by Luke Bento, Jelmer Vernooĳ)
++
+  * SECURITY: Reject ``OFS_DELTA`` pack entries whose ``delta_base_offset``
+    is zero. Such an entry references itself, so ``Pack.resolve_object``
+    would loop forever growing its delta stack until the process ran out
+diff --git a/dulwich/object_store.py b/dulwich/object_store.py
+index b75d7e066c..e95febce37 100644
+--- a/dulwich/object_store.py
++++ b/dulwich/object_store.py
+@@ -80,6 +80,7 @@
+ from .file import GitFile, _GitFile
+ from .midx import MultiPackIndex, load_midx
+ from .objects import (
++    DEFAULT_LOOSE_OBJECT_SIZE_LIMIT,
+     S_ISGITLINK,
+     Blob,
+     Commit,
+@@ -1606,6 +1607,7 @@ def __init__(
+         file_mode: int | None = None,
+         dir_mode: int | None = None,
+         object_format: "ObjectFormat | None" = None,
++        loose_object_size_limit: int | None = None,
+     ) -> None:
+         """Open an object store.
+ 
+@@ -1629,6 +1631,10 @@ def __init__(
+           file_mode: File permission mask for shared repository
+           dir_mode: Directory permission mask for shared repository
+           object_format: Hash algorithm to use (SHA1 or SHA256)
++          loose_object_size_limit: Maximum inflated size of a single loose
++            object. Defaults to core.bigFileThreshold's Git default (512 MiB)
++            via :data:`DEFAULT_LOOSE_OBJECT_SIZE_LIMIT` when None. Guards against
++            decompression-bomb attacks.
+         """
+         # Import here to avoid circular dependency
+         from .object_format import DEFAULT_OBJECT_FORMAT
+@@ -1658,6 +1664,11 @@ def __init__(
+         self.pack_write_bitmap_lookup_table = pack_write_bitmap_lookup_table
+         self.file_mode = file_mode
+         self.dir_mode = dir_mode
++        self.loose_object_size_limit = (
++            loose_object_size_limit
++            if loose_object_size_limit is not None
++            else DEFAULT_LOOSE_OBJECT_SIZE_LIMIT
++        )
+ 
+         # Commit graph support - lazy loaded
+         self._commit_graph = None
+@@ -1764,6 +1775,15 @@ def from_config(
+         except KeyError:
+             delta_base_cache_limit = None
+ 
++        # Read core.bigFileThreshold setting; used as the upper bound for
++        # inflating a single loose object, guarding against decompression bombs.
++        try:
++            loose_object_size_limit: int | None = int(
++                config.get((b"core",), b"bigFileThreshold").decode()
++            )
++        except KeyError:
++            loose_object_size_limit = None
++
+         # Read core.commitGraph setting
+         use_commit_graph = config.get_boolean((b"core",), b"commitGraph", True)
+ 
+@@ -1825,6 +1845,7 @@ def from_config(
+             file_mode=file_mode,
+             dir_mode=dir_mode,
+             object_format=object_format,
++            loose_object_size_limit=loose_object_size_limit,
+         )
+         instance._use_commit_graph = use_commit_graph
+         instance._use_midx = use_midx
+@@ -1986,7 +2007,12 @@ def _get_loose_object(self, sha: ObjectID) -> ShaFile | None:
+             else:
+                 hex_sha = ObjectID(sha)
+             path = self._get_shafile_path(hex_sha)
+-            return ShaFile.from_path(path, hex_sha, object_format=self.object_format)
++            return ShaFile.from_path(
++                path,
++                hex_sha,
++                object_format=self.object_format,
++                max_size=self.loose_object_size_limit,
++            )
+         except FileNotFoundError:
+             return None
+ 
+diff --git a/dulwich/objects.py b/dulwich/objects.py
+index 57d0f66956..cecf99ea1a 100644
+--- a/dulwich/objects.py
++++ b/dulwich/objects.py
+@@ -173,10 +173,27 @@ def S_ISGITLINK(m: int) -> bool:
+     return stat.S_IFMT(m) == S_IFGITLINK
+ 
+ 
+-def _decompress(string: bytes) -> bytes:
++# Git's core.bigFileThreshold default.
++DEFAULT_LOOSE_OBJECT_SIZE_LIMIT = 512 * 1024 * 1024
++
++
++def _decompress(
++    string: bytes, max_size: int = DEFAULT_LOOSE_OBJECT_SIZE_LIMIT
++) -> bytes:
++    """Decompress a zlib-compressed loose object, bounded by max_size.
++
++    Raises:
++      zlib.error: if the decompressed data would exceed max_size bytes,
++        or on any other decompression error.
++    """
+     dcomp = zlib.decompressobj()
+-    dcomped = dcomp.decompress(string)
++    # +1 so overrun surfaces as unconsumed_tail rather than being truncated.
++    dcomped = dcomp.decompress(string, max_size + 1)
++    if dcomp.unconsumed_tail:
++        raise zlib.error("decompressed data exceeds maximum size")
+     dcomped += dcomp.flush()
++    if len(dcomped) > max_size:
++        raise zlib.error("decompressed data exceeds maximum size")
+     return dcomped
+ 
+ 
+@@ -483,13 +500,23 @@ def _parse_legacy_object_header(
+     ) -> "ShaFile":
+         """Parse a legacy object, creating it but not reading the file."""
+         bufsize = 1024
++        # Legitimate loose object headers are at most a few dozen bytes; a
++        # larger inflated prefix indicates corruption or a decompression bomb.
++        header_max = 8192
+         decomp = zlib.decompressobj()
+-        header = decomp.decompress(magic)
++        header = decomp.decompress(magic, header_max)
++        if decomp.unconsumed_tail:
++            raise zlib.error("object header exceeds maximum size")
+         start = 0
+-        end = -1
++        end = header.find(b"\0", start)
++        start = len(header)
+         while end < 0:
+             extra = f.read(bufsize)
+-            header += decomp.decompress(extra)
++            if not extra:
++                raise ObjectFormatException("Invalid object header, no \\0")
++            header += decomp.decompress(extra, header_max - len(header))
++            if decomp.unconsumed_tail:
++                raise zlib.error("object header exceeds maximum size")
+             magic += extra
+             end = header.find(b"\0", start)
+             start = len(header)
+@@ -506,9 +533,13 @@ def _parse_legacy_object_header(
+             )
+         return obj_class()
+ 
+-    def _parse_legacy_object(self, map: bytes) -> None:
++    def _parse_legacy_object(
++        self,
++        map: bytes,
++        max_size: int = DEFAULT_LOOSE_OBJECT_SIZE_LIMIT,
++    ) -> None:
+         """Parse a legacy object, setting the raw string."""
+-        text = _decompress(map)
++        text = _decompress(map, max_size=max_size)
+         header_end = text.find(b"\0")
+         if header_end < 0:
+             raise ObjectFormatException("Invalid object header, no \\0")
+@@ -623,7 +654,11 @@ def _parse_object_header(
+             raise ObjectFormatException(f"Not a known type {num_type}")
+         return obj_class()
+ 
+-    def _parse_object(self, map: bytes) -> None:
++    def _parse_object(
++        self,
++        map: bytes,
++        max_size: int = DEFAULT_LOOSE_OBJECT_SIZE_LIMIT,
++    ) -> None:
+         """Parse a new style object, setting self._text."""
+         # skip type and size; type must have already been determined, and
+         # we trust zlib to fail if it's otherwise corrupted
+@@ -633,7 +668,7 @@ def _parse_object(self, map: bytes) -> None:
+             byte = ord(map[used : used + 1])
+             used += 1
+         raw = map[used:]
+-        self.set_raw_string(_decompress(raw))
++        self.set_raw_string(_decompress(raw, max_size=max_size))
+ 
+     @classmethod
+     def _is_legacy_object(cls, magic: bytes) -> bool:
+@@ -648,6 +683,7 @@ def _parse_file(
+         f: BufferedIOBase | IO[bytes] | "_GitFile",
+         *,
+         object_format: ObjectFormat | None = None,
++        max_size: int = DEFAULT_LOOSE_OBJECT_SIZE_LIMIT,
+     ) -> "ShaFile":
+         map = f.read()
+         if not map:
+@@ -657,12 +693,12 @@ def _parse_file(
+             obj = cls._parse_legacy_object_header(map, f)
+             if object_format is not None:
+                 obj.object_format = object_format
+-            obj._parse_legacy_object(map)
++            obj._parse_legacy_object(map, max_size=max_size)
+         else:
+             obj = cls._parse_object_header(map, f)
+             if object_format is not None:
+                 obj.object_format = object_format
+-            obj._parse_object(map)
++            obj._parse_object(map, max_size=max_size)
+         return obj
+ 
+     def _deserialize(self, chunks: list[bytes]) -> None:
+@@ -678,10 +714,11 @@ def from_path(
+         sha: ObjectID | None = None,
+         *,
+         object_format: ObjectFormat | None = None,
++        max_size: int = DEFAULT_LOOSE_OBJECT_SIZE_LIMIT,
+     ) -> "ShaFile":
+         """Open a SHA file from disk."""
+         with GitFile(path, "rb") as f:
+-            return cls.from_file(f, sha, object_format=object_format)
++            return cls.from_file(f, sha, object_format=object_format, max_size=max_size)
+ 
+     @classmethod
+     def from_file(
+@@ -690,6 +727,7 @@ def from_file(
+         sha: ObjectID | None = None,
+         *,
+         object_format: ObjectFormat | None = None,
++        max_size: int = DEFAULT_LOOSE_OBJECT_SIZE_LIMIT,
+     ) -> "ShaFile":
+         """Get the contents of a SHA file on disk."""
+         try:
+@@ -702,7 +740,7 @@ def from_file(
+                         f"{object_format.name} (expected {expected_len})"
+                     )
+ 
+-            obj = cls._parse_file(f, object_format=object_format)
++            obj = cls._parse_file(f, object_format=object_format, max_size=max_size)
+             if sha is not None:
+                 obj._sha = FixedSha(sha)
+             else:
+@@ -944,6 +982,7 @@ def from_path(
+         sha: ObjectID | None = None,
+         *,
+         object_format: ObjectFormat | None = None,
++        max_size: int = DEFAULT_LOOSE_OBJECT_SIZE_LIMIT,
+     ) -> "Blob":
+         """Read a blob from a file on disk.
+ 
+@@ -951,6 +990,7 @@ def from_path(
+           path: Path to the blob file
+           sha: Optional known SHA for the object
+           object_format: Optional object format to use
++          max_size: Maximum inflated size in bytes
+ 
+         Returns:
+           A Blob object
+@@ -958,7 +998,9 @@ def from_path(
+         Raises:
+           NotBlobError: If the file is not a blob
+         """
+-        blob = ShaFile.from_path(path, sha, object_format=object_format)
++        blob = ShaFile.from_path(
++            path, sha, object_format=object_format, max_size=max_size
++        )
+         if not isinstance(blob, cls):
+             raise NotBlobError(_path_to_bytes(path))
+         return blob
+@@ -1117,6 +1159,7 @@ def from_path(
+         sha: ObjectID | None = None,
+         *,
+         object_format: ObjectFormat | None = None,
++        max_size: int = DEFAULT_LOOSE_OBJECT_SIZE_LIMIT,
+     ) -> "Tag":
+         """Read a tag from a file on disk.
+ 
+@@ -1124,6 +1167,7 @@ def from_path(
+           path: Path to the tag file
+           sha: Optional known SHA for the object
+           object_format: Optional object format to use
++          max_size: Maximum inflated size in bytes
+ 
+         Returns:
+           A Tag object
+@@ -1131,7 +1175,9 @@ def from_path(
+         Raises:
+           NotTagError: If the file is not a tag
+         """
+-        tag = ShaFile.from_path(path, sha, object_format=object_format)
++        tag = ShaFile.from_path(
++            path, sha, object_format=object_format, max_size=max_size
++        )
+         if not isinstance(tag, cls):
+             raise NotTagError(_path_to_bytes(path))
+         return tag
+@@ -1502,6 +1548,7 @@ def from_path(
+         sha: ObjectID | None = None,
+         *,
+         object_format: ObjectFormat | None = None,
++        max_size: int = DEFAULT_LOOSE_OBJECT_SIZE_LIMIT,
+     ) -> "Tree":
+         """Read a tree from a file on disk.
+ 
+@@ -1509,6 +1556,7 @@ def from_path(
+           path: Path to the tree file
+           sha: Optional known SHA for the object
+           object_format: Optional object format to use
++          max_size: Maximum inflated size in bytes
+ 
+         Returns:
+           A Tree object
+@@ -1516,7 +1564,9 @@ def from_path(
+         Raises:
+           NotTreeError: If the file is not a tree
+         """
+-        tree = ShaFile.from_path(path, sha, object_format=object_format)
++        tree = ShaFile.from_path(
++            path, sha, object_format=object_format, max_size=max_size
++        )
+         if not isinstance(tree, cls):
+             raise NotTreeError(_path_to_bytes(path))
+         return tree
+@@ -2049,6 +2099,7 @@ def from_path(
+         sha: ObjectID | None = None,
+         *,
+         object_format: ObjectFormat | None = None,
++        max_size: int = DEFAULT_LOOSE_OBJECT_SIZE_LIMIT,
+     ) -> "Commit":
+         """Read a commit from a file on disk.
+ 
+@@ -2056,6 +2107,7 @@ def from_path(
+           path: Path to the commit file
+           sha: Optional known SHA for the object
+           object_format: Optional object format to use
++          max_size: Maximum inflated size in bytes
+ 
+         Returns:
+           A Commit object
+@@ -2063,7 +2115,9 @@ def from_path(
+         Raises:
+           NotCommitError: If the file is not a commit
+         """
+-        commit = ShaFile.from_path(path, sha, object_format=object_format)
++        commit = ShaFile.from_path(
++            path, sha, object_format=object_format, max_size=max_size
++        )
+         if not isinstance(commit, cls):
+             raise NotCommitError(_path_to_bytes(path))
+         return commit
+diff --git a/dulwich/pack.py b/dulwich/pack.py
+index 7b1d23bc90..4e718d2a48 100644
+--- a/dulwich/pack.py
++++ b/dulwich/pack.py
+@@ -576,13 +576,18 @@ def read_zlib_chunks(
+     decomp_chunks = unpacked.decomp_chunks
+     decomp_len = 0
+     crc32 = unpacked.crc32
++    max_decomp = unpacked.decomp_len
+ 
+     while True:
+         add = read_some(buffer_size)
+         if not add:
+             raise zlib.error("EOF before end of zlib stream")
+         comp_chunks.append(add)
+-        decomp = decomp_obj.decompress(add)
++        # +1 so overrun surfaces as unconsumed_tail rather than being truncated.
++        remaining = max_decomp - decomp_len + 1
++        decomp = decomp_obj.decompress(add, remaining)
++        if decomp_obj.unconsumed_tail:
++            raise zlib.error("decompressed data exceeds expected size")
+         decomp_len += len(decomp)
+         decomp_chunks.append(decomp)
+         unused = decomp_obj.unused_data
+diff --git a/tests/test_object_store.py b/tests/test_object_store.py
+index 84fc192389..d5106f35f2 100644
+--- a/tests/test_object_store.py
++++ b/tests/test_object_store.py
+@@ -469,6 +469,44 @@ def test_add_thin_pack_max_input_size(self) -> None:
+         with self.assertRaises(PackInputTooLarge):
+             o.add_thin_pack(f.read, None, max_input_size=8)
+ 
++    def test_big_file_threshold_config(self) -> None:
++        # core.bigFileThreshold caps single-object decompression to guard
++        # against zip-bomb attacks on loose objects.
++        config = ConfigDict()
++        config[(b"core",)] = {b"bigFileThreshold": b"4096"}
++
++        store_dir = tempfile.mkdtemp()
++        self.addCleanup(shutil.rmtree, store_dir)
++        os.makedirs(os.path.join(store_dir, "pack"))
++        store = DiskObjectStore.from_config(store_dir, config)
++        self.addCleanup(store.close)
++        self.assertEqual(4096, store.loose_object_size_limit)
++
++    def test_big_file_threshold_default(self) -> None:
++        from dulwich.objects import DEFAULT_LOOSE_OBJECT_SIZE_LIMIT
++
++        store_dir = tempfile.mkdtemp()
++        self.addCleanup(shutil.rmtree, store_dir)
++        os.makedirs(os.path.join(store_dir, "pack"))
++        store = DiskObjectStore.from_config(store_dir, ConfigDict())
++        self.addCleanup(store.close)
++        self.assertEqual(DEFAULT_LOOSE_OBJECT_SIZE_LIMIT, store.loose_object_size_limit)
++
++    def test_loose_object_size_limit_enforced(self) -> None:
++        # A loose object that inflates past loose_object_size_limit is rejected.
++        store = self.store
++        store.loose_object_size_limit = 1024
++        b = make_object(Blob, data=b"x" * 2048)
++        store.add_object(b)
++        # Bypass the size cap to confirm the object exists on disk normally.
++        store.loose_object_size_limit = 512 * 1024 * 1024
++        self.assertEqual(b.data, store[b.id].data)
++        # Now re-enforce a small cap and expect a decompression error.
++        store.loose_object_size_limit = 1024
++        import zlib
++
++        self.assertRaises(zlib.error, store._get_loose_object, b.id)
++
+     def test_pack_index_version_config(self) -> None:
+         # Test that pack.indexVersion configuration is respected
+         # Create config with pack.indexVersion = 1
+diff --git a/tests/test_objects.py b/tests/test_objects.py
+index 328b803b34..a0a39e7ec3 100644
+--- a/tests/test_objects.py
++++ b/tests/test_objects.py
+@@ -316,6 +316,42 @@ def test_deflated_smaller_window_buffer(self) -> None:
+         self.assertEqual(sf.type_name, b"tag")
+         self.assertEqual(sf.tagger, b" <@localhost>")
+ 
++    def test_from_file_rejects_decompression_bomb(self) -> None:
++        # Regression: a loose object whose zlib stream inflates far past the
++        # caller-supplied max_size must be rejected without allocating the
++        # full inflated payload (decompression-bomb DoS).
++        import tracemalloc
++        import zlib
++
++        payload = b"blob 5\x00hello" + b"\x00" * (4 * 1024 * 1024)
++        stream = zlib.compress(payload)
++        self.assertLess(len(stream), len(payload) // 100)
++        tracemalloc.start()
++        try:
++            self.assertRaises(
++                zlib.error,
++                ShaFile.from_file,
++                BytesIO(stream),
++                max_size=1024,
++            )
++            _, peak = tracemalloc.get_traced_memory()
++        finally:
++            tracemalloc.stop()
++        self.assertLess(peak, len(payload) // 4)
++
++    def test_from_file_has_default_size_limit(self) -> None:
++        # DEFAULT_LOOSE_OBJECT_SIZE_LIMIT must match Git's core.bigFileThreshold
++        # default (512 MiB). Callers that do not pass max_size inherit this cap.
++        import inspect
++
++        from dulwich.objects import DEFAULT_LOOSE_OBJECT_SIZE_LIMIT
++
++        self.assertEqual(DEFAULT_LOOSE_OBJECT_SIZE_LIMIT, 512 * 1024 * 1024)
++        sig = inspect.signature(ShaFile.from_file)
++        self.assertEqual(
++            sig.parameters["max_size"].default, DEFAULT_LOOSE_OBJECT_SIZE_LIMIT
++        )
++
+ 
+ class CommitSerializationTests(TestCase):
+     def make_commit(self, **kwargs):
+diff --git a/tests/test_pack.py b/tests/test_pack.py
+index 8288c0810a..8ed483f316 100644
+--- a/tests/test_pack.py
++++ b/tests/test_pack.py
+@@ -26,6 +26,7 @@
+ import shutil
+ import sys
+ import tempfile
++import tracemalloc
+ import types
+ import zlib
+ from hashlib import sha1
+@@ -1444,6 +1445,26 @@ def test_decompress_include_comp(self) -> None:
+         self._do_decompress_test(4096, include_comp=True)
+         self.assertEqual(self.comp, b"".join(self.unpacked.comp_chunks))
+ 
++    def test_decompress_bomb_rejected_before_full_inflation(self) -> None:
++        # Regression: a malicious pack entry that declares a small decomp_len
++        # but ships a highly compressible stream must not be fully inflated
++        # before the size check fires (decompression-bomb DoS).
++        payload = b"\x00" * (4 * 1024 * 1024)
++        comp = zlib.compress(payload)
++        # Sanity check that this stream is actually a bomb candidate.
++        self.assertLess(len(comp), len(payload) // 100)
++        unpacked = UnpackedObject(Blob.type_num, decomp_len=1, crc32=0)
++        read = BytesIO(comp + b"\x00" * 20).read
++        tracemalloc.start()
++        try:
++            self.assertRaises(zlib.error, read_zlib_chunks, read, unpacked)
++            _, peak = tracemalloc.get_traced_memory()
++        finally:
++            tracemalloc.stop()
++        # We should never have allocated anywhere near the full payload.
++        # Give plenty of headroom for compression bookkeeping.
++        self.assertLess(peak, len(payload) // 4)
++
+ 
+ class DeltifyTests(TestCase):
+     def test_empty(self) -> None:

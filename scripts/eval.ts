@@ -18,6 +18,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { splitUnifiedDiff } from "../src/core/diff.js";
 import type {
@@ -55,7 +56,10 @@ Ground every finding in the diff — do not speculate about code you cannot see.
 findings over many nits. If the change looks fine, submit an empty findings array.`;
 
 const ROOT = new URL("..", import.meta.url).pathname;
-const DIFF_DIR = `${ROOT}eval/golden/diffs`;
+// --manifest <path> selects the corpus (default: the golden set); the frozen diffs live in a `diffs/` sibling of
+// the manifest, so a second corpus (e.g. eval/contam-safe/) is fully self-contained. Reports always pool together.
+const MANIFEST_PATH = arg("manifest") ?? `${ROOT}eval/golden/manifest.yaml`;
+const DIFF_DIR = join(dirname(MANIFEST_PATH), "diffs");
 const REPORT_DIR = `${ROOT}eval/reports`;
 /** Strip a leading YAML frontmatter block from a `.review-rules` file, matching loadReviewRules. */
 const FRONTMATTER_RE = /^---\n[\s\S]*?\n---\n/;
@@ -215,9 +219,9 @@ function ghRepoReader(repo: string, pr: number): RepoReader {
   };
 }
 function loadCases(): Case[] {
-  const doc = parseYaml(
-    readFileSync(`${ROOT}eval/golden/manifest.yaml`, "utf8")
-  ) as { cases: Case[] };
+  const doc = parseYaml(readFileSync(MANIFEST_PATH, "utf8")) as {
+    cases: Case[];
+  };
   // biome-ignore lint/suspicious/noUnnecessaryConditions: runtime guard against a malformed/empty manifest.yaml — the `as` cast doesn't validate the parsed YAML at runtime
   let cases = doc.cases ?? [];
   const stack = arg("stack");
