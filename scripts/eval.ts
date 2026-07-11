@@ -429,6 +429,8 @@ async function main() {
       ])
     : "";
   const proposeRuleDrift = flag("rule-drift");
+  // --surveyor: SURVEYOR coverage pass (recall lever #45) — measure recall/precision with the flag on vs off.
+  const surveyor = flag("surveyor");
   const withContext = (prompt: string) => rulesPreamble + withNote(prompt);
   const spendGuard = () => {
     if (aborted || localSpend <= maxSpend) {
@@ -510,6 +512,7 @@ async function main() {
                 persona: pass.id,
                 proposeRuleDrift,
                 repoReader,
+                surveyor,
                 systemPrompt: withContext(pass.prompt),
               });
               all.push(...pr.findings);
@@ -540,6 +543,7 @@ async function main() {
             persona: "persona:general",
             proposeRuleDrift,
             repoReader,
+            surveyor,
             systemPrompt: withContext(PERSONA),
           });
           ({ findings } = pr);
