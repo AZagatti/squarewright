@@ -38,7 +38,7 @@ import {
   openrouterPrice,
   openrouterReasoningRisk,
   parseMaxSpend,
-} from "./lib/spend-guard.js";
+} from "../src/safety/spend-guard.js";
 import { formatRange, summarize } from "./lib/variance.js";
 
 /** The headline metrics of one full eval pass, aggregated across repeats into ranges. */

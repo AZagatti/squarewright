@@ -23,7 +23,7 @@ import {
   openrouterPrice,
   openrouterReasoningRisk,
   parseMaxSpend,
-} from "./lib/spend-guard.js";
+} from "../src/safety/spend-guard.js";
 
 const THINKING = (process.env.SW_THINKING ?? "off") as ThinkingLevel;
 

@@ -6,6 +6,7 @@ import type { LookupPullsForCommit, VerifiedTarget } from "../safety/trust.js";
 import type { AssemblyConfig } from "./config.js";
 import type { ReviewOutput } from "./review.js";
 import {
+  assertNoReasoningTrap,
   readTrustedRunSignal,
   requiredProviders,
   runReviewCommand,
@@ -32,6 +33,78 @@ const STUB_WORKER: PiWorker = {
   run: () =>
     Promise.resolve({ findings: [], usage: { submitted: true, toolCalls: 0 } }),
 };
+
+describe("assertNoReasoningTrap (issue #36)", () => {
+  const orConfig = (structurerModel?: string): AssemblyConfig => ({
+    grounders: [],
+    lanes: [
+      { id: "strong", model: "vendor/trap-model", provider: "openrouter" },
+    ],
+    personas: [{ id: "gen", lane: "strong", prompt: "x", when: ["always"] }],
+    structurer: structurerModel
+      ? { model: structurerModel, provider: "openrouter", thinking: "off" }
+      : undefined,
+  });
+
+  test("refuses a reasoning-trap OpenRouter analysis lane", () => {
+    expect(() =>
+      assertNoReasoningTrap(orConfig(), (model) => ({
+        block: model === "vendor/trap-model",
+        detail: "reasoning.mandatory=true",
+      }))
+    ).toThrow("reasoning cost-trap");
+  });
+
+  test("allows an OpenRouter lane whose reasoning disables cleanly", () => {
+    expect(() =>
+      assertNoReasoningTrap(orConfig(), () => ({
+        block: false,
+        detail: "safe",
+      }))
+    ).not.toThrow();
+  });
+
+  test("also refuses a reasoning-trap OpenRouter structurer", () => {
+    expect(() =>
+      assertNoReasoningTrap(orConfig("vendor/trap-structurer"), (model) => ({
+        block: model === "vendor/trap-structurer",
+        detail: "only supports [high, xhigh]",
+      }))
+    ).toThrow("vendor/trap-structurer");
+  });
+
+  test("never checks non-OpenRouter (z.ai) lanes", () => {
+    const checked: string[] = [];
+    assertNoReasoningTrap(CONFIG, (model) => {
+      checked.push(model);
+      return { block: true, detail: "would trap" };
+    });
+    expect(checked).toEqual([]); // CONFIG is z.ai-only → classifier never invoked, so no false refusal
+  });
+
+  test("is a no-op when no classifier is injected", () => {
+    expect(() => assertNoReasoningTrap(CONFIG)).not.toThrow();
+  });
+
+  test("runReviewPost refuses a trap lane before constructing the worker", async () => {
+    let made = false;
+    await expect(
+      runReviewPost(orConfig(), CONTEXT, {
+        makeWorker: () => {
+          made = true;
+          return STUB_WORKER;
+        },
+        reasoningRisk: () => ({
+          block: true,
+          detail: "reasoning.mandatory=true",
+        }),
+        resolveKeys: () =>
+          Promise.resolve({ apiKeys: { openrouter: "or" }, missing: [] }),
+      })
+    ).rejects.toThrow("reasoning cost-trap");
+    expect(made).toBe(false); // refused before any worker/model call
+  });
+});
 
 describe("runReviewPost preflight", () => {
   test("fails before constructing the worker when a required key is missing", async () => {
