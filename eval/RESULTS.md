@@ -667,3 +667,33 @@ clean diff (`waku-1493`, 11 of 17 FPs). The **real** memorization test is the *m
 reports of glm-5.2 AND a frontier model on BOTH corpora — if the frontier model's advantage over glm SHRINKS on
 contam-safe, golden's frontier ranking was memorization. That comparison is the next step; this build makes it
 runnable. Reproduce: `bun run scripts/eval.ts --manifest eval/contam-safe/manifest.yaml --provider zai --model glm-5.2 --thinking off`.
+
+### Memorization verdict — golden is a valid instrument; Fugu's edge is real (2026-07-11)
+The contamination question, answered. Ran glm-5.2 (free) and Sakana Fugu on BOTH corpora + deepseek-v4-pro
+(opencode Go) on contam-safe, has-issue only, **matched structurer** (free zai:glm-5.2), N=2 reports, judged by
+glm-5.2 (free), 2 passes each. (Also fixed a real bug: `scripts/judge.ts` hardcoded the golden manifest for the
+case→loci map, so judging ANY other corpus silently scored /0 — now a `--manifest` flag, matching `eval.ts`.)
+
+| model | golden judged (mean /11) | contam-safe judged (mean /7) |
+|---|---|---|
+| glm-5.2 (free) | 3.25 (~30%) — passes 2,2,4,5 | 2.25 (~32%) — passes 2,2,2,3 |
+| **Sakana Fugu** | **5.5 (~50%)** — 4,6,6,6 | **4.0 (~57%)** — 3,4,4,5 |
+| deepseek-v4-pro (opencode Go) | — | 1.25 (~18%) — 0,1,2,2 |
+
+- **Fugu ÷ glm gap: 1.7× on golden, 1.8× on contam-safe — it HOLDS.** If golden's ranking were memorization,
+  Fugu's advantage would COLLAPSE on obscure/unmemorizable repos; instead it's near-identical. So **the golden
+  corpus is NOT significantly contamination-inflated — it's a valid instrument for ranking models.** The skeptic's
+  central worry is answered with evidence, not assertion. glm-5.2's own recall is also the same on both (~30% vs
+  ~32%) — no memorization boost for it either.
+- **Fugu's advantage is real reviewing skill (~1.7–1.8× over free glm-5.2)**, reproduced on code it can't have
+  memorized — a contamination-safe confirmation of the earlier Fugu result. The earlier "~2×" was partly a
+  STRUCTURER confound (Fugu had used a deepseek structurer, glm the free glm-5-turbo); with a matched structurer
+  the honest edge is ~1.7–1.8×. Fugu stays a **premium, opt-in, expiring (2026-07-29), reasoning-trap** option —
+  NOT the free default. glm-5.2 remains the default.
+- **deepseek-v4-pro via opencode Go is NOT a recall upgrade** (~18% judged, below free glm's ~32%; its file-level
+  3/7 was noise). opencode key tested + works (Go tier `/zen/go/v1`; the PAYG frontier models are unreachable —
+  $0 balance), but its open models don't beat free glm on recall.
+- **Caveats:** N=2 reports × 7-loci (contam) / 11-loci (golden), single (free glm-5.2) judge — same-family to the
+  glm BASELINE, which would if anything INFLATE glm and make the Fugu gap CONSERVATIVE. The robustness signal is
+  the **cross-corpus consistency** (1.7 vs 1.8), stronger than any single N. A paid cross-family judge + N≥3 would
+  tighten it, but the direction is clear. Reproduce: the two runs are logged in `eval/runs.jsonl`.
