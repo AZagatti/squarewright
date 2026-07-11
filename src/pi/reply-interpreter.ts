@@ -15,12 +15,12 @@ import {
   DefaultResourceLoader,
   defineTool,
   getAgentDir,
-  ModelRegistry,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { ModelLane } from "../core/types.js";
 import type { ReplyInterpreter, RuleSuggestion } from "../rules/teach-reply.js";
+import { createModelRegistry } from "./model-catalog.js";
 import { agentSessionSettings } from "./settings.js";
 
 /** Free z.ai default — interpreting a reply is a light extraction task, not worth a paid lane. */
@@ -75,7 +75,7 @@ export function createReplyInterpreter(
       for (const [provider, key] of Object.entries(options.apiKeys)) {
         authStorage.setRuntimeApiKey(provider, key);
       }
-      const modelRegistry = ModelRegistry.create(authStorage);
+      const modelRegistry = createModelRegistry(authStorage);
       const lane = options.lane ?? DEFAULT_LANE;
       const model = modelRegistry.find(lane.provider, lane.model);
       if (!model) {

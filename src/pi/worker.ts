@@ -17,7 +17,6 @@ import {
   DefaultResourceLoader,
   defineTool,
   getAgentDir,
-  ModelRegistry,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
@@ -27,6 +26,7 @@ import type {
   ReviewContext,
   Severity,
 } from "../core/types.js";
+import { createModelRegistry } from "./model-catalog.js";
 import type {
   PiWorker,
   RepoReader,
@@ -365,7 +365,7 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
       for (const [provider, key] of Object.entries(options.apiKeys)) {
         authStorage.setRuntimeApiKey(provider, key);
       }
-      const modelRegistry = ModelRegistry.create(authStorage);
+      const modelRegistry = createModelRegistry(authStorage);
       let toolCalls = 0;
       let costUsd = 0;
 

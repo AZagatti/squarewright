@@ -1,0 +1,115 @@
+import { expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import {
+  MODELS_JSON_ENV,
+  resolveModelsJsonPath,
+  supersessionWarning,
+} from "./model-catalog.js";
+
+function tmp(): string {
+  return mkdtempSync(join(tmpdir(), "sqw-catalog-"));
+}
+
+// ── resolveModelsJsonPath ───────────────────────────────────────────────────
+
+test("resolveModelsJsonPath: SQW_MODELS_JSON override wins when the file exists", () => {
+  const dir = tmp();
+  const override = join(dir, "custom.json");
+  writeFileSync(override, '{"providers":{}}');
+  expect(resolveModelsJsonPath({ [MODELS_JSON_ENV]: override }, "/nope")).toBe(
+    override
+  );
+});
+
+test("resolveModelsJsonPath: a set-but-missing override resolves to undefined, not a bad path", () => {
+  // A stale SQW_MODELS_JSON must degrade to built-ins, not hand a non-existent path to the registry.
+  expect(
+    resolveModelsJsonPath({ [MODELS_JSON_ENV]: "/does/not/exist.json" }, tmp())
+  ).toBeUndefined();
+});
+
+test("resolveModelsJsonPath: falls back to <cwd>/models.json when it exists", () => {
+  const dir = tmp();
+  const path = join(dir, "models.json");
+  writeFileSync(path, '{"providers":{}}');
+  expect(resolveModelsJsonPath({}, dir)).toBe(path);
+});
+
+test("resolveModelsJsonPath: undefined when no override and no repo-root models.json", () => {
+  expect(resolveModelsJsonPath({}, tmp())).toBeUndefined();
+});
+
+// ── supersessionWarning (money-safety guard) ────────────────────────────────
+
+const GLOBAL = "/home/u/.pi/agent/models.json";
+
+test("supersessionWarning: warns when a project catalog supersedes an existing global one", () => {
+  const w = supersessionWarning("/repo/models.json", GLOBAL, true);
+  expect(w).toContain("/repo/models.json");
+  expect(w).toContain(GLOBAL);
+  expect(w).toContain("does NOT merge");
+});
+
+test("supersessionWarning: silent when there is no project catalog", () => {
+  expect(supersessionWarning(undefined, GLOBAL, true)).toBeNull();
+});
+
+test("supersessionWarning: silent when no global file exists to be superseded", () => {
+  expect(supersessionWarning("/repo/models.json", GLOBAL, false)).toBeNull();
+});
+
+test("supersessionWarning: silent when the resolved path IS the global path", () => {
+  expect(supersessionWarning(GLOBAL, GLOBAL, true)).toBeNull();
+});
+
+// ── merge semantics via a real ModelRegistry (no network — pure file parsing) ──
+
+function registryFor(dir: string, modelsJson: string): ModelRegistry {
+  const path = join(dir, "models.json");
+  writeFileSync(path, modelsJson);
+  // Temp auth path so the test never touches the real ~/.pi/auth.json.
+  const auth = AuthStorage.create(join(dir, "auth.json"));
+  return ModelRegistry.create(auth, path);
+}
+
+test("createModelRegistry path: a custom models.json is merged over built-ins and resolvable by find()", () => {
+  const dir = tmp();
+  const reg = registryFor(
+    dir,
+    JSON.stringify({
+      providers: {
+        openrouter: {
+          api: "openai-completions",
+          authHeader: true,
+          baseUrl: "https://openrouter.ai/api/v1",
+          models: [
+            {
+              contextWindow: 200_000,
+              cost: { cacheRead: 0, cacheWrite: 0, input: 1, output: 2 },
+              id: "example/newest-model",
+              input: ["text"],
+              maxTokens: 64_000,
+              name: "Newest (test)",
+              reasoning: true,
+            },
+          ],
+        },
+      },
+    })
+  );
+  expect(reg.getError()).toBeUndefined();
+  const model = reg.find("openrouter", "example/newest-model");
+  expect(model).toBeDefined();
+  expect(model?.id).toBe("example/newest-model");
+});
+
+test("createModelRegistry path: a malformed models.json sets getError() and keeps built-ins (never a silent empty catalog)", () => {
+  const dir = tmp();
+  const reg = registryFor(dir, "{ this is not valid json");
+  expect(reg.getError()).toBeDefined();
+  // The registry must still expose the built-in catalog — a broken custom file can't zero out models.
+  expect(reg.getAll().length).toBeGreaterThan(0);
+});

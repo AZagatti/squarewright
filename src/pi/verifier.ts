@@ -15,12 +15,12 @@ import {
   DefaultResourceLoader,
   defineTool,
   getAgentDir,
-  ModelRegistry,
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { Finding, ModelLane, ReviewContext } from "../core/types.js";
+import { createModelRegistry } from "./model-catalog.js";
 
 const PERSONA = `You are a skeptical code-review verifier. Another reviewer produced the finding below, and it
 may well be a false positive. Your job is to try to REFUTE it. You have a shell — USE IT to test claims
@@ -81,7 +81,7 @@ export function createVerifier(options: VerifierOptions) {
       for (const [provider, key] of Object.entries(options.apiKeys)) {
         authStorage.setRuntimeApiKey(provider, key);
       }
-      const modelRegistry = ModelRegistry.create(authStorage);
+      const modelRegistry = createModelRegistry(authStorage);
       const model = modelRegistry.find(lane.provider, lane.model);
       if (!model) {
         throw new Error(`Model not found: ${lane.provider}/${lane.model}`);

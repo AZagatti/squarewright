@@ -11,12 +11,12 @@ import {
   DefaultResourceLoader,
   defineTool,
   getAgentDir,
-  ModelRegistry,
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { ModelLane } from "../core/types.js";
+import { createModelRegistry } from "../pi/model-catalog.js";
 
 export interface DefectLocus {
   about: string;
@@ -217,7 +217,7 @@ export function createJudge(opts: { apiKeys: Record<string, string> }) {
       for (const [p, k] of Object.entries(opts.apiKeys)) {
         authStorage.setRuntimeApiKey(p, k);
       }
-      const modelRegistry = ModelRegistry.create(authStorage);
+      const modelRegistry = createModelRegistry(authStorage);
       const model = modelRegistry.find(lane.provider, lane.model);
       if (!model) {
         throw new Error(
