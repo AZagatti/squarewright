@@ -1,0 +1,407 @@
+diff --git a/src/commands.ts b/src/commands.ts
+index b4f5a3ae..4f32cfba 100644
+--- a/src/commands.ts
++++ b/src/commands.ts
+@@ -1,16 +1,16 @@
+-import { isCollapsed, toRange } from "./doc/position.js";
++import { isCollapsed, hasIntersection, toRange } from "./doc/position.js";
+ import {
+   getBlockAt,
+   getInlineAt,
++  getNodeSize,
+   isTextNode,
+-  sliceFragment,
++  iterText,
+ } from "./doc/node.js";
+ import type { Editor } from "./editor.js";
+ import type {
+   DocNode,
+   InferBlockNode,
+   InferInlineNode,
+-  InlineNode,
+   Range,
+   TextNode,
+ } from "./doc/types.js";
+@@ -105,27 +105,36 @@ export function ToggleFormat<T extends DocNode>(
+   key: Extract<ToggleableKey<Omit<InferInlineNode<T>, "text">>, string>,
+   range: Range = toRange(editor.selection),
+ ) {
+-  // TODO improve
+-  let inlines: InlineNode[];
++  let hasText = false;
++  let inlines: Iterable<[TextNode, number]>;
+   if (isCollapsed(range)) {
+-    const inline = getInlineAt(editor.doc, range[0]);
+-    if (inline) {
+-      inlines = [inline[0]];
++    const inline = getInlineAt(editor.doc, range[0])?.[0];
++    if (inline && isTextNode(inline)) {
++      inlines = [[inline, range[0]]];
+     } else {
+       return;
+     }
+   } else {
+-    inlines = sliceFragment(editor.doc, ...range).flatMap((n) => n.children);
++    inlines = iterText(editor.doc, ...range);
+   }
+ 
+-  const texts = inlines.filter(isTextNode);
++  let shouldFormat = false;
++  for (const [n, o] of inlines) {
++    if (hasIntersection(range, [o, o + getNodeSize(n)])) {
++      hasText = true;
++      if (!n[key as keyof typeof n]) {
++        shouldFormat = true;
++        break;
++      }
++    }
++  }
+ 
+-  if (texts.length) {
++  if (hasText) {
+     editor.apply({
+       type: "format",
+       range,
+       key,
+-      value: texts.some((n) => !n[key as keyof typeof n]) ? true : false,
++      value: shouldFormat,
+     });
+   }
+ }
+diff --git a/src/doc/node.spec.ts b/src/doc/node.spec.ts
+index f5fec447..eadf13ad 100644
+--- a/src/doc/node.spec.ts
++++ b/src/doc/node.spec.ts
+@@ -4,6 +4,8 @@ import {
+   getChildAt,
+   getInlineAt,
+   getNodeSize,
++  iterNode,
++  iterText,
+   sliceFragment,
+ } from "./node.js";
+ import {
+@@ -11,9 +13,17 @@ import {
+   type DocNode,
+   type Fragment,
+   type Node,
++  type Path,
+   type Range,
+ } from "./types.js";
+ 
++const nodeAtPath = (node: DocNode | BlockNode, path: Path): Node => {
++  for (let i = 0; i < path.length; i++) {
++    node = node.children[path[i]!]! as BlockNode; // TODO improve
++  }
++  return node;
++};
++
+ describe(getNodeSize.name, () => {
+   it.each<[Node, number]>([
+     [{ text: "" }, 0],
+@@ -138,9 +148,9 @@ describe(getBlockAt.name, () => {
+       { children: [{ text: t2 }] },
+     ],
+   };
+-  const n0 = doc.children[0]!;
+-  const n1 = doc.children[1]!;
+-  const n2 = doc.children[2]!;
++  const n0 = nodeAtPath(doc, [0]);
++  const n1 = nodeAtPath(doc, [1]);
++  const n2 = nodeAtPath(doc, [2]);
+   it.each<[number, [Node, number]]>([
+     [0, [n0, 0]],
+     [1, [n0, 1]],
+@@ -175,9 +185,9 @@ describe(getInlineAt.name, () => {
+       { children: [{ text: t2 }] },
+     ],
+   };
+-  const n0 = { text: t0 };
+-  const n1 = { text: t1 };
+-  const n2 = { text: t2 };
++  const n0 = nodeAtPath(doc, [0, 0]);
++  const n1 = nodeAtPath(doc, [1, 0]);
++  const n2 = nodeAtPath(doc, [2, 0]);
+   it.each<[number, ReturnType<typeof getInlineAt>]>([
+     [0, [n0, 0]],
+     [1, [n0, 1]],
+@@ -198,6 +208,197 @@ describe(getInlineAt.name, () => {
+   });
+ });
+ 
++describe(iterNode.name, () => {
++  const t0 = "abcd";
++  const t1 = "efghi";
++  const t2 = "jklmno";
++  const doc: DocNode = {
++    children: [
++      { children: [{ text: t0 }] },
++      { children: [{ text: t1 }] },
++      { children: [{ text: t2 }] },
++    ],
++  };
++  const n0 = nodeAtPath(doc, [0]);
++  const n00 = nodeAtPath(doc, [0, 0]);
++  const n1 = nodeAtPath(doc, [1]);
++  const n10 = nodeAtPath(doc, [1, 0]);
++  const n2 = nodeAtPath(doc, [2]);
++  const n20 = nodeAtPath(doc, [2, 0]);
++
++  it.each<[Range, [Node, number][]]>([
++    [[1, 0], []],
++    [[1, 1], []],
++    [[0, 0], []],
++    [
++      [0, 1],
++      [
++        [n0, 0],
++        [n00, 0],
++      ],
++    ],
++    [
++      [0, t0.length],
++      [
++        [n0, 0],
++        [n00, 0],
++      ],
++    ],
++    [
++      [0, t0.length + 1],
++      [
++        [n0, 0],
++        [n00, 0],
++        [n1, t0.length + 1],
++        [n10, t0.length + 1],
++      ],
++    ],
++    [
++      [0, t0.length + 2],
++      [
++        [n0, 0],
++        [n00, 0],
++        [n1, t0.length + 1],
++        [n10, t0.length + 1],
++      ],
++    ],
++    [
++      [0, t0.length + 1 + t1.length],
++      [
++        [n0, 0],
++        [n00, 0],
++        [n1, t0.length + 1],
++        [n10, t0.length + 1],
++      ],
++    ],
++    [
++      [0, t0.length + 1 + t1.length + 1],
++      [
++        [n0, 0],
++        [n00, 0],
++        [n1, t0.length + 1],
++        [n10, t0.length + 1],
++        [n2, t0.length + 1 + t1.length + 1],
++        [n20, t0.length + 1 + t1.length + 1],
++      ],
++    ],
++    [
++      [0, t0.length + 1 + t1.length + 2],
++      [
++        [n0, 0],
++        [n00, 0],
++        [n1, t0.length + 1],
++        [n10, t0.length + 1],
++        [n2, t0.length + 1 + t1.length + 1],
++        [n20, t0.length + 1 + t1.length + 1],
++      ],
++    ],
++    [
++      [0, t0.length + 1 + t1.length + 1 + t2.length],
++      [
++        [n0, 0],
++        [n00, 0],
++        [n1, t0.length + 1],
++        [n10, t0.length + 1],
++        [n2, t0.length + 1 + t1.length + 1],
++        [n20, t0.length + 1 + t1.length + 1],
++      ],
++    ],
++    [
++      [0, Infinity],
++      [
++        [n0, 0],
++        [n00, 0],
++        [n1, t0.length + 1],
++        [n10, t0.length + 1],
++        [n2, t0.length + 1 + t1.length + 1],
++        [n20, t0.length + 1 + t1.length + 1],
++      ],
++    ],
++  ])(`$0`, (range, res) => {
++    expect([...iterNode(doc, ...range)]).toEqual(res);
++  });
++});
++
++describe(iterText.name, () => {
++  const t0 = "abcd";
++  const t1 = "efghi";
++  const t2 = "jklmno";
++  const doc: DocNode = {
++    children: [
++      { children: [{ text: t0 }] },
++      { children: [{ text: t1 }] },
++      { children: [{ text: t2 }] },
++    ],
++  };
++  const n0 = nodeAtPath(doc, [0, 0]);
++  const n1 = nodeAtPath(doc, [1, 0]);
++  const n2 = nodeAtPath(doc, [2, 0]);
++
++  it.each<[Range, [Node, number][]]>([
++    [[1, 0], []],
++    [[1, 1], []],
++    [[0, 0], []],
++    [[0, 1], [[n0, 0]]],
++    [[0, t0.length], [[n0, 0]]],
++    [
++      [0, t0.length + 1],
++      [
++        [n0, 0],
++        [n1, t0.length + 1],
++      ],
++    ],
++    [
++      [0, t0.length + 2],
++      [
++        [n0, 0],
++        [n1, t0.length + 1],
++      ],
++    ],
++    [
++      [0, t0.length + 1 + t1.length],
++      [
++        [n0, 0],
++        [n1, t0.length + 1],
++      ],
++    ],
++    [
++      [0, t0.length + 1 + t1.length + 1],
++      [
++        [n0, 0],
++        [n1, t0.length + 1],
++        [n2, t0.length + 1 + t1.length + 1],
++      ],
++    ],
++    [
++      [0, t0.length + 1 + t1.length + 2],
++      [
++        [n0, 0],
++        [n1, t0.length + 1],
++        [n2, t0.length + 1 + t1.length + 1],
++      ],
++    ],
++    [
++      [0, t0.length + 1 + t1.length + 1 + t2.length],
++      [
++        [n0, 0],
++        [n1, t0.length + 1],
++        [n2, t0.length + 1 + t1.length + 1],
++      ],
++    ],
++    [
++      [0, Infinity],
++      [
++        [n0, 0],
++        [n1, t0.length + 1],
++        [n2, t0.length + 1 + t1.length + 1],
++      ],
++    ],
++  ])(`$0`, (range, res) => {
++    expect([...iterText(doc, ...range)]).toEqual(res);
++  });
++});
++
+ describe(sliceFragment.name, () => {
+   const t0 = "abcd";
+   const t1 = "efghi";
+diff --git a/src/doc/node.ts b/src/doc/node.ts
+index d84434f4..ff48ff08 100644
+--- a/src/doc/node.ts
++++ b/src/doc/node.ts
+@@ -209,6 +209,58 @@ export const selectionToDomSelection = (
+   return [offsetToPosition(doc, anchor), offsetToPosition(doc, focus)];
+ };
+ 
++/**
++ * @internal
++ */
++export function* iterNode<T extends Node>(
++  node: T,
++  start: number,
++  end: number,
++): Generator<[node: Node, offset: number], void, void> {
++  if (start >= end) {
++    return;
++  }
++  if (!isBlockNode(node)) {
++    return;
++  }
++  const res = getChildAt(node, start);
++  if (res) {
++    let offset = start - res[1];
++    let i = res[2];
++    const children = node.children;
++    const length = children.length;
++    while (offset <= end && i < length) {
++      const targetNode = children[i]!;
++      yield [targetNode, offset];
++
++      const size = getNodeSize(targetNode);
++      for (const r of iterNode(targetNode, 0, size)) {
++        yield [r[0], r[1] + offset];
++      }
++      i++;
++      offset += size;
++      if (isBlockNode(targetNode)) {
++        offset++;
++      }
++    }
++  }
++}
++
++/**
++ * @internal
++ */
++export function* iterText<T extends Node>(
++  node: T,
++  start: number,
++  end: number,
++): Generator<[node: TextNode, offset: number], void, void> {
++  for (const n of iterNode(node, start, end)) {
++    if (isTextNode(n[0])) {
++      yield n as [TextNode, number];
++    }
++  }
++}
++
+ /**
+  * @internal
+  */
+diff --git a/src/doc/position.ts b/src/doc/position.ts
+index 614fbd96..9e952716 100644
+--- a/src/doc/position.ts
++++ b/src/doc/position.ts
+@@ -13,3 +13,14 @@ export const toRange = ([a, b]: Selection | Range): Range => {
+ export const isCollapsed = ([a, b]: Selection | Range): boolean => {
+   return a === b;
+ };
++
++/**
++ * @internal
++ */
++export const hasIntersection = (
++  [aStart, aEnd]: Range,
++  [bStart, bEnd]: Range,
++): boolean => {
++  // ignore edge for now
++  return aStart < bEnd && bStart < aEnd;
++};

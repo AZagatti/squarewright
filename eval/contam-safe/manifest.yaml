@@ -1,0 +1,126 @@
+# Contamination-safe corpus — see README.md. Real bug-introducing PRs from OBSCURE/medium repos (50–4000★),
+# each evidence-backed by a later revert or a regression-fix PR that names it. `pr:` is always the
+# BUG-INTRODUCING PR (the buggy diff the reviewer must catch), never the fix. Freeze diffs with:
+#   bun run scripts/eval.ts --manifest eval/contam-safe/manifest.yaml --freeze
+cases:
+  # ── Go ────────────────────────────────────────────────────────────────────
+
+  - id: go-genqlient-402
+    repo: Khan/genqlient
+    pr: 402
+    stack: go
+    kind: concurrency
+    size: "+192/-15"
+    label: has-issue
+    note: "WebSocket graceful-close support. forwardWebSocketData holds the subscription-map lock across a blocking send on interfaceChan while Unsubscribe blocks acquiring the same lock — a deadlock."
+    evidence: "Fixed by Khan/genqlient#417: 'Fix deadlock introduced in #402 ... forwardWebSocketData was holding a lock on the subscription map while Unsubscribe was blocked attempting to acquire the same lock.'"
+    expect_loci:
+      - path: graphql/subscription.go
+        about: "Subscription-map lock held across forwardDataFunc's blocking channel send; close/send race on interfaceChan."
+
+  # ── Rust ──────────────────────────────────────────────────────────────────
+  - id: rust-calamine-671
+    repo: tafia/calamine
+    pr: 671
+    stack: rust
+    kind: correctness
+    size: "+84/-0"
+    label: has-issue
+    note: "Uses quick-xml trim_text(true) to strip whitespace from <t> elements lacking xml:space=preserve. But trim_text trims each Text event independently, so when a character reference splits text across events, a literal space between two entities is silently eaten ('日期 时间' -> '日期时间')."
+    evidence: "Fixed by tafia/calamine#673 (same author): '#671 introduced a subtle bug ... trim_text operates on each Text event independently, so internal whitespace got wrongly eaten.'"
+    expect_loci:
+      - path: src/xlsx/mod.rs
+        about: "Per-event trim_text toggle around the Event::Text loop truncates internal whitespace across multi-event text runs."
+
+  - id: rust-kime-752
+    repo: Riey/kime
+    pr: 752
+    stack: rust
+    kind: regression
+    size: "+418/-47"
+    label: has-issue
+    note: "Triage fix so shortcuts on special chars fire: the Hangul engine's KeyValue::Pass arm now unconditionally returns false (bypass to app). But Pass is also how layouts emit literal characters (sebeolsik number/symbol layer), so those layouts leak raw keystrokes instead of committing the Hangul literal (Shift+U types 'U' not '7' on Sebeolsik 390)."
+    evidence: "Reverted same day by Riey/kime#755, which reverts exactly the KeyValue::Pass change: a per-layout sweep found all 4 sebeolsik layouts user-visibly broken (40–47 keys each). (#755's title cites an internal '#719' that doesn't resolve on GitHub; the pr:752 diff and #755 revert are the ground truth.)"
+    expect_loci:
+      - path: src/engine/backends/hangul/src/state.rs
+        about: "HangulEngine::key() KeyValue::Pass(_) returns false unconditionally instead of committing the layout's literal character."
+
+  # ── Python ────────────────────────────────────────────────────────────────
+  - id: python-dulwich-2287
+    repo: jelmer/dulwich
+    pr: 2287
+    stack: python
+    kind: regression
+    size: "+208/-19"
+    label: has-issue
+    note: "Decompression-bomb hardening. _parse_legacy_object_header raises zlib.error whenever decomp.unconsumed_tail is non-empty after the first 8192-byte chunk — but that fires even after the header's NUL terminator was already found, so any loose git object whose CONTENT inflates past 8KB fails to parse at all."
+    evidence: "Regression reported in jelmer/dulwich#2292 (fixed by #2293): '1.2.9 regression: loose objects larger than 8KB fail to parse ... from the decompression-bomb hardening in #2287.'"
+    expect_loci:
+      - path: dulwich/objects.py
+        about: "_parse_legacy_object_header raises on any unconsumed_tail instead of only when the NUL terminator search still fails within the header bound."
+
+  # ── Clean (substantive merged PRs, no later revert — a good reviewer stays quiet) ──
+  - id: rust-calamine-659
+    repo: tafia/calamine
+    pr: 659
+    stack: rust
+    kind: feature
+    size: "+514/-1"
+    label: clean
+    note: "Adds a full public hyperlink-reading API (worksheet_hyperlinks / _at, Hyperlink struct) — substantial real logic resolving long-open issue #360, with a dedicated fixture and integration tests."
+    evidence: "Merged; no later revert or regression PR references #659."
+    expect_loci: []
+
+  - id: python-dulwich-2289
+    repo: jelmer/dulwich
+    pr: 2289
+    stack: python
+    kind: hardening
+    size: "+121/-2"
+    label: clean
+    note: "Bounds EWAH bitmap running-length decoding so a corrupt/truncated .bitmap index can't drive an unbounded loop (DoS via a bad local file). Correct, self-contained; unlike sibling #2287 it was never reverted."
+    evidence: "Merged; no later revert or regression PR references #2289."
+    expect_loci: []
+
+  # ── TypeScript / JavaScript ───────────────────────────────────────────────
+  - id: ts-editate-384
+    repo: inokawa/editate
+    pr: 384
+    stack: ts
+    kind: regression
+    size: "+291/-18"
+    label: has-issue
+    note: "Rewrote ToggleFormat() to route BOTH the collapsed-cursor case and the range-selection case through one hasIntersection()-gated loop over iterText(). For a collapsed (zero-width) range, hasIntersection never returns true, so toggling bold/italic at the cursor became a silent no-op."
+    evidence: "Fixed ~2h later by inokawa/editate#385 ('Fix regression in ToggleFormat', references #384): splits the collapsed case back into its own branch calling editor.apply() directly, without the hasIntersection() gate."
+    expect_loci:
+      - path: src/commands.ts
+        about: "ToggleFormat(): a collapsed cursor range is gated by hasIntersection() against a zero-width range, which is always false, so hasText stays false and the format toggle no-ops."
+
+  # NOTE: waku is 6363★ (above the 50–4000 band) — niche RSC framework by a well-known author, so somewhat higher
+  # contamination risk than the obscure cases above. Kept because the maintainer named it and the bug is subtle;
+  # flagged so a per-case contamination check can drop it if the ranking looks memorized only here.
+  - id: ts-waku-1981
+    repo: wakujs/waku
+    pr: 1981
+    stack: ts
+    kind: regression
+    size: "+133/-45"
+    label: has-issue
+    note: "Registered user middleware (which now actually propagates a Response it returns) BEFORE the isBuild-guarded serveStatic middleware in all 4 adapters. Production builds then route public/ static-file requests through user middleware (which can redirect/intercept) before static serving — hijacking static files."
+    evidence: "Regression #2006 ('production server applies middleware to public/ static files', alpha.6 after #1981); fix #2007 ('revert the middleware order ... close #2006'). Verified by diffing merge-commit blobs: serveStatic is AFTER user middleware at #1981, BEFORE at #2007."
+    expect_loci:
+      - path: packages/waku/src/adapters/node.ts
+        about: "app.use() order: user middleware registered before the `if (isBuild) app.use(serveStatic(...))` block (same in bun.ts/deno.ts/aws-lambda.ts)."
+      - path: packages/waku/src/lib/hono/middleware.ts
+        about: "middlewareRunner() now returns a user handler's Response instead of discarding it, so combined with the ordering it short-circuits static-file requests."
+
+  - id: ts-waku-1493
+    repo: wakujs/waku
+    pr: 1493
+    stack: ts
+    kind: feature
+    size: "large"
+    label: clean
+    note: "Migration onto the official @vitejs/plugin-rsc — large-surface Vite/RSC integration change, 63 reviews. A good reviewer stays clean (nits at most)."
+    evidence: "Merged; no later 'regression from #1493' PR (a later FOUC regression #1568 blames a different PR, #1514, not this one)."
+    expect_loci: []
