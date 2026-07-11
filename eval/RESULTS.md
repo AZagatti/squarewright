@@ -813,3 +813,21 @@ not "each proven worse at N=3."
   not a model swap. Reproduce the anchor with `bun run scripts/eval.ts --provider zai --model glm-5.2 --thinking
   off --structurer zai:glm-5.2 --repeat 3` then `scripts/judge.ts --reports … --judge-repeats 2 --model
   openrouter:deepseek/deepseek-v3.2`.
+
+## SURVEYOR coverage pass — measured, NULL (2026-07-11)
+
+The opt-in SURVEYOR mechanism (#95) adds a same-call instruction to re-scan every changed file for the same root
+cause (targets the enumeration miss-class: a bug found in one file but not its siblings). A/B measured (surveyor
+off vs on), golden N=3, structurer-pinned zai:glm-5.2, deepseek-v3.2 cross-family judge:
+
+| model | defect OFF (median) | defect ON (median) |
+|---|---|---|
+| glm-5.2 | 3.5 / 11 | 2 / 11 |
+| minimax-m3 | 1 / 11 | 1.5 / 11 |
+
+**Verdict: null-to-negative.** On glm-5.2 it *hurt* (3.5→2; FPs also fell — the coverage instruction made the
+model consolidate, not find more); on minimax-m3 it moved 1→1.5, inside the N=3 noise band. The naive same-call
+enumeration does not lift defect recall. It stays **opt-in / off by default and is NOT wired into the production
+review path** — a documented dead-end, not a regression. (Consistent with the null Verifier result and cc-dcp's
+finding that a model can't reliably re-check its own blind spot by re-reading the same diff.) The enumeration
+miss-class, if it's to be cracked, needs a different mechanism than "ask the model to look again."
