@@ -19,6 +19,8 @@ import type { ModelLane } from "../src/core/types.js";
 import {
   createJudge,
   type DefectLocus,
+  defectFileViolations,
+  hallucinationWarning,
   type JudgedFinding,
   summarize,
   summarizeMatrix,
@@ -110,6 +112,54 @@ function selectScored(
  * PAID judge is a loop that must not run uncapped, so each call's token-estimate feeds `guard` and the run
  * aborts the moment it exceeds the cap. A pass cut short is dropped (not recorded as a truncated data point).
  */
+/** One judge pass over every scorable case: judges each, accumulates spend, and stops early if the cap trips. */
+async function judgeOnePass(
+  judge: Judge,
+  lane: ModelLane,
+  scored: ScoredCase[],
+  ctx: { guard: SpendGuard; price: TokenPrice }
+): Promise<{
+  aborted: boolean;
+  calls: number;
+  passCases: Array<{ defect: number; file: number; id: string }>;
+  passTotal: number;
+  ungraded: number;
+}> {
+  const passCases: Array<{ defect: number; file: number; id: string }> = [];
+  let passTotal = 0;
+  let calls = 0;
+  let ungraded = 0;
+  let aborted = false;
+  for (const { r, c } of scored) {
+    // biome-ignore lint/performance/noAwaitInLoops: sequential by design — respects the judge model's concurrency limits AND lets the spend guard see each call's cost before the next fires
+    const { grades, usage, graded } = await judge.judge(
+      c.expect_loci,
+      r.findings ?? [],
+      lane
+    );
+    calls += 1;
+    if (!graded) {
+      ungraded += 1;
+    }
+    ctx.guard.add(usage.input * ctx.price.in + usage.output * ctx.price.out);
+    const matched = grades.filter((g) => g.matched).length;
+    passTotal += matched;
+    // `file` is the eval's r.hitLoci (loci whose file a finding hit, via eval.ts's generous basename sameFile).
+    // The invariant below couples to that: it's a valid superset of defect matches only while a defect match
+    // implies a finding on the locus's file. A finding with a correct diagnosis but a mislabeled path could in
+    // principle break that — the judge's "same root cause AND location" contract is what keeps it sound.
+    passCases.push({ defect: matched, file: r.hitLoci ?? 0, id: r.id });
+    if (ctx.guard.tripped()) {
+      console.log(
+        `\n🛑 SPEND CAP: judge run spent ~$${ctx.guard.spent().toFixed(4)} (> cap). Aborting; partial results below.`
+      );
+      aborted = true;
+      break;
+    }
+  }
+  return { aborted, calls, passCases, passTotal, ungraded };
+}
+
 async function runPasses(
   judge: Judge,
   lane: ModelLane,
@@ -117,6 +167,7 @@ async function runPasses(
   ctx: { guard: SpendGuard; price: TokenPrice; repeats: number; total: number }
 ): Promise<{
   calls: number;
+  hallucinatedPasses: number;
   perCase: Map<string, number[]>;
   perPassRecall: number[];
   ungraded: number;
@@ -125,42 +176,40 @@ async function runPasses(
   const perPassRecall: number[] = [];
   let ungraded = 0;
   let calls = 0;
-  let aborted = false;
-  for (let k = 0; k < ctx.repeats && !aborted; k += 1) {
-    let passTotal = 0;
-    for (const { r, c } of scored) {
-      // biome-ignore lint/performance/noAwaitInLoops: sequential by design — respects the judge model's concurrency limits AND lets the spend guard see each call's cost before the next fires
-      const { grades, usage, graded } = await judge.judge(
-        c.expect_loci,
-        r.findings ?? [],
-        lane
-      );
-      calls += 1;
-      if (!graded) {
-        ungraded += 1;
-      }
-      ctx.guard.add(usage.input * ctx.price.in + usage.output * ctx.price.out);
-      const matched = grades.filter((g) => g.matched).length;
-      passTotal += matched;
-      perCase.set(r.id, [...(perCase.get(r.id) ?? []), matched]);
-      if (ctx.guard.tripped()) {
-        console.log(
-          `\n🛑 SPEND CAP: judge run spent ~$${ctx.guard.spent().toFixed(4)} (> cap). Aborting; partial results below.`
-        );
-        aborted = true;
-        break;
-      }
+  let hallucinatedPasses = 0;
+  for (let k = 0; k < ctx.repeats; k += 1) {
+    // biome-ignore lint/performance/noAwaitInLoops: sequential by design — the shared spend guard must see each pass's cost before the next fires
+    const pass = await judgeOnePass(judge, lane, scored, ctx);
+    calls += pass.calls;
+    ungraded += pass.ungraded;
+    for (const { id, defect } of pass.passCases) {
+      perCase.set(id, [...(perCase.get(id) ?? []), defect]);
     }
-    if (!aborted) {
-      perPassRecall.push(passTotal);
-      if (ctx.repeats > 1) {
+    if (pass.aborted) {
+      break;
+    }
+    // STRUCTURAL INVARIANT: defect matches ⊆ file hits. A case scoring defect > file means the judge claimed a
+    // root-cause match on a locus whose file was never flagged — impossible, i.e. the judge HALLUCINATED (a
+    // failure mode seen with a weak deepseek-v4-flash judge in this project). Taint the whole pass so a broken
+    // judge can't quietly enter the recall interval / runs.jsonl.
+    const violations = defectFileViolations(pass.passCases);
+    if (violations.length > 0) {
+      hallucinatedPasses += 1;
+      for (const v of violations) {
         console.log(
-          `  pass ${k + 1}/${ctx.repeats}: defect ${passTotal}/${ctx.total}`
+          `  ⚠️  JUDGE HALLUCINATION: ${v.id} defect=${v.defect} > file=${v.file} — impossible (defect ⊆ file). Judge is unreliable; pass ${k + 1} excluded.`
         );
       }
+      continue;
+    }
+    perPassRecall.push(pass.passTotal);
+    if (ctx.repeats > 1) {
+      console.log(
+        `  pass ${k + 1}/${ctx.repeats}: defect ${pass.passTotal}/${ctx.total}`
+      );
     }
   }
-  return { calls, perCase, perPassRecall, ungraded };
+  return { calls, hallucinatedPasses, perCase, perPassRecall, ungraded };
 }
 
 function printReport(
@@ -191,7 +240,7 @@ function printReport(
   console.log(`  FILE-level (eval metric): ${ctx.fileHits}/${ctx.total}`);
   if (perPassRecall.length === 0) {
     console.log(
-      "  DEFECT-level (judge):     no complete pass — spend cap hit mid-first-pass (see per-case above)"
+      "  DEFECT-level (judge):     no usable pass — every pass was cut short (spend cap) or excluded (judge hallucination); see above"
     );
     return;
   }
@@ -220,8 +269,11 @@ interface JudgeCtx {
   repeats: number;
 }
 
-/** Score one report (K judge-passes) and print its per-case + spread report. */
-async function runSingle(reportPath: string, ctx: JudgeCtx): Promise<void> {
+/**
+ * Score one report (K judge-passes) and print its per-case + spread report. Returns the number of judge passes
+ * excluded for violating the defect ⊆ file invariant (a hallucinating judge) so the caller can fail non-zero.
+ */
+async function runSingle(reportPath: string, ctx: JudgeCtx): Promise<number> {
   const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
     results: ReportResult[];
     config?: unknown;
@@ -237,17 +289,13 @@ async function runSingle(reportPath: string, ctx: JudgeCtx): Promise<void> {
     `  passes: ${ctx.repeats}${ctx.paid ? `  (PAID judge — spend cap $${ctx.maxSpend})` : ""}\n`
   );
 
-  const { perCase, perPassRecall, ungraded, calls } = await runPasses(
-    ctx.judge,
-    ctx.lane,
-    scored,
-    {
+  const { perCase, perPassRecall, ungraded, calls, hallucinatedPasses } =
+    await runPasses(ctx.judge, ctx.lane, scored, {
       guard: ctx.guard,
       price: ctx.price,
       repeats: ctx.repeats,
       total,
-    }
-  );
+    });
   printReport(scored, perCase, perPassRecall, {
     fileHits,
     repeats: ctx.repeats,
@@ -257,12 +305,19 @@ async function runSingle(reportPath: string, ctx: JudgeCtx): Promise<void> {
   if (warn) {
     console.log(`\n${warn}`);
   }
+  if (hallucinatedPasses > 0) {
+    // Denominator = passes actually invariant-checked (completed + excluded), never the requested repeat count,
+    // so the ratio can't read as "all passes failed" when some were spend-aborted before the check.
+    const evaluated = perPassRecall.length + hallucinatedPasses;
+    console.log(`\n${hallucinationWarning(hallucinatedPasses, evaluated)}`);
+  }
   if (ctx.paid) {
     console.log(
       `  judge spend (token estimate): ~$${ctx.guard.spent().toFixed(4)} of $${ctx.maxSpend} cap`
     );
   }
   console.log("");
+  return hallucinatedPasses;
 }
 
 function band(s: { max: number; median: number; min: number }): string {
@@ -277,7 +332,10 @@ function band(s: { max: number; median: number; min: number }): string {
  * from judge variance (spread within a fixed report) — so recall is a range, not a point (#49 AC3). One shared
  * spend guard caps the whole matrix.
  */
-async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
+async function runMatrix(
+  reportPaths: string[],
+  ctx: JudgeCtx
+): Promise<number> {
   console.log(
     `\n▸ matrix: ${reportPaths.length} report(s) × ${ctx.repeats} judge-pass(es)`
   );
@@ -292,6 +350,8 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
   let stoppedEarly = false;
   let ungraded = 0;
   let calls = 0;
+  let hallucinatedPasses = 0;
+  let evaluatedPasses = 0;
   for (const p of reportPaths) {
     // Money is guarded across the WHOLE matrix: once the cap trips, don't start another report's passes.
     if (ctx.guard.tripped()) {
@@ -315,6 +375,10 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
     const { perPassRecall } = pass;
     ungraded += pass.ungraded;
     calls += pass.calls;
+    hallucinatedPasses += pass.hallucinatedPasses;
+    // Passes that ran to completion and were invariant-checked (recorded + excluded), across all reports — the
+    // honest denominator for the hallucination banner, unlike the per-report ctx.repeats.
+    evaluatedPasses += perPassRecall.length + pass.hallucinatedPasses;
     if (perPassRecall.length === 0) {
       // No complete pass (spend cap cut this report short) — exclude it, never fold a fake 0 into the
       // interval, and keep its loci total out of the denominator too.
@@ -351,11 +415,16 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
   if (warn) {
     console.log(`\n${warn}`);
   }
+  if (hallucinatedPasses > 0) {
+    console.log(
+      `\n${hallucinationWarning(hallucinatedPasses, evaluatedPasses)}`
+    );
+  }
   if (matrix.length === 0) {
     console.log(
       "\n── no report produced a complete judge pass — nothing to report ──\n"
     );
-    return;
+    return hallucinatedPasses;
   }
 
   const total = Math.max(...totals);
@@ -375,6 +444,7 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
     );
   }
   console.log("");
+  return hallucinatedPasses;
 }
 
 async function main() {
@@ -414,8 +484,7 @@ async function main() {
     if (paths.length === 0) {
       throw new Error("--reports needs a comma-separated list of report paths");
     }
-    await runMatrix(paths, ctx);
-    return;
+    return await runMatrix(paths, ctx);
   }
   const reportPath = arg("report");
   if (!reportPath) {
@@ -423,10 +492,18 @@ async function main() {
       "provide --report <path> (or --reports <p1,p2,…> for the analysis×judge matrix)"
     );
   }
-  await runSingle(reportPath, ctx);
+  return await runSingle(reportPath, ctx);
 }
 
-main().catch((e) => {
-  console.error("judge failed:", e instanceof Error ? e.message : e);
-  process.exit(1);
-});
+main()
+  .then((hallucinatedPasses) => {
+    // A judge that violated defect ⊆ file is unreliable: fail non-zero so a hallucinated run can't quietly
+    // pass a script/CI gate or be recorded into runs.jsonl as if it were a real measurement.
+    if (hallucinatedPasses > 0) {
+      process.exit(2);
+    }
+  })
+  .catch((e) => {
+    console.error("judge failed:", e instanceof Error ? e.message : e);
+    process.exit(1);
+  });

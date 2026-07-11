@@ -60,6 +60,44 @@ export function ungradedWarning(
 }
 
 /**
+ * A LOUD warning when the judge violated the structural invariant defect-matches ⊆ file-hits on some passes
+ * (see the check in scripts/judge.ts). Such a pass is excluded from the recall interval and the caller exits
+ * non-zero, because a judge that claims a root-cause match on a locus whose file was never flagged is
+ * hallucinating — a failure mode we hit with a weak deepseek-v4-flash judge earlier in this project (its
+ * defect count came out above the report's file-hit count, which is impossible). `evaluated` is the number of
+ * invariant-checked (non-aborted) passes, so `hallucinated/evaluated` is always a real ≤1 ratio. Returns the
+ * banner; callers gate on `hallucinated > 0` themselves.
+ */
+export function hallucinationWarning(
+  hallucinated: number,
+  evaluated: number
+): string {
+  return `🛑 JUDGE UNRELIABLE: ${hallucinated}/${evaluated} judged pass(es) scored defect > file (impossible — defect ⊆ file), so the judge hallucinated matches. Those passes were EXCLUDED from the recall interval and this run exits non-zero. Do NOT record these numbers; re-run with a different-family judge (e.g. zai:glm-5.2 or deepseek/deepseek-v3.2).`;
+}
+
+/** One case whose judge-assigned defect count exceeds its file-hit count — an impossible score. */
+export interface DefectFileViolation {
+  defect: number;
+  file: number;
+  id: string;
+}
+
+/**
+ * The structural invariant: a locus can be defect-matched only if some finding lands on its file, so per case
+ * `defectMatches ≤ fileHits`. A judge that returns more defect matches than file hits is hallucinating a
+ * root-cause match onto a locus whose file was never flagged — a failure mode observed with a weak
+ * deepseek-v4-flash judge in this project. Returns every violating case so the caller can flag it, exclude the
+ * pass, and fail non-zero — pure so it's testable without any model call.
+ */
+export function defectFileViolations(
+  cases: Array<{ defect: number; file: number; id: string }>
+): DefectFileViolation[] {
+  return cases
+    .filter((c) => c.defect > c.file)
+    .map((c) => ({ defect: c.defect, file: c.file, id: c.id }));
+}
+
+/**
  * Sum billable tokens across a session's messages for the spend guard — mirrors `sumTokens` in
  * src/pi/worker.ts, including its `totalTokens - input` fallback for messages that report only a total. Feeds
  * a money-safety cap, so it stays byte-compatible with the worker's accounting.

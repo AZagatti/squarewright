@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import {
+  defectFileViolations,
+  hallucinationWarning,
   summarize,
   summarizeMatrix,
   sumUsage,
@@ -18,6 +20,40 @@ test("ungradedWarning: flags a fully-broken judge (all calls ungraded)", () => {
 
 test("ungradedWarning: flags partial tool-call failures too", () => {
   expect(ungradedWarning(3, 8)).toContain("3/8");
+});
+
+test("defectFileViolations: no violation when every case has defect ≤ file", () => {
+  expect(
+    defectFileViolations([
+      { defect: 0, file: 0, id: "a" },
+      { defect: 2, file: 2, id: "b" },
+      { defect: 1, file: 3, id: "c" },
+    ])
+  ).toEqual([]);
+});
+
+test("defectFileViolations: flags a case where defect exceeds file (impossible → hallucination)", () => {
+  const v = defectFileViolations([
+    { defect: 1, file: 2, id: "case-a" },
+    { defect: 3, file: 2, id: "case-b" },
+  ]);
+  expect(v).toEqual([{ defect: 3, file: 2, id: "case-b" }]);
+});
+
+test("defectFileViolations: reports every violating case, not just the first", () => {
+  const v = defectFileViolations([
+    { defect: 2, file: 1, id: "x" },
+    { defect: 1, file: 1, id: "y" },
+    { defect: 5, file: 0, id: "z" },
+  ]);
+  expect(v.map((c) => c.id)).toEqual(["x", "z"]);
+});
+
+test("hallucinationWarning: loudly names the excluded passes and the invariant", () => {
+  const w = hallucinationWarning(2, 3);
+  expect(w).toContain("2/3");
+  expect(w).toContain("defect ⊆ file");
+  expect(w).toContain("EXCLUDED");
 });
 
 test("summarize: a single value has no spread (min = median = max)", () => {
