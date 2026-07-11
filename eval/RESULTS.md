@@ -768,7 +768,9 @@ Design (council): a fresh **glm-5.2 control** as anchor, all arms **structurer-p
 that silently swung earlier probes), candidates screened at **off** then **low** on golden, scored at
 **DEFECT-level** (file-level is an upper bound and — proven here — misleading). Anchor judged rigorously
 (N=3 × deepseek-v3.2 cross-family judge × `--judge-repeats 2`); candidates screen-judged (N=1, single judge) —
-so candidate numbers are screen-grade, not a settled rank, but the signal is unambiguous.
+so candidate numbers are screen-grade, not a settled rank. The screen is decisive not because it's precise but
+because no candidate showed an edge even on its best single draw (see below), so none warranted the paid N=3
+confirm — but the *magnitudes* are noisy and must not be read as a fine ranking.
 
 **Anchor — glm-5.2 (z.ai, free), golden N=3, deepseek cross-family judge:** defect **0–6, median 3.5 / 11**
 (file 7/11). The spread is almost all *analysis* variance (per-report medians 0.5–5; judge variance only 1–2) —
@@ -790,11 +792,15 @@ i.e. glm-5.2's run-to-run swing, the reason single-run ranks never reproduce.
 tiers and already lost this session; grok-4.5 / minimax-m2 on OpenRouter are `reasoning.mandatory=true` → auto-
 disqualified as a *default* by the #36 reasoning-trap rule.)
 
-**Verdict — no switch. glm-5.2 stays the honest free default.** Every candidate's defect recall is ≤ 3–4 at
-both effort levels, at or below the anchor's 3.5 median — the switch rule (≥2-loci gain with non-overlapping
-ranges, reproduced on contam-safe, operationally viable) is nowhere met. **Low reasoning did not lift defect
-recall** above the free baseline for any model (refining, not contradicting, the earlier "low is often the file
-sweet spot" note — it helps *file* recall, not *defect* recall).
+**Verdict — no switch. glm-5.2 stays the honest free default.** No candidate scored above 4 defect on any single
+screen draw, and the one 4 (minimax-m3, off) sits well inside the anchor's own **0–6** range (median 3.5) — so
+even the best draw doesn't separate from the free baseline. A *switch rule proposed here* (≥2-loci gain with
+non-overlapping ranges, reproduced on contam-safe, operationally viable) is nowhere met. **Low reasoning did not
+lift defect recall** above the free baseline for any model (refining, not contradicting, the earlier "low is
+often the file sweet spot" note — it helps *file* recall, not *defect* recall). This is a **screen-and-defer**
+settlement of #49 AC4: only the anchor got the literal N≥3 × cross-family treatment; candidates were screened
+(N=1) and none cleared the bar to justify that spend — the honest reading is "no candidate worth confirming,"
+not "each proven worse at N=3."
 
 **Two methodological findings (the durable value here):**
 - **File-level model ranking is misleading.** kimi-k2.6 topped the *file* metric at off (9/11) — 2 above the
