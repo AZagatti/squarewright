@@ -378,8 +378,11 @@ async function runMatrix(reportPaths: string[], ctx: JudgeCtx): Promise<void> {
 }
 
 async function main() {
+  // --manifest <path> must match the corpus the reports were produced on (default golden), so the case→loci map
+  // covers the report's case ids; a mismatched manifest scores every case /0 (its ids aren't found).
+  const manifestPath = arg("manifest") ?? `${ROOT}eval/golden/manifest.yaml`;
   const manifest = (
-    parseYaml(readFileSync(`${ROOT}eval/golden/manifest.yaml`, "utf8")) as {
+    parseYaml(readFileSync(manifestPath, "utf8")) as {
       cases: Case[];
     }
   ).cases;
