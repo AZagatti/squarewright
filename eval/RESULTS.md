@@ -657,7 +657,9 @@ and **1/7** (full 9-case) across two runs, catching calamine + dulwich, missing 
 bugs. Not all-caught (would mean too-easy/memorized), not all-missed (too-hard). Gradeable.
 
 **First memorization-vs-difficulty signal (a LEAD, not a result):** glm-5.2's file recall here (~15–30%, 1–2/7)
-is **proportionally LOWER than on golden** (~55%, median 6/11). That gap is *consistent with* golden recall being
+is **proportionally LOWER than on golden** (~55%, median 6/11 — **file-level; golden's *judged* recall is only
+~27%, 1–4/11 (see "Honest interval" above) — do not read ~55% as real recall**; the comparison holds because both
+sides are file-level here). That gap is *consistent with* golden recall being
 partly familiarity-inflated — a model does worse on defects it can't have memorized. BUT it is **not proof**: the
 contam-safe bugs may simply be harder (subtle concurrency/encoding/ordering defects), N is 1 run × file-level ×
 7 loci (variance is enormous — the same corpus swung 2/4→1/7), and clean-FP was inflated by one 85K truncated

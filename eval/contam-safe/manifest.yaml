@@ -40,7 +40,7 @@ cases:
     size: "+418/-47"
     label: has-issue
     note: "Triage fix so shortcuts on special chars fire: the Hangul engine's KeyValue::Pass arm now unconditionally returns false (bypass to app). But Pass is also how layouts emit literal characters (sebeolsik number/symbol layer), so those layouts leak raw keystrokes instead of committing the Hangul literal (Shift+U types 'U' not '7' on Sebeolsik 390)."
-    evidence: "Reverted same day by Riey/kime#755 ('revert #719 pass-key bypass that broke Hangul layouts'): a per-layout sweep found all 4 sebeolsik layouts user-visibly broken (40–47 keys each)."
+    evidence: "Reverted same day by Riey/kime#755, which reverts exactly the KeyValue::Pass change: a per-layout sweep found all 4 sebeolsik layouts user-visibly broken (40–47 keys each). (#755's title cites an internal '#719' that doesn't resolve on GitHub; the pr:752 diff and #755 revert are the ground truth.)"
     expect_loci:
       - path: src/engine/backends/hangul/src/state.rs
         about: "HangulEngine::key() KeyValue::Pass(_) returns false unconditionally instead of committing the layout's literal character."
