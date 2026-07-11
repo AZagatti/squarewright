@@ -44,6 +44,7 @@ Read this before running paid-provider evals or touching reasoning/structurer co
 ## Pi model catalog (adding / overriding models)
 
 - Custom models & overrides live in **`~/.pi/agent/models.json`** (`getAgentDir()/models.json`), reloaded each run.
+- **Squarewright can load a PROJECT catalog instead** (`models.json` at the repo root, or `SQW_MODELS_JSON`) via `createModelRegistry` — issue #76, see [`custom-model-catalog.md`](custom-model-catalog.md). Pi loads exactly one file, so a project catalog **REPLACES** this global one (no merge): any cost-trap `maxTokens` cap you keep here must be **ported into the project file** or it stops applying. The loader warns when it supersedes an existing global file.
 - Format: `{"providers": {"<provider>": {"models": [...], "modelOverrides": {...}}}}`. A **new model id under a built-in provider is added alongside** the built-ins (used to add glm-5/4.6/4.5); `modelOverrides.<id>` tweaks a built-in (used to cap deepseek `maxTokens`). Only `id` is required; `baseUrl`/`api`/`compat` allowed at model level. Docs: `node_modules/@earendil-works/pi-coding-agent/docs/models.md`
 - `thinkingLevelMap` maps pi thinking levels → provider values (`null` = unsupported/clamped). `compat.supportsReasoningEffort` gates whether `reasoning_effort` is sent (only glm-5.2 has it true).
 - Pi's built-in z.ai catalog is auto-generated — **don't fully trust its `thinkingLevelMap`; verify against z.ai docs** (it was accurate for glm-5.2, but the model list lagged real availability).
