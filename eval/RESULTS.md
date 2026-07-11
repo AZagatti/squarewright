@@ -668,32 +668,40 @@ reports of glm-5.2 AND a frontier model on BOTH corpora — if the frontier mode
 contam-safe, golden's frontier ranking was memorization. That comparison is the next step; this build makes it
 runnable. Reproduce: `bun run scripts/eval.ts --manifest eval/contam-safe/manifest.yaml --provider zai --model glm-5.2 --thinking off`.
 
-### Memorization verdict — golden is a valid instrument; Fugu's edge is real (2026-07-11)
-The contamination question, answered. Ran glm-5.2 (free) and Sakana Fugu on BOTH corpora + deepseek-v4-pro
-(opencode Go) on contam-safe, has-issue only, **matched structurer** (free zai:glm-5.2), N=2 reports, judged by
-glm-5.2 (free), 2 passes each. (Also fixed a real bug: `scripts/judge.ts` hardcoded the golden manifest for the
-case→loci map, so judging ANY other corpus silently scored /0 — now a `--manifest` flag, matching `eval.ts`.)
+### Contamination — a first cross-corpus check (a LEAD, below our own bar; not a verdict) (2026-07-11)
+Ran glm-5.2 (free) and Sakana Fugu on BOTH corpora + deepseek-v4-pro (opencode Go) on contam-safe, has-issue only,
+**matched structurer** (free zai:glm-5.2), **N=2 reports**, judged by **a single judge** (free glm-5.2), 2 passes
+each. **This is below the bar this file set itself** for a settled comparison one section up ("Matched-structurer,
+cross-family, N=3 re-test": ≥3 reports **and** a cross-family judge). N=2 + a single, glm-baseline-same-family
+judge meets 1 of those. So everything below is a **directional lead, not a result** — do not cite it as settled.
+(It did surface + fix a real bug: `scripts/judge.ts` hardcoded the golden manifest for the case→loci map, so
+judging any other corpus silently scored /0 — now a `--manifest` flag, matching `eval.ts`.)
 
-| model | golden judged (mean /11) | contam-safe judged (mean /7) |
+| model | golden judged /11 (passes) | contam-safe judged /7 (passes) |
 |---|---|---|
-| glm-5.2 (free) | 3.25 (~30%) — passes 2,2,4,5 | 2.25 (~32%) — passes 2,2,2,3 |
-| **Sakana Fugu** | **5.5 (~50%)** — 4,6,6,6 | **4.0 (~57%)** — 3,4,4,5 |
-| deepseek-v4-pro (opencode Go) | — | 1.25 (~18%) — 0,1,2,2 |
+| glm-5.2 (free) | 2–5, mean 3.25 (2,2,4,5) | 2–3, mean 2.25 (2,2,2,3) |
+| Sakana Fugu | 4–6, mean 5.5 (4,6,6,6) | 3–5, mean 4.0 (3,4,4,5) |
+| deepseek-v4-pro (opencode Go) | — | 0–2, mean 1.25 (0,1,2,2) |
 
-- **Fugu ÷ glm gap: 1.7× on golden, 1.8× on contam-safe — it HOLDS.** If golden's ranking were memorization,
-  Fugu's advantage would COLLAPSE on obscure/unmemorizable repos; instead it's near-identical. So **the golden
-  corpus is NOT significantly contamination-inflated — it's a valid instrument for ranking models.** The skeptic's
-  central worry is answered with evidence, not assertion. glm-5.2's own recall is also the same on both (~30% vs
-  ~32%) — no memorization boost for it either.
-- **Fugu's advantage is real reviewing skill (~1.7–1.8× over free glm-5.2)**, reproduced on code it can't have
-  memorized — a contamination-safe confirmation of the earlier Fugu result. The earlier "~2×" was partly a
-  STRUCTURER confound (Fugu had used a deepseek structurer, glm the free glm-5-turbo); with a matched structurer
-  the honest edge is ~1.7–1.8×. Fugu stays a **premium, opt-in, expiring (2026-07-29), reasoning-trap** option —
-  NOT the free default. glm-5.2 remains the default.
-- **deepseek-v4-pro via opencode Go is NOT a recall upgrade** (~18% judged, below free glm's ~32%; its file-level
-  3/7 was noise). opencode key tested + works (Go tier `/zen/go/v1`; the PAYG frontier models are unreachable —
-  $0 balance), but its open models don't beat free glm on recall.
-- **Caveats:** N=2 reports × 7-loci (contam) / 11-loci (golden), single (free glm-5.2) judge — same-family to the
-  glm BASELINE, which would if anything INFLATE glm and make the Fugu gap CONSERVATIVE. The robustness signal is
-  the **cross-corpus consistency** (1.7 vs 1.8), stronger than any single N. A paid cross-family judge + N≥3 would
-  tighten it, but the direction is clear. Reproduce: the two runs are logged in `eval/runs.jsonl`.
+- **Directionally, the Fugu-over-glm gap looks SIMILAR on both corpora** (mean ratio ~1.7× golden, ~1.8× contam) —
+  a first hint that golden's Fugu-vs-glm ranking is **not dominated by memorization** (if it were, Fugu's edge
+  would be expected to collapse on obscure/unmemorizable repos, and it doesn't here). glm-5.2's own mean recall is
+  also similar on both (~3.25/11 vs ~2.25/7). **But the raw passes OVERLAP** — golden: glm max 5 vs Fugu min 4;
+  contam: glm max 3 = Fugu min 3 — so at this N the per-corpus gap is a mean difference inside overlapping ranges,
+  not a separation. Treat "the gap holds" as a hypothesis this run is consistent with, not a proven fact.
+- **On the earlier "~2×":** that figure came from the N=3 re-test which ALSO used a matched structurer
+  (deepseek-v3.2 for both models) — there was no glm-5-turbo mismatch. The number differs here (~1.7×) mainly
+  because THIS run used a *different* matched structurer (glm-5.2), under which glm-5.2's own recall reads higher
+  (3.25 vs the deepseek-structurer 1.5–3), shrinking the ratio. So the absolute gap is **structurer- and
+  N-sensitive** (~2× under a deepseek structurer, ~1.7× under a glm-5.2 structurer); what's stable across this
+  run is that Fugu > glm and the ratio is comparable on the two corpora. Fugu stays a **premium, opt-in, expiring
+  (2026-07-29), reasoning-trap** option, not the free default; glm-5.2 remains the default regardless.
+- **deepseek-v4-pro via opencode Go did NOT beat free glm here** (mean ~1.25/7 vs glm ~2.25/7; its one file-level
+  3/7 didn't survive judging). opencode key tested + works (Go tier `/zen/go/v1`; PAYG frontier models unreachable
+  — $0 balance). One N=2 read, not a rank, but no sign its open models are a recall upgrade over free glm.
+- **Caveats (why this is a lead):** N=2 reports; 7 loci (contam) / 11 (golden); a SINGLE judge that is same-family
+  to the glm baseline — a *plausible* (untested) direction is that same-family judging favors glm and understates
+  Fugu, but implicit style-preference bias the other way isn't ruled out, so the sign is a hypothesis, not a
+  mitigant. The one genuinely-more-than-single-N signal is the **cross-corpus consistency** (~1.7 vs ~1.8). To
+  settle it: ≥3 reports/condition + a cross-family judge (the same bar the retracted section prescribes). Runs
+  logged in `eval/runs.jsonl`.
