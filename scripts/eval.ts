@@ -27,6 +27,7 @@ import type {
   ReviewContext,
   ThinkingLevel,
 } from "../src/core/types.js";
+import { sameFile } from "../src/eval/locus-match.js";
 import { aggregateFindings } from "../src/output/aggregate.js";
 import { buildPasses, DEFAULT_PERSONAS } from "../src/personas/defaults.js";
 import { selectPersonas } from "../src/personas/routing.js";
@@ -564,11 +565,7 @@ async function main() {
         const ms = Date.now() - t0;
         // has-issue recall: a finding on the same file as an expected locus counts as a hit (boundary-safe;
         // NOTE this is file-level only — it cannot see root-cause/precision; a judge scorer is the real fix).
-        const sameFile = (fp: string, lp: string) =>
-          fp === lp ||
-          fp.endsWith(`/${lp}`) ||
-          lp.endsWith(`/${fp}`) ||
-          fp.split("/").pop() === lp.split("/").pop();
+        // `sameFile` is shared with the miss-map so both score loci by one definition (src/eval/locus-match.ts).
         const lociTotal = c.expect_loci?.length ?? 0;
         const hitLoci =
           c.expect_loci?.filter((l) =>
