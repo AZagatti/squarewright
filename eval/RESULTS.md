@@ -705,3 +705,58 @@ judging any other corpus silently scored /0 — now a `--manifest` flag, matchin
   mitigant. The one genuinely-more-than-single-N signal is the **cross-corpus consistency** (~1.7 vs ~1.8). To
   settle it: ≥3 reports/condition + a cross-family judge (the same bar the retracted section prescribes). Runs
   logged in `eval/runs.jsonl`.
+
+## #45 AC1 — golden miss map (reproducible; file-level, observational)
+
+Enumerating the recall bottleneck as a reproducible table, not prose. `bun run scripts/missmap.ts` scores every
+golden has-issue locus (11 loci, 8 cases) by **file-level hit rate** across the saved reports in `eval/reports/`
+— a hit = some finding on the locus's file (`src/eval/locus-match.ts`, the same rule the eval's `hitLoci` uses).
+Snapshot over **227 reports (184 cover ≥1 golden case)**, sorted hardest-first:
+
+Columns `listed`/`other` split reports by whether the model name matches a hand-listed set
+(`fugu|sonnet|deepseek-v4|grok|minimax-m3|glm-5.2` — the free default plus named candidates); this is a
+**named-set membership test, not a proven strength ordering** (see caveats).
+
+| locus (case#loci) | overall | listed | other | file |
+|---|---|---|---|---|
+| css-tailwindcss-17247#1 | 8% (12/147) | 20% (9/44) | 3% (3/103) | preflight.css |
+| ts-vite-21019#0 | 16% (24/151) | 24% (11/45) | 12% (13/106) | node/utils.ts |
+| go-cli-10547#0 | 20% (31/153) | 25% (11/44) | 18% (20/109) | pr/create/create.go |
+| ruby-rails-54960#0 | 20% (30/147) | 45% (20/44) | 10% (10/103) | schema_cache.rb |
+| ts-vite-21019#1 | 39% (59/151) | 56% (25/45) | 32% (34/106) | create-vite/index.ts |
+| docker-grafana-124812#0 | 40% (59/149) | 52% (23/44) | 34% (36/105) | Dockerfile |
+| css-tailwindcss-17247#0 | 40% (59/147) | 68% (30/44) | 28% (29/103) | src/utilities.ts |
+| rust-tokio-7757#1 | 41% (63/155) | 80% (36/45) | 25% (27/110) | sharded_queue.rs |
+| rust-tokio-7757#0 | 44% (68/155) | 89% (40/45) | 25% (28/110) | pool.rs |
+| config-swup-1052#0 | 56% (92/165) | 74% (34/46) | 49% (58/119) | tsconfig.json |
+| python-requests-6667#0 | 58% (87/149) | 86% (38/44) | 47% (49/105) | adapters.py |
+
+**Findings (AC1: which loci are missed, and why):**
+- **No hard-unreachable locus.** Every locus is hit by *some* config (none is a structural 0% like the
+  relabelled ci-moby case). So the miss-class is **low, inconsistent reachability**, not unreachability — even the
+  best-reached locus (`adapters.py`) is only 58% file-level, and the median locus ~40%.
+- **Model choice moves recall a lot.** The `listed` bucket beats `other` on **every** locus, often 2–4×
+  (`pool.rs` 89% vs 25%, `utilities.ts` 68% vs 28%, `schema_cache.rb` 45% vs 10%) — consistent with the Fugu ~2×
+  judged result, i.e. recall is model-liftable, not a fixed corpus ceiling. But `listed` still reaches only
+  20–25% on the three hardest loci, so a better model raises the floor without solving them.
+- **A residual hard tail** stays low even for the `listed` bucket: `preflight.css` (20%), `node/utils.ts` (24%),
+  `create.go` (25%). These are the candidates for per-case inspection (prompt / routing / grounding), the cases
+  where "just use a stronger model" is *not* enough.
+
+**Honesty caveats — this is directional, not a controlled experiment:**
+- **Observational aggregate over heterogeneous configs.** The 227 reports mix grounding, personas, samples,
+  thinking, and structurer settings; this is not a matched A/B, so the `listed`/`other` gap is a lead, not an
+  effect size. (Grounding specifically was barely run on golden — N=3 — too few to classify.)
+- **`listed` is a named-set membership test, not a strength ranking.** Because the free default **glm-5.2 is in
+  `listed`**, the split is roughly "glm-5.2-and-named-candidates vs the rest" — it shows *the rest miss more*,
+  which is weaker than "frontier beats glm." In fact the effect is NOT monotonic in true model strength: isolating
+  frontier-only (excluding glm-5.2) is sometimes *worse* than `other` (e.g. `create.go`: frontier ~11% vs `other`
+  18%), so glm-5.2 carries much of `listed`'s edge. Treat the columns as a coarse routing hint, not a model rank.
+- **File-level is an UPPER bound.** A file hit is not a defect hit; the judge (`scripts/judge.ts`) consistently
+  scores defect < file, so true recall is below every number here. The file/defect gap is itself a miss-class
+  (findings on the right file that don't name the root cause).
+
+**The open decision (AC2 gate) — needs the maintainer.** The biggest measured lever is a stronger analysis model,
+but confirming *which* model and by how much needs a paid model-rank measurement (≥3 reports/condition + a
+cross-family judge — the standing bar). That's a **paid-spend go/no-go** the maintainer owns; flagged on #45,
+not run unattended.
