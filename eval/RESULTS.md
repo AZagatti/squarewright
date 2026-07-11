@@ -760,3 +760,50 @@ Columns `listed`/`other` split reports by whether the model name matches a hand-
 but confirming *which* model and by how much needs a paid model-rank measurement (≥3 reports/condition + a
 cross-family judge — the standing bar). That's a **paid-spend go/no-go** the maintainer owns; flagged on #45,
 not run unattended.
+
+## opencode-Go model rank — with & without reasoning (2026-07-11)
+
+Maintainer granted paid-spend + asked to rank the whole opencode-Go lineup (flat-fee) with and without reasoning.
+Design (council): a fresh **glm-5.2 control** as anchor, all arms **structurer-pinned to `zai:glm-5.2`** (the confound
+that silently swung earlier probes), candidates screened at **off** then **low** on golden, scored at
+**DEFECT-level** (file-level is an upper bound and — proven here — misleading). Anchor judged rigorously
+(N=3 × deepseek-v3.2 cross-family judge × `--judge-repeats 2`); candidates screen-judged (N=1, single judge) —
+so candidate numbers are screen-grade, not a settled rank, but the signal is unambiguous.
+
+**Anchor — glm-5.2 (z.ai, free), golden N=3, deepseek cross-family judge:** defect **0–6, median 3.5 / 11**
+(file 7/11). The spread is almost all *analysis* variance (per-report medians 0.5–5; judge variance only 1–2) —
+i.e. glm-5.2's run-to-run swing, the reason single-run ranks never reproduce.
+
+**Candidates (golden, N=1 screen; defect via judge):**
+
+| model (opencode-Go) | off file | off defect | low file | low defect |
+|---|---|---|---|---|
+| minimax-m3 | 4 | 4 | 5 | 3 |
+| minimax-m2.7 | 5 | 2 | 4 | 0 |
+| qwen3.7-max | 5 | 1 | 4 | 2 |
+| qwen3.7-plus | 5 | 0 | 6 | 2 |
+| qwen3.6-plus | 3 | 1 | 6 | 2 |
+| kimi-k2.6 | 9 | 2 | 4 | 3 |
+| mimo-v2.5-pro | 4 | — | 7 | 3 |
+
+(kimi-k2.7-code and glm-5.1 hung with no output and were dropped; deepseek-v4-* on Go are reasoning-mandatory-only
+tiers and already lost this session; grok-4.5 / minimax-m2 on OpenRouter are `reasoning.mandatory=true` → auto-
+disqualified as a *default* by the #36 reasoning-trap rule.)
+
+**Verdict — no switch. glm-5.2 stays the honest free default.** Every candidate's defect recall is ≤ 3–4 at
+both effort levels, at or below the anchor's 3.5 median — the switch rule (≥2-loci gain with non-overlapping
+ranges, reproduced on contam-safe, operationally viable) is nowhere met. **Low reasoning did not lift defect
+recall** above the free baseline for any model (refining, not contradicting, the earlier "low is often the file
+sweet spot" note — it helps *file* recall, not *defect* recall).
+
+**Two methodological findings (the durable value here):**
+- **File-level model ranking is misleading.** kimi-k2.6 topped the *file* metric at off (9/11) — 2 above the
+  anchor — but scored only 2/11 *defect* (24 raw FPs: it hits the right files by over-flagging, not by finding
+  root causes). At low its file dropped to 4/11, confirming the 9 was noise. qwen3.7-plus/3.6-plus show the same
+  file(6)→defect(2) gap. Anyone ranking models on file-recall picks the wrong winner.
+- **The wall is analysis variance, not model access.** The anchor's own defect spread (0–6 across 3 runs) is
+  wider than any candidate's edge, so "which model" is dominated by run-to-run noise until N and a stable
+  cross-family judge are held fixed. This is why the recall lever is a *mechanism* change (enumeration/grounding),
+  not a model swap. Reproduce the anchor with `bun run scripts/eval.ts --provider zai --model glm-5.2 --thinking
+  off --structurer zai:glm-5.2 --repeat 3` then `scripts/judge.ts --reports … --judge-repeats 2 --model
+  openrouter:deepseek/deepseek-v3.2`.
