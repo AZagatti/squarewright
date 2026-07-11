@@ -30,7 +30,7 @@ import {
   parseMaxSpend,
   type SpendGuard,
   type TokenPrice,
-} from "./lib/spend-guard.js";
+} from "../src/safety/spend-guard.js";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 

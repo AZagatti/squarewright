@@ -18,11 +18,23 @@ import { verifyPostingTarget } from "../safety/trust.js";
 import type { AssemblyConfig } from "./config.js";
 import { type ReviewOutput, runReview } from "./review.js";
 
+/** Classify one OpenRouter model's reasoning-trap risk (injected; the CLI wires the real catalog check). */
+export type ReasoningRisk = (model: string) => {
+  block: boolean;
+  detail: string;
+};
+
 interface ReviewPostDeps {
   makeWorker: (
     apiKeys: Record<string, string>,
     structurerLane?: ModelLane
   ) => PiWorker;
+  /**
+   * Reasoning-trap preflight for OpenRouter lanes (analysis + structurer). When set, a model whose reasoning can't
+   * be disabled cheaply is REFUSED before any model call (the classifier is `src/safety/spend-guard.ts`, shared
+   * with the eval). Absent => no check (behavior unchanged for callers that don't wire it).
+   */
+  reasoningRisk?: ReasoningRisk;
   /**
    * Read-only access to the TRUSTED base checkout, used ONLY to load Tier-A `.review-rules/*.md` (ADR-0005 §1).
    * It is passed to `runReview` for the rules path — it is NOT forwarded into the Worker (that would enable
@@ -39,11 +51,49 @@ export function requiredProviders(config: AssemblyConfig): Set<string> {
   return providers;
 }
 
+/** The OpenRouter model ids a review would call: the config's OpenRouter analysis lanes plus its OR structurer. */
+function openrouterModels(config: AssemblyConfig): string[] {
+  const models = config.lanes
+    .filter((l) => l.provider === "openrouter")
+    .map((l) => l.model);
+  if (config.structurer?.provider === "openrouter") {
+    models.push(config.structurer.model);
+  }
+  return models;
+}
+
+/**
+ * Refuse before any model call if a configured OpenRouter lane is a reasoning cost-trap (reasoning can't be
+ * disabled cheaply, so it silently bills expensive reasoning tokens even at thinking=off). Mirrors the eval's
+ * long-standing preflight (AGENTS.md hard rule #4 — a paid lane must not spend surprise money). No-op unless a
+ * `reasoningRisk` classifier is injected; z.ai and other non-OpenRouter lanes are never checked.
+ */
+export function assertNoReasoningTrap(
+  config: AssemblyConfig,
+  reasoningRisk?: ReasoningRisk
+): void {
+  if (!reasoningRisk) {
+    return;
+  }
+  for (const model of openrouterModels(config)) {
+    const risk = reasoningRisk(model);
+    if (risk.block) {
+      throw new Error(
+        `Refusing to review: OpenRouter model "${model}" is a reasoning cost-trap — ${risk.detail}. It would ` +
+          "silently bill expensive reasoning tokens even at thinking=off. Point this lane at a model whose " +
+          "reasoning disables cleanly, or use a free z.ai lane."
+      );
+    }
+  }
+}
+
 export async function runReviewPost(
   config: AssemblyConfig,
   context: ReviewContext,
   deps: ReviewPostDeps
 ): Promise<ReviewOutput> {
+  // Fail closed + fail cheap: refuse a reasoning-trap OpenRouter lane BEFORE any model call (issue #36).
+  assertNoReasoningTrap(config, deps.reasoningRisk);
   const { apiKeys, missing } = await deps.resolveKeys(
     requiredProviders(config)
   );

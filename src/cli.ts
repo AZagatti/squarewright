@@ -25,6 +25,7 @@ import { fsRepoReader } from "./pi/fs-reader.js";
 import { resolveProviderKeys } from "./pi/keys.js";
 import { createReplyInterpreter } from "./pi/reply-interpreter.js";
 import { createPiWorker } from "./pi/worker.js";
+import { openrouterReasoningRisk } from "./safety/spend-guard.js";
 
 /** Fetch the parent review-comment's body (the finding a reply is attached to) when the event carried one. */
 function teachFindingFetcher(env: NodeJS.ProcessEnv) {
@@ -102,6 +103,8 @@ program
               runReviewPost(config, context, {
                 makeWorker: (apiKeys, structurerLane) =>
                   createPiWorker({ apiKeys, structurerLane }),
+                // refuse a reasoning-trap OpenRouter lane before any paid call (#36)
+                reasoningRisk: openrouterReasoningRisk,
                 // Tier-A rules load from the TRUSTED base checkout the Review workflow provides (default branch,
                 // never PR head — see squarewright-review.yml). opts.cwd is that checkout root.
                 repoReader: fsRepoReader(opts.cwd),
