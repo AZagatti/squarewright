@@ -844,27 +844,41 @@ Analysis $ is **notional** subscription quota (`total_cost_usd` from `claude -p`
 first launch). Genuine reasoning-OFF = env `MAX_THINKING_TOKENS=0` (verified ~halves opus tokens); **Fable can't
 disable thinking; Haiku has no effort levels.**
 
-| config | defect median /11 | analysis $ (notional) | usable passes |
-|---|---|---|---|
-| fable-5 @low | **5** | 3.15 | 3/3 |
-| opus-4-8 @high | 4 | 2.35 | 3/3 |
-| fable-5 @medium | 4 | 4.03 | 3/3 |
-| sonnet-5 @off | 4 | **0.83** | 2/3 |
-| sonnet-5 @high | 3 | 1.93 | 3/3 |
-| sonnet-4-6 @low | 3 (2–4) | 0.36 | 3/3 |
-| opus-4-8 @off | 3 | 1.23 | 3/3 |
-| sonnet-5 @medium / @low | 2 | 1.30 / 0.54 | 3/3 |
-| sonnet-4-6 @medium / @high | 2 | 1.12 / 1.19 | 3/3 |
-| sonnet-4-6 @off | 1 | 0.56 | 3/3 |
-| opus-4-8 @low | 1 | 1.41 | 3/3 |
-| haiku-4-5 (default) | 1 | 0.58 | 1/3 |
-| opus-4-8 @medium | *no usable pass (judge hallucinated 3/3)* | 2.03 | 0/3 |
-| **glm-5.2 (free baseline)** | **~3–3.5** (canonical N=3 = 3.5; 2 reports re-judged here = 2, 3) | **0** | |
+Analysis $ is notional; "usable passes" = judge passes surviving the #90 guard; "analysis errs" = cases where the
+`claude -p` call itself errored/timed out (scores 0 findings for reasons unrelated to model quality — see caveat).
+
+| config | defect median /11 | analysis $ (notional) | usable passes | analysis errs /18 |
+|---|---|---|---|---|
+| fable-5 @low | **5** | 3.15 | 3/3 | 0 |
+| opus-4-8 @high | 4 | 2.35 | 3/3 | 0 |
+| fable-5 @medium | 4 | 4.03 | 3/3 | 0 |
+| sonnet-5 @off | 4 | **0.83** | 2/3 | 0 |
+| fable-5 @high | 4 ⚠ *unreliable* | 5.14 | 1/3 | **3** |
+| sonnet-5 @high | 3 | 1.93 | 3/3 | 0 |
+| sonnet-4-6 @low | 3 (2–4) | 0.36 | 3/3 | 0 |
+| opus-4-8 @off | 3 | 1.23 | 3/3 | 0 |
+| sonnet-5 @medium | 2 | 1.30 | 3/3 | 0 |
+| sonnet-5 @low | 2 | 0.54 | 3/3 | 0 |
+| sonnet-4-6 @medium | 2 | 1.12 | 3/3 | 0 |
+| sonnet-4-6 @high | 2 | 1.19 | 3/3 | 1 |
+| sonnet-4-6 @off | 1 | 0.56 | 3/3 | 0 |
+| opus-4-8 @low | 1 | 1.41 | 3/3 | 0 |
+| haiku-4-5 (default) | 1 ⚠ *depressed* | 0.58 | 1/3 | **7** |
+| opus-4-8 @medium | *no usable pass (judge hallucinated 3/3)* | 2.03 | 0/3 | 0 |
+| **glm-5.2 (free baseline)** | **~3–3.5** (canonical N=3 = 3.5; 2 reports re-judged here = 2, 3) | **0** | — | — |
+
+⚠ **Analysis-error tail (rate-limiting):** the last two configs to run got throttled by the subscription's ~2-concurrent
+`claude -p` cap. **haiku-4-5 errored on 7/18 cases** (2 of them has-issue loci — its median 1 is *structurally
+depressed*, not purely model weakness; but it's also weakest on file recall 3/11, so still last). **fable-5@high
+errored on 3/18** (2 has-issue) and had only 1/3 usable judge passes → its median 4 is **not reliable** and is
+excluded from the finding below. sonnet-4-6@high had 1 error (rust-tokio-7757). All other configs: 0 analysis errors.
+Re-running just the errored cases would clean these 3 rows — deferred because none is a finding-critical config.
 
 **Findings.**
 1. **Only fable-5@low (median 5) clearly beats free glm-5.2 (~3–3.5).** The next tier — sonnet-5@off, opus-4-8@high,
-   fable @medium/@high (all median 4) — is only *marginally* above baseline (~+0.5–1, inside the noise); most
-   configs sit at or below glm. So frontier Claude *can* lift defect recall, but modestly — the 2nd family after
+   fable @medium (all median 4, 0 analysis errors, ≥2/3 usable judge passes) — is only *marginally* above baseline
+   (~+0.5–1, inside the noise); most configs sit at or below glm. (fable @high also scored median 4 but is excluded
+   as unreliable — 3/18 analysis errors + 1/3 usable passes.) So frontier Claude *can* lift defect recall, but modestly — the 2nd family after
    Sakana Fugu (5–6) to top glm, reinforcing that the recall wall is **soft/model-liftable**, not that Claude is a
    slam-dunk.
 2. **Reasoning effort is NOT the lever** — non-monotonic; `off` frequently ties or beats `high` (sonnet-5 off 4 >
