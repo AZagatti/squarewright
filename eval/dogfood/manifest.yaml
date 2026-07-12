@@ -1,0 +1,36 @@
+# Dogfood corpus — squarewright's OWN merged PRs, reviewed + approved + merged (so effectively "clean").
+# Purpose: measure the --cot-scaffold FP cut on the REAL production composition (this repo's .review-rules +
+# rule-drift on free glm-5.2) and the REAL PR stream, not golden external repos — the gap the scaffold council
+# flagged. No expect_loci (no known defects): findings here are the noise/false-alarm proxy (cleanFP).
+# Freeze diffs:  bun run scripts/eval.ts --freeze --manifest eval/dogfood/manifest.yaml
+cases:
+  - id: sqw-91-models-json
+    repo: AZagatti/squarewright
+    pr: 91
+    stack: ts
+    label: clean
+    note: "project-controlled model catalog via models.json"
+  - id: sqw-93-missmap
+    repo: AZagatti/squarewright
+    pr: 93
+    stack: ts
+    label: clean
+    note: "reproducible golden miss-map"
+  - id: sqw-94-rank
+    repo: AZagatti/squarewright
+    pr: 94
+    stack: ts
+    label: clean
+    note: "opencode-Go model rank writeup"
+  - id: sqw-95-surveyor
+    repo: AZagatti/squarewright
+    pr: 95
+    stack: ts
+    label: clean
+    note: "opt-in SURVEYOR coverage pass"
+  - id: sqw-97-claude-harness
+    repo: AZagatti/squarewright
+    pr: 97
+    stack: ts
+    label: clean
+    note: "claude -p analysis harness"

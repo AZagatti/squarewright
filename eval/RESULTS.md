@@ -937,9 +937,19 @@ structurer.
 in `WorkerRequest`/`eval.ts`/`eval-cli.ts` but is NOT wired into `src/assembly/review.ts`, and there is no
 `.squarewright.yml` field. Graduating it to an opt-in product flag (schema shape + whether to dogfood it here) is a
 deferred maintainer product decision, not resolved by this entry. **Still unmeasured:** scaffold × SURVEYOR
-interaction (contradictory epilogues — untested together), the real dogfood composition (rules + rule-drift +
-scaffold on glm-5.2), and a contam-safe run (precision is less exposed to memorization than recall, but a model's
-*familiarity* with famous-repo idioms could inflate the golden baseline FP rate — flagged, deferred).
+interaction (contradictory epilogues — untested together), and a contam-safe run (precision is less exposed to
+memorization than recall, but a model's *familiarity* with famous-repo idioms could inflate the golden baseline FP
+rate — flagged, deferred).
+
+**DOGFOOD — the real-composition gap, now CLOSED (2026-07-12).** Ran the actual production stack —
+squarewright's own `.review-rules/architecture.md` + rule-drift + free glm-5.2 (`eval.ts --manifest
+eval/dogfood/manifest.yaml --rules .review-rules/architecture.md --rule-drift`) — over squarewright's OWN 5 merged
+PRs (#91/#93/#94/#95/#97, all reviewed+approved → effectively clean; findings = noise proxy), scaffold off vs on,
+interleaved N=3. **findings base {4,6,5} med 5 → scaffold {2,3,1} med 2 — NON-OVERLAPPING, ~−60%.** So the FP cut
+holds on the real rule-drift composition and the real PR stream, not just golden external repos — the devil's-advocate's
+sharpest objection ("all measurement is famous external repos") is answered. Caveats: 5 PRs × N=3 (small), absolute
+noise already low (4–6 total on merged-clean PRs), precision-only (no recall measurable — no known bugs in these),
+mildly self-referential (own eval PRs). Corpus committed at `eval/dogfood/` for reuse.
 
 †sonnet-5 ran via `scripts/eval-cli.ts` (`claude -p`), whose reports are gitignored and not in `runs.jsonl` — its
 numbers live only here + in local reports, so it is the least auditable leg (a follow-up should log eval-cli runs to

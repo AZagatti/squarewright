@@ -1,0 +1,435 @@
+diff --git a/docs/reference/custom-model-catalog.md b/docs/reference/custom-model-catalog.md
+new file mode 100644
+index 0000000..0fad87f
+--- /dev/null
++++ b/docs/reference/custom-model-catalog.md
+@@ -0,0 +1,56 @@
++# Custom model catalog (`models.json`)
++
++Pi's bundled model catalog lags its live one: a model Pi already knows about upstream (e.g. a newest
++OpenRouter release) is unreachable until we upgrade the pinned `@earendil-works/pi-coding-agent`, and shows up
++as `Model not found in Pi's catalog`. Rather than wait for a package bump, drop a project-controlled
++`models.json` that Squarewright merges over Pi's built-ins (custom wins on conflict) — so you can eval or ship a
++newest model the day it lands. This unblocks the recall re-rank (#49 AC4) from being capped at whatever Pi
++bundled (issue #76).
++
++## How it's wired
++
++Every model-using lane (worker, verifier, teach reply-interpreter, and the eval judge) builds its
++`ModelRegistry` through `createModelRegistry()` in [`src/pi/model-catalog.ts`](../../src/pi/model-catalog.ts).
++That helper resolves the catalog path and passes it to Pi's `ModelRegistry.create(authStorage, path)`:
++
++1. `SQW_MODELS_JSON` — an explicit path, if set (used by tests/tools).
++2. otherwise `models.json` at the working-directory root (same convention as `.squarewright.yml`).
++3. otherwise none — built-in models only.
++
++A malformed `models.json` is surfaced with a loud warning and the registry falls back to built-ins (it never
++silently pretends there was no custom catalog).
++
++## It REPLACES `~/.pi/agent/models.json` — it does not merge with it
++
++Pi loads exactly **one** `models.json` — the one whose path is passed — and merges *that file's* models over the
++built-ins. It does **not** also merge Pi's default per-user file at `~/.pi/agent/models.json`. So the moment a
++project `models.json` (or `SQW_MODELS_JSON`) is active, the global file **stops being consulted entirely**.
++
++This matters for money safety. [`models-reasoning-and-cost.md`](models-reasoning-and-cost.md) instructs putting
++cost / reasoning-trap overrides — e.g. a `maxTokens` cap on a reasoning-mandatory model that would otherwise burn
++a billing trap — in `~/.pi/agent/models.json`. If you add a project `models.json`, **port those overrides into
++it too**, or they silently stop applying. `createModelRegistry` warns loudly when a project catalog supersedes an
++existing global file, but the fix (porting the overrides) is yours.
++
++## `models.json` diffs deserve the same scrutiny as code touching secrets
++
++A `models.json` can redefine an existing provider's `baseUrl` (e.g. point `zai` at another host) while keeping
++`authHeader: true`, which forwards the resolved API key as `Authorization: Bearer <key>` to that URL. The key
++comes from `auth.json`/`/login`, never from the file — but a `models.json` diff is an easy place to miss a
++secret-exfiltration vector precisely because it "doesn't look like code." Review catalog diffs accordingly.
++
++## Adding a model
++
++Copy the template and edit it:
++
++```sh
++cp models.json.example models.json
++```
++
++The schema is Pi's — see the package's `docs/models.md` for the full field list. Each model needs `id`,
++`reasoning`, `input`, `contextWindow`, `maxTokens`, and `cost` (`input`/`output`/`cacheRead`/`cacheWrite`).
++For reasoning-mandatory models, set the reasoning/effort fields correctly so the spend-guard reasoning-trap
++check (`src/safety/spend-guard.ts`) still classifies them.
++
++Curating *which* newest models to add is a deliberate choice (cost, reasoning-trap risk) left to the
++maintainer; this repo ships the loader and the template, not a curated catalog.
+diff --git a/docs/reference/models-reasoning-and-cost.md b/docs/reference/models-reasoning-and-cost.md
+index bb5b02d..cde3d8c 100644
+--- a/docs/reference/models-reasoning-and-cost.md
++++ b/docs/reference/models-reasoning-and-cost.md
+@@ -44,6 +44,7 @@ Read this before running paid-provider evals or touching reasoning/structurer co
+ ## Pi model catalog (adding / overriding models)
+ 
+ - Custom models & overrides live in **`~/.pi/agent/models.json`** (`getAgentDir()/models.json`), reloaded each run.
++- **Squarewright can load a PROJECT catalog instead** (`models.json` at the repo root, or `SQW_MODELS_JSON`) via `createModelRegistry` — issue #76, see [`custom-model-catalog.md`](custom-model-catalog.md). Pi loads exactly one file, so a project catalog **REPLACES** this global one (no merge): any cost-trap `maxTokens` cap you keep here must be **ported into the project file** or it stops applying. The loader warns when it supersedes an existing global file.
+ - Format: `{"providers": {"<provider>": {"models": [...], "modelOverrides": {...}}}}`. A **new model id under a built-in provider is added alongside** the built-ins (used to add glm-5/4.6/4.5); `modelOverrides.<id>` tweaks a built-in (used to cap deepseek `maxTokens`). Only `id` is required; `baseUrl`/`api`/`compat` allowed at model level. Docs: `node_modules/@earendil-works/pi-coding-agent/docs/models.md`
+ - `thinkingLevelMap` maps pi thinking levels → provider values (`null` = unsupported/clamped). `compat.supportsReasoningEffort` gates whether `reasoning_effort` is sent (only glm-5.2 has it true).
+ - Pi's built-in z.ai catalog is auto-generated — **don't fully trust its `thinkingLevelMap`; verify against z.ai docs** (it was accurate for glm-5.2, but the model list lagged real availability).
+diff --git a/models.json.example b/models.json.example
+new file mode 100644
+index 0000000..958414e
+--- /dev/null
++++ b/models.json.example
+@@ -0,0 +1,20 @@
++{
++  "providers": {
++    "openrouter": {
++      "baseUrl": "https://openrouter.ai/api/v1",
++      "api": "openai-completions",
++      "authHeader": true,
++      "models": [
++        {
++          "id": "openai/gpt-5.6-luna",
++          "name": "GPT-5.6 Luna",
++          "reasoning": true,
++          "input": ["text"],
++          "contextWindow": 400000,
++          "maxTokens": 128000,
++          "cost": { "input": 1.25, "output": 10, "cacheRead": 0.13, "cacheWrite": 0 }
++        }
++      ]
++    }
++  }
++}
+diff --git a/src/eval/judge.ts b/src/eval/judge.ts
+index 2165bb3..671e5ba 100644
+--- a/src/eval/judge.ts
++++ b/src/eval/judge.ts
+@@ -11,12 +11,12 @@ import {
+   DefaultResourceLoader,
+   defineTool,
+   getAgentDir,
+-  ModelRegistry,
+   SessionManager,
+   SettingsManager,
+ } from "@earendil-works/pi-coding-agent";
+ import { Type } from "typebox";
+ import type { ModelLane } from "../core/types.js";
++import { createModelRegistry } from "../pi/model-catalog.js";
+ 
+ export interface DefectLocus {
+   about: string;
+@@ -217,7 +217,7 @@ export function createJudge(opts: { apiKeys: Record<string, string> }) {
+       for (const [p, k] of Object.entries(opts.apiKeys)) {
+         authStorage.setRuntimeApiKey(p, k);
+       }
+-      const modelRegistry = ModelRegistry.create(authStorage);
++      const modelRegistry = createModelRegistry(authStorage);
+       const model = modelRegistry.find(lane.provider, lane.model);
+       if (!model) {
+         throw new Error(
+diff --git a/src/pi/model-catalog.test.ts b/src/pi/model-catalog.test.ts
+new file mode 100644
+index 0000000..b309934
+--- /dev/null
++++ b/src/pi/model-catalog.test.ts
+@@ -0,0 +1,115 @@
++import { expect, test } from "bun:test";
++import { mkdtempSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
++import {
++  MODELS_JSON_ENV,
++  resolveModelsJsonPath,
++  supersessionWarning,
++} from "./model-catalog.js";
++
++function tmp(): string {
++  return mkdtempSync(join(tmpdir(), "sqw-catalog-"));
++}
++
++// ── resolveModelsJsonPath ───────────────────────────────────────────────────
++
++test("resolveModelsJsonPath: SQW_MODELS_JSON override wins when the file exists", () => {
++  const dir = tmp();
++  const override = join(dir, "custom.json");
++  writeFileSync(override, '{"providers":{}}');
++  expect(resolveModelsJsonPath({ [MODELS_JSON_ENV]: override }, "/nope")).toBe(
++    override
++  );
++});
++
++test("resolveModelsJsonPath: a set-but-missing override resolves to undefined, not a bad path", () => {
++  // A stale SQW_MODELS_JSON must degrade to built-ins, not hand a non-existent path to the registry.
++  expect(
++    resolveModelsJsonPath({ [MODELS_JSON_ENV]: "/does/not/exist.json" }, tmp())
++  ).toBeUndefined();
++});
++
++test("resolveModelsJsonPath: falls back to <cwd>/models.json when it exists", () => {
++  const dir = tmp();
++  const path = join(dir, "models.json");
++  writeFileSync(path, '{"providers":{}}');
++  expect(resolveModelsJsonPath({}, dir)).toBe(path);
++});
++
++test("resolveModelsJsonPath: undefined when no override and no repo-root models.json", () => {
++  expect(resolveModelsJsonPath({}, tmp())).toBeUndefined();
++});
++
++// ── supersessionWarning (money-safety guard) ────────────────────────────────
++
++const GLOBAL = "/home/u/.pi/agent/models.json";
++
++test("supersessionWarning: warns when a project catalog supersedes an existing global one", () => {
++  const w = supersessionWarning("/repo/models.json", GLOBAL, true);
++  expect(w).toContain("/repo/models.json");
++  expect(w).toContain(GLOBAL);
++  expect(w).toContain("does NOT merge");
++});
++
++test("supersessionWarning: silent when there is no project catalog", () => {
++  expect(supersessionWarning(undefined, GLOBAL, true)).toBeNull();
++});
++
++test("supersessionWarning: silent when no global file exists to be superseded", () => {
++  expect(supersessionWarning("/repo/models.json", GLOBAL, false)).toBeNull();
++});
++
++test("supersessionWarning: silent when the resolved path IS the global path", () => {
++  expect(supersessionWarning(GLOBAL, GLOBAL, true)).toBeNull();
++});
++
++// ── merge semantics via a real ModelRegistry (no network — pure file parsing) ──
++
++function registryFor(dir: string, modelsJson: string): ModelRegistry {
++  const path = join(dir, "models.json");
++  writeFileSync(path, modelsJson);
++  // Temp auth path so the test never touches the real ~/.pi/auth.json.
++  const auth = AuthStorage.create(join(dir, "auth.json"));
++  return ModelRegistry.create(auth, path);
++}
++
++test("createModelRegistry path: a custom models.json is merged over built-ins and resolvable by find()", () => {
++  const dir = tmp();
++  const reg = registryFor(
++    dir,
++    JSON.stringify({
++      providers: {
++        openrouter: {
++          api: "openai-completions",
++          authHeader: true,
++          baseUrl: "https://openrouter.ai/api/v1",
++          models: [
++            {
++              contextWindow: 200_000,
++              cost: { cacheRead: 0, cacheWrite: 0, input: 1, output: 2 },
++              id: "example/newest-model",
++              input: ["text"],
++              maxTokens: 64_000,
++              name: "Newest (test)",
++              reasoning: true,
++            },
++          ],
++        },
++      },
++    })
++  );
++  expect(reg.getError()).toBeUndefined();
++  const model = reg.find("openrouter", "example/newest-model");
++  expect(model).toBeDefined();
++  expect(model?.id).toBe("example/newest-model");
++});
++
++test("createModelRegistry path: a malformed models.json sets getError() and keeps built-ins (never a silent empty catalog)", () => {
++  const dir = tmp();
++  const reg = registryFor(dir, "{ this is not valid json");
++  expect(reg.getError()).toBeDefined();
++  // The registry must still expose the built-in catalog — a broken custom file can't zero out models.
++  expect(reg.getAll().length).toBeGreaterThan(0);
++});
+diff --git a/src/pi/model-catalog.ts b/src/pi/model-catalog.ts
+new file mode 100644
+index 0000000..d10e371
+--- /dev/null
++++ b/src/pi/model-catalog.ts
+@@ -0,0 +1,98 @@
++/**
++ * Project-controlled model catalog (issue #76). Pi's `ModelRegistry` ships a built-in catalog that lags its
++ * live one — a model Pi already knows about upstream (e.g. a newest OpenRouter release) is unreachable until the
++ * pinned package is upgraded, surfacing as `Model not found in Pi's catalog`. Pi's escape hatch is a custom
++ * `models.json`: `ModelRegistry.create(authStorage, path)` loads that file's providers and merges them over the
++ * built-in models (custom wins on conflict). This module is the single seam that resolves the project's
++ * `models.json` path and passes it in, so every model-using lane sees the same catalog.
++ *
++ * IMPORTANT (money safety, AGENTS.md §4): Pi loads exactly ONE `models.json` — the one whose path is passed —
++ * it does NOT also merge `~/.pi/agent/models.json` (Pi's default). So a project `models.json` REPLACES, not
++ * augments, any global one. If the global file holds cost/reasoning-trap overrides (e.g. a `maxTokens` cap on a
++ * reasoning-mandatory model), those must be ported into the project file or they stop applying. When a project
++ * catalog supersedes an existing global one, `createModelRegistry` warns loudly rather than swap it silently.
++ *
++ * Scope note: this ships the LOADER and a documented `models.json.example` template only. Curating WHICH newest
++ * models to add is a product/API-shape decision left to the maintainer — drop a real `models.json` at the repo
++ * root (or point `SQW_MODELS_JSON` at one) and every lane picks it up. See `models.json.example`,
++ * `docs/reference/custom-model-catalog.md`, and Pi's `docs/models.md` for the schema.
++ */
++import { existsSync } from "node:fs";
++import { join } from "node:path";
++import {
++  type AuthStorage,
++  getAgentDir,
++  ModelRegistry,
++} from "@earendil-works/pi-coding-agent";
++
++/** Env var pointing at an explicit models.json path, overriding the repo-root default (mainly for tests/tools). */
++export const MODELS_JSON_ENV = "SQW_MODELS_JSON";
++
++/** Pi's default per-user catalog path (`~/.pi/agent/models.json`) — the one a project file supersedes. */
++export function globalModelsJsonPath(): string {
++  return join(getAgentDir(), "models.json");
++}
++
++/**
++ * Resolve the project's `models.json`: an explicit `SQW_MODELS_JSON` path wins; otherwise `models.json` at the
++ * working directory root (mirrors how `.squarewright.yml` is located). Returns `undefined` when neither exists,
++ * so absence is distinctly "no project catalog" (built-ins + whatever global file Pi loads by default), never a
++ * load error. Pure but for the fs existence check, so it's testable against a fixture dir.
++ */
++export function resolveModelsJsonPath(
++  env: NodeJS.ProcessEnv = process.env,
++  cwd: string = process.cwd()
++): string | undefined {
++  const override = env[MODELS_JSON_ENV]?.trim();
++  if (override) {
++    return existsSync(override) ? override : undefined;
++  }
++  const candidate = join(cwd, "models.json");
++  return existsSync(candidate) ? candidate : undefined;
++}
++
++/**
++ * Warn text for the one case that silently drops safety settings: a project catalog is active (`resolved` set)
++ * AND a different global `~/.pi/agent/models.json` exists on disk. Pi will load only `resolved`, so the global
++ * file — possibly holding cost-trap `maxTokens` caps — stops applying. Returns `null` when there's nothing to
++ * warn about (no project catalog, or no global file, or they're the same path). Pure: `globalExists` is injected
++ * so it's testable without touching the real home dir.
++ */
++export function supersessionWarning(
++  resolved: string | undefined,
++  globalPath: string,
++  globalExists: boolean
++): string | null {
++  if (!resolved || resolved === globalPath || !globalExists) {
++    return null;
++  }
++  return `⚠️  project models.json (${resolved}) supersedes your global ${globalPath} — Pi loads only one catalog, it does NOT merge them. Any cost/reasoning-trap overrides in the global file must be ported into the project file or they stop applying.`;
++}
++
++/**
++ * Create a `ModelRegistry` for the project's catalog: resolves the `models.json` path and hands it to Pi, which
++ * merges that file's models over the built-ins (custom wins). The caller keeps `authStorage` (it's reused for
++ * the agent session). Two honesty guards (AGENTS.md §4/§5): a project catalog that supersedes a global one warns
++ * loudly, and a malformed catalog warns and falls back to built-ins rather than masquerading as "no custom
++ * models".
++ */
++export function createModelRegistry(authStorage: AuthStorage): ModelRegistry {
++  const path = resolveModelsJsonPath();
++  const globalPath = globalModelsJsonPath();
++  const superseded = supersessionWarning(
++    path,
++    globalPath,
++    existsSync(globalPath)
++  );
++  if (superseded) {
++    console.warn(superseded);
++  }
++  const registry = ModelRegistry.create(authStorage, path);
++  const error = registry.getError();
++  if (error) {
++    console.warn(
++      `⚠️  models.json failed to load (${path}): ${error} — using built-in models only.`
++    );
++  }
++  return registry;
++}
+diff --git a/src/pi/reply-interpreter.ts b/src/pi/reply-interpreter.ts
+index 5f3f26c..b16edb9 100644
+--- a/src/pi/reply-interpreter.ts
++++ b/src/pi/reply-interpreter.ts
+@@ -15,12 +15,12 @@ import {
+   DefaultResourceLoader,
+   defineTool,
+   getAgentDir,
+-  ModelRegistry,
+   SessionManager,
+ } from "@earendil-works/pi-coding-agent";
+ import { Type } from "typebox";
+ import type { ModelLane } from "../core/types.js";
+ import type { ReplyInterpreter, RuleSuggestion } from "../rules/teach-reply.js";
++import { createModelRegistry } from "./model-catalog.js";
+ import { agentSessionSettings } from "./settings.js";
+ 
+ /** Free z.ai default — interpreting a reply is a light extraction task, not worth a paid lane. */
+@@ -75,7 +75,7 @@ export function createReplyInterpreter(
+       for (const [provider, key] of Object.entries(options.apiKeys)) {
+         authStorage.setRuntimeApiKey(provider, key);
+       }
+-      const modelRegistry = ModelRegistry.create(authStorage);
++      const modelRegistry = createModelRegistry(authStorage);
+       const lane = options.lane ?? DEFAULT_LANE;
+       const model = modelRegistry.find(lane.provider, lane.model);
+       if (!model) {
+diff --git a/src/pi/verifier.ts b/src/pi/verifier.ts
+index 39357a8..f9889b7 100644
+--- a/src/pi/verifier.ts
++++ b/src/pi/verifier.ts
+@@ -15,12 +15,12 @@ import {
+   DefaultResourceLoader,
+   defineTool,
+   getAgentDir,
+-  ModelRegistry,
+   SessionManager,
+   SettingsManager,
+ } from "@earendil-works/pi-coding-agent";
+ import { Type } from "typebox";
+ import type { Finding, ModelLane, ReviewContext } from "../core/types.js";
++import { createModelRegistry } from "./model-catalog.js";
+ 
+ const PERSONA = `You are a skeptical code-review verifier. Another reviewer produced the finding below, and it
+ may well be a false positive. Your job is to try to REFUTE it. You have a shell — USE IT to test claims
+@@ -81,7 +81,7 @@ export function createVerifier(options: VerifierOptions) {
+       for (const [provider, key] of Object.entries(options.apiKeys)) {
+         authStorage.setRuntimeApiKey(provider, key);
+       }
+-      const modelRegistry = ModelRegistry.create(authStorage);
++      const modelRegistry = createModelRegistry(authStorage);
+       const model = modelRegistry.find(lane.provider, lane.model);
+       if (!model) {
+         throw new Error(`Model not found: ${lane.provider}/${lane.model}`);
+diff --git a/src/pi/worker.ts b/src/pi/worker.ts
+index 5182206..2dc3760 100644
+--- a/src/pi/worker.ts
++++ b/src/pi/worker.ts
+@@ -17,7 +17,6 @@ import {
+   DefaultResourceLoader,
+   defineTool,
+   getAgentDir,
+-  ModelRegistry,
+   SessionManager,
+ } from "@earendil-works/pi-coding-agent";
+ import { Type } from "typebox";
+@@ -27,6 +26,7 @@ import type {
+   ReviewContext,
+   Severity,
+ } from "../core/types.js";
++import { createModelRegistry } from "./model-catalog.js";
+ import type {
+   PiWorker,
+   RepoReader,
+@@ -365,7 +365,7 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
+       for (const [provider, key] of Object.entries(options.apiKeys)) {
+         authStorage.setRuntimeApiKey(provider, key);
+       }
+-      const modelRegistry = ModelRegistry.create(authStorage);
++      const modelRegistry = createModelRegistry(authStorage);
+       let toolCalls = 0;
+       let costUsd = 0;
+ 

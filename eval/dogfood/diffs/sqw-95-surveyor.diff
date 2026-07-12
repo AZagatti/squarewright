@@ -1,0 +1,133 @@
+diff --git a/scripts/eval.ts b/scripts/eval.ts
+index d1fe4b2..6e7bb0b 100644
+--- a/scripts/eval.ts
++++ b/scripts/eval.ts
+@@ -429,6 +429,8 @@ async function main() {
+       ])
+     : "";
+   const proposeRuleDrift = flag("rule-drift");
++  // --surveyor: SURVEYOR coverage pass (recall lever #45) — measure recall/precision with the flag on vs off.
++  const surveyor = flag("surveyor");
+   const withContext = (prompt: string) => rulesPreamble + withNote(prompt);
+   const spendGuard = () => {
+     if (aborted || localSpend <= maxSpend) {
+@@ -510,6 +512,7 @@ async function main() {
+                 persona: pass.id,
+                 proposeRuleDrift,
+                 repoReader,
++                surveyor,
+                 systemPrompt: withContext(pass.prompt),
+               });
+               all.push(...pr.findings);
+@@ -540,6 +543,7 @@ async function main() {
+             persona: "persona:general",
+             proposeRuleDrift,
+             repoReader,
++            surveyor,
+             systemPrompt: withContext(PERSONA),
+           });
+           ({ findings } = pr);
+diff --git a/src/pi/session.ts b/src/pi/session.ts
+index 93f2d23..1afaa3b 100644
+--- a/src/pi/session.ts
++++ b/src/pi/session.ts
+@@ -39,6 +39,14 @@ export interface WorkerRequest {
+   proposeRuleDrift?: boolean;
+   /** read-only repo access for grounding; when present the Worker gets read_repo_file/list_repo_dir tools */
+   repoReader?: RepoReader;
++  /**
++   * Enable the SURVEYOR coverage pass (recall lever, #45): when true, the analysis prompt instructs the model to,
++   * before finishing, re-scan EVERY other changed file/hunk for the same root cause as each issue it found and
++   * report the recurrences — a same-call forced enumeration (not a second pass; a separate re-check call is a
++   * proven no-op). Targets the enumeration miss-class where the same bug recurs across sibling files and is found
++   * once but not everywhere. Opt-in + measured so its recall gain and any precision cost are visible.
++   */
++  surveyor?: boolean;
+   /** the persona/system prompt that defines the review lens */
+   systemPrompt: string;
+   /** extra custom tools to expose to the Worker (registered into Pi via defineTool) */
+diff --git a/src/pi/worker-surveyor.test.ts b/src/pi/worker-surveyor.test.ts
+new file mode 100644
+index 0000000..8519ae1
+--- /dev/null
++++ b/src/pi/worker-surveyor.test.ts
+@@ -0,0 +1,34 @@
++import { expect, test } from "bun:test";
++import type { ModelLane, ReviewContext } from "../core/types.js";
++import type { WorkerRequest } from "./session.js";
++import { buildAnalysisSystem } from "./worker.js";
++
++const lane: ModelLane = { id: "x", model: "m", provider: "p", thinking: "off" };
++const context = { files: [] } as unknown as ReviewContext;
++
++function req(over: Partial<WorkerRequest>): WorkerRequest {
++  return { context, lane, systemPrompt: "PERSONA", ...over };
++}
++
++test("buildAnalysisSystem: surveyor off/undefined omits the coverage-pass instruction (pure no-op)", () => {
++  const base = buildAnalysisSystem(req({}));
++  expect(base).not.toContain("coverage pass");
++  expect(buildAnalysisSystem(req({ surveyor: false }))).toBe(base);
++});
++
++test("buildAnalysisSystem: surveyor on appends the same-call cross-file coverage instruction", () => {
++  const s = buildAnalysisSystem(req({ surveyor: true }));
++  expect(s).toContain("coverage pass");
++  expect(s).toContain("EVERY other changed file");
++  expect(s).toContain("same response"); // in-call, before concluding — not a second pass
++});
++
++test("buildAnalysisSystem: surveyor composes independently with rule-drift", () => {
++  // surveyor present whether or not rule-drift is also on; drift on adds strictly more than surveyor alone.
++  const both = buildAnalysisSystem(
++    req({ proposeRuleDrift: true, surveyor: true })
++  );
++  const surveyorOnly = buildAnalysisSystem(req({ surveyor: true }));
++  expect(both).toContain("coverage pass");
++  expect(both.length).toBeGreaterThan(surveyorOnly.length);
++});
+diff --git a/src/pi/worker.ts b/src/pi/worker.ts
+index 2dc3760..eea11e3 100644
+--- a/src/pi/worker.ts
++++ b/src/pi/worker.ts
+@@ -54,6 +54,19 @@ Write your review as prose. For every issue you find, state: the file path, the
+ (error / warning / info), and a grounded explanation of why it is a problem. If the change is sound, say
+ clearly that you found no issues. Do NOT output JSON — just your analysis.`;
+ 
++/**
++ * SURVEYOR coverage pass (recall lever, #45): a same-call forced enumeration appended when a request opts in.
++ * It targets the enumeration miss-class — the same root cause changed in one file but not its siblings, found
++ * once and not everywhere (e.g. an alpha-composition fix applied to one CSS rule but not the mirrored one).
++ * Deliberately in-call and BEFORE the model concludes: a separate re-check pass is a proven no-op here.
++ */
++const SURVEYOR_NOTE = `
++
++Before you finish, do a coverage pass: for EACH issue you identified, check EVERY other changed file and hunk in
++this diff for the SAME underlying root cause, and report each additional occurrence as its own finding. A change
++applied in one place but not its siblings is a common defect, so a bug you found once may recur elsewhere in this
++diff. Do this now, in this same response, before concluding.`;
++
+ const GROUNDING_NOTE = `
+ 
+ You can inspect the repository at this PR's revision with tools: read_repo_file(path) reads a file's full
+@@ -172,13 +185,17 @@ interface SubmittedFinding {
+   title: string;
+ }
+ 
+-/** Assemble the Pass-1 analysis system prompt: the persona/rules preamble plus the grounding + rule-drift notes the request opts into. */
+-function buildAnalysisSystem(request: WorkerRequest): string {
++/**
++ * Assemble the Pass-1 analysis system prompt: the persona/rules preamble plus the grounding, rule-drift, and
++ * SURVEYOR notes the request opts into. Exported for test — the opt-in notes must be present iff their flag is.
++ */
++export function buildAnalysisSystem(request: WorkerRequest): string {
+   return (
+     request.systemPrompt +
+     (request.repoReader ? GROUNDING_NOTE : "") +
+     ANALYSIS_NOTE +
+-    (request.proposeRuleDrift ? RULE_DRIFT_NOTE : "")
++    (request.proposeRuleDrift ? RULE_DRIFT_NOTE : "") +
++    (request.surveyor ? SURVEYOR_NOTE : "")
+   );
+ }
+ 

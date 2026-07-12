@@ -1,0 +1,427 @@
+diff --git a/eval/RESULTS.md b/eval/RESULTS.md
+index 9457ee5..133becf 100644
+--- a/eval/RESULTS.md
++++ b/eval/RESULTS.md
+@@ -831,3 +831,70 @@ enumeration does not lift defect recall. It stays **opt-in / off by default and
+ review path** — a documented dead-end, not a regression. (Consistent with the null Verifier result and cc-dcp's
+ finding that a model can't reliably re-check its own blind spot by re-reading the same diff.) The enumeration
+ miss-class, if it's to be cracked, needs a different mechanism than "ask the model to look again."
++
++## Claude subscription models via `claude -p` — first rank (2026-07-12, #32/#45)
++
++Ranked Claude subscription models as the ANALYSIS pass, driven through the `claude -p` CLI (the ToS-legitimate
++way to use a Max/Pro subscription — not API-key wiring), structurer-pinned zai:glm-5.2, **deepseek-v3.2
++cross-family judge, repeats=3** (median; the #90 guard drops impossible `defect>file` passes). golden, 16 configs.
++Analysis $ is **notional** subscription quota (`total_cost_usd` from `claude -p`), not a real charge.
++
++`claude -p` facts that shaped the grid (measured/doc-confirmed): `--effort ∈ {low,medium,high,xhigh,max}`, **no
++`none`; DEFAULT == `high`** — so a no-`--effort` run duplicates `--effort high` (this cost a 30% dupe on the
++first launch). Genuine reasoning-OFF = env `MAX_THINKING_TOKENS=0` (verified ~halves opus tokens); **Fable can't
++disable thinking; Haiku has no effort levels.**
++
++Analysis $ is notional; "usable passes" = judge passes surviving the #90 guard; "analysis errs" = cases where the
++`claude -p` call itself errored/timed out (scores 0 findings for reasons unrelated to model quality — see caveat).
++
++| config | defect median /11 | analysis $ (notional) | usable passes | analysis errs /18 |
++|---|---|---|---|---|
++| fable-5 @low | **5** | 3.15 | 3/3 | 0 |
++| opus-4-8 @high | 4 | 2.35 | 3/3 | 0 |
++| fable-5 @medium | 4 | 4.03 | 3/3 | 0 |
++| sonnet-5 @off | 4 | **0.83** | 2/3 | 0 |
++| fable-5 @high | 4 ⚠ *unreliable* | 5.14 | 1/3 | **3** |
++| sonnet-5 @high | 3 | 1.93 | 3/3 | 0 |
++| sonnet-4-6 @low | 3 (2–4) | 0.36 | 3/3 | 0 |
++| opus-4-8 @off | 3 | 1.23 | 3/3 | 0 |
++| sonnet-5 @medium | 2 | 1.30 | 3/3 | 0 |
++| sonnet-5 @low | 2 | 0.54 | 3/3 | 0 |
++| sonnet-4-6 @medium | 2 | 1.12 | 3/3 | 0 |
++| sonnet-4-6 @high | 2 | 1.19 | 3/3 | 1 |
++| sonnet-4-6 @off | 1 | 0.56 | 3/3 | 0 |
++| opus-4-8 @low | 1 | 1.41 | 3/3 | 0 |
++| haiku-4-5 (default) | 1 ⚠ *depressed* | 0.58 | 1/3 | **7** |
++| opus-4-8 @medium | *no usable pass (judge hallucinated 3/3)* | 2.03 | 0/3 | 0 |
++| **glm-5.2 (free baseline)** | **~3–3.5** (canonical N=3 = 3.5; 2 reports re-judged here = 2, 3) | **0** | — | — |
++
++⚠ **Analysis-error tail (rate-limiting):** the last two configs to run got throttled by the subscription's ~2-concurrent
++`claude -p` cap. **haiku-4-5 errored on 7/18 cases** (2 of them has-issue loci — its median 1 is *structurally
++depressed*, not purely model weakness; but it's also weakest on file recall 3/11, so still last). **fable-5@high
++errored on 3/18** (2 has-issue) and had only 1/3 usable judge passes → its median 4 is **not reliable** and is
++excluded from the finding below. sonnet-4-6@high had 1 error (rust-tokio-7757). All other configs: 0 analysis errors.
++Re-running just the errored cases would clean these 3 rows — deferred because none is a finding-critical config.
++
++**Findings.**
++1. **Only fable-5@low (median 5) clearly beats free glm-5.2 (~3–3.5).** The next tier — sonnet-5@off, opus-4-8@high,
++   fable @medium (all median 4, 0 analysis errors, ≥2/3 usable judge passes) — is only *marginally* above baseline
++   (~+0.5–1, inside the noise); most configs sit at or below glm. (fable @high also scored median 4 but is excluded
++   as unreliable — 3/18 analysis errors + 1/3 usable passes.) So frontier Claude *can* lift defect recall, but modestly — the 2nd family after
++   Sakana Fugu (5–6) to top glm, reinforcing that the recall wall is **soft/model-liftable**, not that Claude is a
++   slam-dunk.
++2. **Reasoning effort is NOT the lever** — non-monotonic; `off` frequently ties or beats `high` (sonnet-5 off 4 >
++   high 3 > med 2; opus high 4 > off 3 > med n/a; fable low 5 ≥ med/high 4). ⇒ **xhigh/max not worth testing**
++   (≥$5/config on fable/opus for ~zero expected gain). The MODEL lifts recall; effort doesn't.
++3. **Claude is noisier than glm** — 19–37 raw findings on clean cases vs glm's tighter output (a precision cost).
++   Grounding, not a model swap, is the FP lever.
++4. **Cost.** Analysis **$27.76 notional** across 16 configs (fable $3–5 each, the effort ramp, and verbose output
++   drove it — a pre-run estimate of $2.5–3.5 was ~8× low). Judge **~$0.27** OR credits (deepseek ~$0.004/report —
++   judging is ~free; the analysis pass is the whole cost).
++
++**Caveats.** N=1 analysis report per Claude config (glm baseline N=2–3), so within-band ordering is a **LEAD, not a
++verdict** — sonnet-4-6@low alone ranged 2–4. Golden only; no contam-safe Claude cross-check yet, so memorization
++isn't excluded. deepseek-v3.2 hallucinated on 2–3 reports even cross-family (the guard caught them; opus@medium
++lost all 3 passes → no number).
++
++**Operating point UNCHANGED: free glm-5.2 stays the default** (defect ~3–3.5, $0, fast, private). If a maintainer
++wants max recall and will pay, **sonnet-5@off (median 4, ~$0.83/run, reasoning OFF)** is the value pick and
++fable-5@low (5) the ceiling at ~4× the cost.
+diff --git a/eval/runs.jsonl b/eval/runs.jsonl
+index 8327dee..296e9b2 100644
+--- a/eval/runs.jsonl
++++ b/eval/runs.jsonl
+@@ -94,3 +94,14 @@
+ {"stamp":"2026-07-11T07-35-39-357Z","ground":false,"model":"minimax-m3","personas":false,"provider":"opencode-go","structurer":"zai/glm-5.2","thinking":"low","verify":false,"cleanCases":0,"cleanFP":0,"issueCases":8,"issueHits":9,"issueTotal":11,"modelSeconds":859,"realCostUsd":null,"reportedCost":0.0813,"totalNoSubmit":0}
+ {"stamp":"2026-07-11T07-44-08-992Z","ground":false,"model":"minimax-m3","personas":false,"provider":"opencode-go","structurer":"zai/glm-5.2","thinking":"low","verify":false,"cleanCases":0,"cleanFP":0,"issueCases":8,"issueHits":5,"issueTotal":11,"modelSeconds":996,"realCostUsd":null,"reportedCost":0.0907,"totalNoSubmit":0}
+ {"stamp":"2026-07-11T07-55-24-743Z","ground":false,"model":"minimax-m3","personas":false,"provider":"opencode-go","structurer":"zai/glm-5.2","thinking":"low","verify":false,"cleanCases":0,"cleanFP":0,"issueCases":6,"issueHits":5,"issueTotal":7,"modelSeconds":1274,"realCostUsd":null,"reportedCost":0.1534,"totalNoSubmit":0}
++{"stamp":"2026-07-11T19-28-17-992Z","ground":true,"model":"glm-5.2","personas":false,"provider":"zai","structurer":"zai/glm-5.2","thinking":"off","verify":false,"cleanCases":10,"cleanFP":4,"issueCases":8,"issueHits":3,"issueTotal":11,"modelSeconds":2522,"realCostUsd":null,"reportedCost":0,"totalNoSubmit":0}
++{"stamp":"2026-07-11T19-39-24-630Z","ground":true,"model":"glm-5.2","personas":false,"provider":"zai","structurer":"zai/glm-5.2","thinking":"off","verify":false,"cleanCases":10,"cleanFP":6,"issueCases":8,"issueHits":6,"issueTotal":11,"modelSeconds":1909,"realCostUsd":null,"reportedCost":0,"totalNoSubmit":0}
++{"stamp":"2026-07-11T19-49-04-318Z","ground":true,"model":"glm-5.2","personas":false,"provider":"zai","structurer":"zai/glm-5.2","thinking":"off","verify":false,"cleanCases":10,"cleanFP":7,"issueCases":8,"issueHits":3,"issueTotal":11,"modelSeconds":1719,"realCostUsd":null,"reportedCost":0,"totalNoSubmit":0}
++{"stamp":"2026-07-11T20-07-30-687Z","ground":false,"model":"deepseek/deepseek-v3.2","personas":false,"provider":"openrouter","structurer":"zai/glm-5-turbo","thinking":"per-persona","verify":false,"cleanCases":10,"cleanFP":5,"issueCases":8,"issueHits":7,"issueTotal":11,"modelSeconds":423,"realCostUsd":0.0181,"reportedCost":0.0154,"totalNoSubmit":0}
++{"stamp":"2026-07-11T23-57-40-458Z","ground":false,"model":"north-mini-code-free","personas":false,"provider":"opencode","structurer":"zai/glm-5.2","thinking":"off","verify":false,"cleanCases":10,"cleanFP":18,"issueCases":8,"issueHits":4,"issueTotal":11,"modelSeconds":826,"realCostUsd":null,"reportedCost":0,"totalNoSubmit":0}
++{"stamp":"2026-07-12T00-14-31-534Z","ground":false,"model":"nemotron-3-ultra-free","personas":false,"provider":"opencode","structurer":"zai/glm-5.2","thinking":"off","verify":false,"cleanCases":10,"cleanFP":12,"issueCases":8,"issueHits":6,"issueTotal":11,"modelSeconds":874,"realCostUsd":null,"reportedCost":0,"totalNoSubmit":0}
++{"stamp":"2026-07-12T02-06-57-683Z","ground":false,"model":"nemotron-3-ultra-free","personas":false,"provider":"opencode","structurer":"zai/glm-5.2","thinking":"off","verify":false,"cleanCases":10,"cleanFP":3,"issueCases":8,"issueHits":7,"issueTotal":11,"modelSeconds":708,"realCostUsd":null,"reportedCost":0,"totalNoSubmit":0}
++{"stamp":"2026-07-12T04-29-51-051Z","ground":false,"model":"minimax-m2.7","personas":false,"provider":"opencode-go","structurer":"zai/glm-5.2","thinking":"off","verify":false,"cleanCases":3,"cleanFP":4,"issueCases":6,"issueHits":2,"issueTotal":7,"modelSeconds":1210,"realCostUsd":null,"reportedCost":0.031,"totalNoSubmit":0}
++{"stamp":"2026-07-12T04-33-55-229Z","ground":false,"model":"qwen3.7-plus","personas":false,"provider":"opencode-go","structurer":"zai/glm-5.2","thinking":"off","verify":false,"cleanCases":3,"cleanFP":14,"issueCases":6,"issueHits":3,"issueTotal":7,"modelSeconds":443,"realCostUsd":null,"reportedCost":0.0521,"totalNoSubmit":0}
++{"stamp":"2026-07-12T04-36-10-595Z","ground":false,"model":"qwen3.6-plus","personas":false,"provider":"opencode-go","structurer":"zai/glm-5.2","thinking":"off","verify":false,"cleanCases":3,"cleanFP":0,"issueCases":6,"issueHits":2,"issueTotal":7,"modelSeconds":243,"realCostUsd":null,"reportedCost":0.0589,"totalNoSubmit":0}
++{"stamp":"2026-07-12T04-39-37-773Z","ground":false,"model":"kimi-k2.6","personas":false,"provider":"opencode-go","structurer":"zai/glm-5.2","thinking":"off","verify":false,"cleanCases":3,"cleanFP":17,"issueCases":6,"issueHits":4,"issueTotal":7,"modelSeconds":401,"realCostUsd":null,"reportedCost":0.1938,"totalNoSubmit":0}
+diff --git a/scripts/eval-cli.ts b/scripts/eval-cli.ts
+new file mode 100644
+index 0000000..5f4826a
+--- /dev/null
++++ b/scripts/eval-cli.ts
+@@ -0,0 +1,327 @@
++/**
++ * CLI-analysis eval: drive squarewright's ANALYSIS pass through `claude -p` (the Claude Code CLI, backed by the
++ * user's Max/Pro SUBSCRIPTION — the ToS-legitimate way to use it, unlike wiring subscription auth into the API).
++ * The fixed glm-5.2 structurer (Pass 2, same as the real worker) then extracts findings, so this isolates the
++ * Claude model's REVIEW quality on the same corpus/harness. Writes judge-compatible reports so `scripts/judge.ts`
++ * scores defect-level recall exactly as for API models.
++ *
++ *   bun run scripts/eval-cli.ts --model claude-sonnet-5 [--effort high] [--manifest eval/golden/manifest.yaml] [--stack rust]
++ *   then: bun run scripts/judge.ts --report eval/reports/cli-<model>-<stamp>.json [--manifest ...]
++ *
++ * Analysis = subscription CLI (no API cost). Structuring = free zai glm-5.2. Judge = separate step.
++ */
++import { execFileSync } from "node:child_process";
++import { readFileSync, writeFileSync } from "node:fs";
++import { homedir } from "node:os";
++import { dirname, join } from "node:path";
++import {
++  AuthStorage,
++  createAgentSession,
++  DefaultResourceLoader,
++  defineTool,
++  getAgentDir,
++  SessionManager,
++  type SettingsManager,
++} from "@earendil-works/pi-coding-agent";
++import type { Finding, ModelLane } from "../src/core/types.js";
++import { sameFile } from "../src/eval/locus-match.js";
++import { createModelRegistry } from "../src/pi/model-catalog.js";
++import { agentSessionSettings } from "../src/pi/settings.js";
++import {
++  buildFindingsSchema,
++  buildStructurerSystem,
++  capRuleDrift,
++  submittedToFinding,
++} from "../src/pi/worker.js";
++
++const ROOT = new URL("..", import.meta.url).pathname;
++const arg = (n: string) => {
++  const i = process.argv.indexOf(`--${n}`);
++  return i >= 0 ? process.argv[i + 1] : undefined;
++};
++
++const PERSONA = `You are a careful senior code reviewer reviewing a single pull request.
++Review ONLY the changes in the diff. Flag correctness bugs, security issues, and clear regressions.
++Ground every finding in the diff — do not speculate about code you cannot see. Prefer a few high-signal
++findings over many nits. If the change looks fine, say so. Write your review as prose: for every issue,
++state the file path, line number, a severity (error/warning/info), and why it is a problem.`;
++
++interface SubmittedFinding {
++  line?: number;
++  message: string;
++  path: string;
++  severity?: string;
++}
++
++function readZaiKey(): Record<string, string> {
++  const keys: Record<string, string> = {};
++  try {
++    keys.zai = (
++      process.env.ZAI_API_KEY ?? readFileSync(`${homedir()}/.zai_key`, "utf8")
++    ).trim();
++  } catch {
++    /* no zai key */
++  }
++  return keys;
++}
++
++/**
++ * Pass-1 analysis via `claude -p` on the SUBSCRIPTION. CRITICAL flags (learned from trimwire's harness):
++ * `--safe-mode --tools ""` — without them the CLI tool-calls into the HARNESS's own repo (runs `git diff`,
++ * reviews the live tree) instead of the injected diff, and picks up ai-memory SessionStart-hook contamination;
++ * disabling tools forces a clean single-turn text review (also ~7× cheaper — no tool-schema overhead).
++ * `--output-format json` gives a parseable envelope with `.is_error` (plain stdout would accept a "Not logged
++ * in" error as if it were review text). Diff goes via stdin (avoids ARG_MAX). Returns text + a status label.
++ */
++function claudeAnalysis(
++  model: string,
++  effort: string | undefined,
++  diff: string
++): { cost: number; status: "error" | "ok" | "timeout"; text: string } {
++  const args = [
++    "-p",
++    "--safe-mode",
++    "--tools",
++    "",
++    "--output-format",
++    "json",
++    "--model",
++    model,
++    "--append-system-prompt",
++    PERSONA,
++  ];
++  if (effort) {
++    args.push("--effort", effort);
++  }
++  // env hygiene — drop ANTHROPIC_BASE_URL so nothing ambient redirects the endpoint
++  const { ANTHROPIC_BASE_URL: _drop, ...env } = process.env;
++  try {
++    const raw = execFileSync("claude", args, {
++      encoding: "utf8",
++      env,
++      input: `Review this pull request diff and report every issue you find:\n\n${diff}`,
++      maxBuffer: 20 * 1024 * 1024,
++      stdio: ["pipe", "pipe", "pipe"],
++      timeout: 240_000,
++    });
++    const j = JSON.parse(raw) as {
++      is_error?: boolean;
++      result?: string;
++      total_cost_usd?: number;
++    };
++    const cost = j.total_cost_usd ?? 0;
++    if (j.is_error) {
++      return { cost, status: "error", text: "" };
++    }
++    return { cost, status: "ok", text: (j.result ?? "").trim() };
++  } catch (e) {
++    const err = e as { code?: string; signal?: string };
++    const timedOut = err.signal === "SIGTERM" || err.code === "ETIMEDOUT";
++    return { cost: 0, status: timedOut ? "timeout" : "error", text: "" };
++  }
++}
++
++/** Pass-2 structurer — replicates src/pi/worker.ts Pass 2 (fixed extractor, no reasoning, submit_findings). */
++async function structure(
++  analysisText: string,
++  keys: Record<string, string>,
++  lane: ModelLane
++): Promise<Finding[]> {
++  const authStorage = AuthStorage.create();
++  for (const [p, k] of Object.entries(keys)) {
++    authStorage.setRuntimeApiKey(p, k);
++  }
++  const modelRegistry = createModelRegistry(authStorage);
++  const model = modelRegistry.find(lane.provider, lane.model);
++  if (!model) {
++    throw new Error(
++      `Structurer model not found: ${lane.provider}/${lane.model}`
++    );
++  }
++  let captured: { summary: string; findings: SubmittedFinding[] } | undefined;
++  const submitFindings = defineTool({
++    description:
++      "Submit the structured findings extracted from the analysis. Call exactly once.",
++    execute: (_id, params) => {
++      captured = params as { summary: string; findings: SubmittedFinding[] };
++      return Promise.resolve({
++        content: [
++          { text: `Recorded ${captured.findings.length}.`, type: "text" },
++        ],
++        details: {},
++      });
++    },
++    label: "Submit findings",
++    name: "submit_findings",
++    parameters: buildFindingsSchema(false),
++  });
++  const loader = new DefaultResourceLoader({
++    agentDir: getAgentDir(),
++    cwd: process.cwd(),
++    systemPromptOverride: () => buildStructurerSystem(false),
++  });
++  await loader.reload();
++  const { session } = await createAgentSession({
++    authStorage,
++    customTools: [submitFindings],
++    model,
++    modelRegistry,
++    noTools: "builtin",
++    resourceLoader: loader,
++    sessionManager: SessionManager.inMemory(),
++    settingsManager: (agentSessionSettings as () => SettingsManager)(),
++    thinkingLevel: lane.thinking ?? "off",
++  });
++  const text = analysisText.length > 0 ? analysisText : "(no analysis text)";
++  await session.prompt(
++    `Extract the findings from this code-review analysis into submit_findings (empty array if no issues):\n\n${text}`
++  );
++  let n = 0;
++  while (captured === undefined && n < 2) {
++    n += 1;
++    // biome-ignore lint/performance/noAwaitInLoops: sequential nudge, only if the prior failed
++    await session.prompt(
++      "Call submit_findings now, exactly once (empty array if none)."
++    );
++  }
++  session.dispose();
++  // biome-ignore lint/suspicious/noUnnecessaryConditions: the nudge loop can exit with captured still undefined
++  const submitted = captured?.findings ?? [];
++  return capRuleDrift(
++    submitted.map((f) => submittedToFinding(f, "persona:general", false))
++  );
++}
++
++interface Case {
++  expect_loci?: { path: string }[];
++  id: string;
++  label: string;
++}
++
++/**
++ * Report labeling. `claude -p` has NO reasoning-off effort value (default effort == high per docs), so the real
++ * off lane is env `MAX_THINKING_TOKENS=0`. A no-`--effort` run is therefore "off" only when that env is set, else
++ * "default" — detect it so the report is self-documenting and the filename suffix stays unambiguous.
++ */
++function reportLabels(effort: string | undefined): {
++  effortLabel: string;
++  suffix: string;
++  thinkOff: boolean;
++} {
++  const thinkOff = process.env.MAX_THINKING_TOKENS === "0";
++  const effortLabel = effort ?? (thinkOff ? "off" : "default");
++  let suffix = "";
++  if (effort) {
++    suffix = `-${effort}`;
++  } else if (thinkOff) {
++    suffix = "-off";
++  }
++  return { effortLabel, suffix, thinkOff };
++}
++
++async function main() {
++  const model = arg("model") ?? "claude-sonnet-5";
++  const effort = arg("effort");
++  const { effortLabel, suffix, thinkOff } = reportLabels(effort);
++  // Structurer pinned to zai:glm-5.2 by default — matches the paid model rank (#94) so scores are comparable.
++  const structArg = arg("structurer") ?? "zai:glm-5.2";
++  const structLane: ModelLane = {
++    id: "structurer",
++    model: structArg.slice(structArg.indexOf(":") + 1),
++    provider: structArg.slice(0, structArg.indexOf(":")),
++    thinking: "off",
++  };
++  const manifestPath = arg("manifest") ?? `${ROOT}eval/golden/manifest.yaml`;
++  const diffDir = join(dirname(manifestPath), "diffs");
++  const stack = arg("stack");
++  const only = arg("id");
++  const { parse } = await import("yaml");
++  const { cases: allCases } = parse(readFileSync(manifestPath, "utf8")) as {
++    cases: (Case & { stack?: string })[];
++  };
++  let cases = allCases;
++  if (stack) {
++    cases = cases.filter((c) => c.stack === stack);
++  }
++  if (only) {
++    cases = cases.filter((c) => c.id === only);
++  }
++  const keys = readZaiKey();
++  console.log(
++    `\n▸ eval-cli  analysis=claude/${model}@${effortLabel}  structurer=${structLane.provider}/${structLane.model}  cases=${cases.length}\n`
++  );
++  const results: unknown[] = [];
++  let totalCost = 0;
++  for (const c of cases) {
++    const t0 = Date.now();
++    let diff = "";
++    try {
++      diff = readFileSync(join(diffDir, `${c.id}.diff`), "utf8");
++    } catch {
++      console.log(`  ${c.id}: no diff, skipping`);
++      continue;
++    }
++    const {
++      text: analysis,
++      status,
++      cost,
++    } = claudeAnalysis(model, effort, diff);
++    totalCost += cost;
++    let findings: Finding[] = [];
++    if (analysis) {
++      // biome-ignore lint/performance/noAwaitInLoops: sequential by design — one subscription-rate-limited review at a time
++      findings = await structure(analysis, keys, structLane);
++    }
++    const loci = c.expect_loci ?? [];
++    const hitLoci = loci.filter((l) =>
++      findings.some((f) => sameFile(f.path, l.path))
++    ).length;
++    const ms = Date.now() - t0;
++    console.log(
++      `  [${c.label === "clean" ? "clean    " : "has-issue"}] ${c.id.padEnd(28)} raw=${findings.length} hits=${hitLoci}/${loci.length} ${status === "ok" ? "" : `(${status.toUpperCase()})`} ${(ms / 1000).toFixed(0)}s`
++    );
++    results.push({
++      cost,
++      findings: findings.map((f) => ({
++        line: f.line,
++        message: f.message,
++        path: f.path,
++        severity: f.severity,
++      })),
++      hitLoci,
++      id: c.id,
++      label: c.label,
++      lociTotal: loci.length,
++      ms,
++      status,
++    });
++  }
++  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
++  const modelSlug = model.replace(/[^a-z0-9.-]/gi, "_");
++  const reportPath = `${ROOT}eval/reports/cli-${modelSlug}${suffix}-${stamp}.json`;
++  writeFileSync(
++    reportPath,
++    JSON.stringify(
++      {
++        config: {
++          analysis: `claude-cli/${model}`,
++          effort: effortLabel,
++          structurer: `${structLane.provider}/${structLane.model}`,
++          thinkingDisabled: thinkOff,
++          totalCostUsd: totalCost,
++        },
++        results,
++      },
++      null,
++      2
++    )
++  );
++  console.log(
++    `\n  subscription cost (analysis, from claude -p): $${totalCost.toFixed(4)} over ${results.length} cases\n  report: ${reportPath}\n  judge: bun run scripts/judge.ts --report ${reportPath}${manifestPath.includes("contam") ? " --manifest eval/contam-safe/manifest.yaml" : ""}\n`
++  );
++}
++
++main().catch((e) => {
++  console.error("eval-cli failed:", e instanceof Error ? e.message : e);
++  process.exit(1);
++});
