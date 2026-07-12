@@ -1,0 +1,429 @@
+diff --git a/eval/RESULTS.md b/eval/RESULTS.md
+index 07ac883..d682cd5 100644
+--- a/eval/RESULTS.md
++++ b/eval/RESULTS.md
+@@ -705,3 +705,58 @@ judging any other corpus silently scored /0 — now a `--manifest` flag, matchin
+   mitigant. The one genuinely-more-than-single-N signal is the **cross-corpus consistency** (~1.7 vs ~1.8). To
+   settle it: ≥3 reports/condition + a cross-family judge (the same bar the retracted section prescribes). Runs
+   logged in `eval/runs.jsonl`.
++
++## #45 AC1 — golden miss map (reproducible; file-level, observational)
++
++Enumerating the recall bottleneck as a reproducible table, not prose. `bun run scripts/missmap.ts` scores every
++golden has-issue locus (11 loci, 8 cases) by **file-level hit rate** across the saved reports in `eval/reports/`
++— a hit = some finding on the locus's file (`src/eval/locus-match.ts`, the same rule the eval's `hitLoci` uses).
++Snapshot over **227 reports (184 cover ≥1 golden case)**, sorted hardest-first:
++
++Columns `listed`/`other` split reports by whether the model name matches a hand-listed set
++(`fugu|sonnet|deepseek-v4|grok|minimax-m3|glm-5.2` — the free default plus named candidates); this is a
++**named-set membership test, not a proven strength ordering** (see caveats).
++
++| locus (case#loci) | overall | listed | other | file |
++|---|---|---|---|---|
++| css-tailwindcss-17247#1 | 8% (12/147) | 20% (9/44) | 3% (3/103) | preflight.css |
++| ts-vite-21019#0 | 16% (24/151) | 24% (11/45) | 12% (13/106) | node/utils.ts |
++| go-cli-10547#0 | 20% (31/153) | 25% (11/44) | 18% (20/109) | pr/create/create.go |
++| ruby-rails-54960#0 | 20% (30/147) | 45% (20/44) | 10% (10/103) | schema_cache.rb |
++| ts-vite-21019#1 | 39% (59/151) | 56% (25/45) | 32% (34/106) | create-vite/index.ts |
++| docker-grafana-124812#0 | 40% (59/149) | 52% (23/44) | 34% (36/105) | Dockerfile |
++| css-tailwindcss-17247#0 | 40% (59/147) | 68% (30/44) | 28% (29/103) | src/utilities.ts |
++| rust-tokio-7757#1 | 41% (63/155) | 80% (36/45) | 25% (27/110) | sharded_queue.rs |
++| rust-tokio-7757#0 | 44% (68/155) | 89% (40/45) | 25% (28/110) | pool.rs |
++| config-swup-1052#0 | 56% (92/165) | 74% (34/46) | 49% (58/119) | tsconfig.json |
++| python-requests-6667#0 | 58% (87/149) | 86% (38/44) | 47% (49/105) | adapters.py |
++
++**Findings (AC1: which loci are missed, and why):**
++- **No hard-unreachable locus.** Every locus is hit by *some* config (none is a structural 0% like the
++  relabelled ci-moby case). So the miss-class is **low, inconsistent reachability**, not unreachability — even the
++  best-reached locus (`adapters.py`) is only 58% file-level, and the median locus ~40%.
++- **Model choice moves recall a lot.** The `listed` bucket beats `other` on **every** locus, often 2–4×
++  (`pool.rs` 89% vs 25%, `utilities.ts` 68% vs 28%, `schema_cache.rb` 45% vs 10%) — consistent with the Fugu ~2×
++  judged result, i.e. recall is model-liftable, not a fixed corpus ceiling. But `listed` still reaches only
++  20–25% on the three hardest loci, so a better model raises the floor without solving them.
++- **A residual hard tail** stays low even for the `listed` bucket: `preflight.css` (20%), `node/utils.ts` (24%),
++  `create.go` (25%). These are the candidates for per-case inspection (prompt / routing / grounding), the cases
++  where "just use a stronger model" is *not* enough.
++
++**Honesty caveats — this is directional, not a controlled experiment:**
++- **Observational aggregate over heterogeneous configs.** The 227 reports mix grounding, personas, samples,
++  thinking, and structurer settings; this is not a matched A/B, so the `listed`/`other` gap is a lead, not an
++  effect size. (Grounding specifically was barely run on golden — N=3 — too few to classify.)
++- **`listed` is a named-set membership test, not a strength ranking.** Because the free default **glm-5.2 is in
++  `listed`**, the split is roughly "glm-5.2-and-named-candidates vs the rest" — it shows *the rest miss more*,
++  which is weaker than "frontier beats glm." In fact the effect is NOT monotonic in true model strength: isolating
++  frontier-only (excluding glm-5.2) is sometimes *worse* than `other` (e.g. `create.go`: frontier ~11% vs `other`
++  18%), so glm-5.2 carries much of `listed`'s edge. Treat the columns as a coarse routing hint, not a model rank.
++- **File-level is an UPPER bound.** A file hit is not a defect hit; the judge (`scripts/judge.ts`) consistently
++  scores defect < file, so true recall is below every number here. The file/defect gap is itself a miss-class
++  (findings on the right file that don't name the root cause).
++
++**The open decision (AC2 gate) — needs the maintainer.** The biggest measured lever is a stronger analysis model,
++but confirming *which* model and by how much needs a paid model-rank measurement (≥3 reports/condition + a
++cross-family judge — the standing bar). That's a **paid-spend go/no-go** the maintainer owns; flagged on #45,
++not run unattended.
+diff --git a/scripts/eval.ts b/scripts/eval.ts
+index 67c9aed..d1fe4b2 100644
+--- a/scripts/eval.ts
++++ b/scripts/eval.ts
+@@ -27,6 +27,7 @@ import type {
+   ReviewContext,
+   ThinkingLevel,
+ } from "../src/core/types.js";
++import { sameFile } from "../src/eval/locus-match.js";
+ import { aggregateFindings } from "../src/output/aggregate.js";
+ import { buildPasses, DEFAULT_PERSONAS } from "../src/personas/defaults.js";
+ import { selectPersonas } from "../src/personas/routing.js";
+@@ -564,11 +565,7 @@ async function main() {
+         const ms = Date.now() - t0;
+         // has-issue recall: a finding on the same file as an expected locus counts as a hit (boundary-safe;
+         // NOTE this is file-level only — it cannot see root-cause/precision; a judge scorer is the real fix).
+-        const sameFile = (fp: string, lp: string) =>
+-          fp === lp ||
+-          fp.endsWith(`/${lp}`) ||
+-          lp.endsWith(`/${fp}`) ||
+-          fp.split("/").pop() === lp.split("/").pop();
++        // `sameFile` is shared with the miss-map so both score loci by one definition (src/eval/locus-match.ts).
+         const lociTotal = c.expect_loci?.length ?? 0;
+         const hitLoci =
+           c.expect_loci?.filter((l) =>
+diff --git a/scripts/missmap.ts b/scripts/missmap.ts
+new file mode 100644
+index 0000000..46afa90
+--- /dev/null
++++ b/scripts/missmap.ts
+@@ -0,0 +1,118 @@
++/**
++ * Golden-corpus miss map (issue #45 AC1): per-locus file-level recall across every saved eval report, so the
++ * recall bottleneck is a reproducible table instead of a hand-written one. Reads the manifest's has-issue loci
++ * and `eval/reports/*.json`, and prints each locus's hit rate — overall and split by config axis (grounded,
++ * strong vs weaker analysis model) to hint at whether a miss is model-liftable or a harder ceiling.
++ *
++ *   bun run scripts/missmap.ts [--manifest eval/golden/manifest.yaml] [--reports-dir eval/reports]
++ *
++ * File-level only (an upper bound on true defect recall — see src/eval/missmap.ts). "Strong" is a coarse model
++ * name match, directional not authoritative.
++ */
++import { readdirSync, readFileSync } from "node:fs";
++import { join } from "node:path";
++import { parse as parseYaml } from "yaml";
++import {
++  type GoldenLoci,
++  type MissReport,
++  perLocusHitRates,
++  reportsCoveringGolden,
++} from "../src/eval/missmap.js";
++
++const ROOT = new URL("..", import.meta.url).pathname;
++
++function arg(name: string, fallback: string): string {
++  const i = process.argv.indexOf(`--${name}`);
++  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
++}
++
++// A hand-listed set of models (the free default glm-5.2 plus ones RESULTS.md flags as candidates for beating it).
++// This is a NAMED-SET membership test, not a proven strength ordering — the columns are labelled "listed"/"other"
++// accordingly. Keep the list in sync with what RESULTS.md's "#45 AC1" section calls out.
++const LISTED_MODEL = /fugu|sonnet|deepseek-v4|grok|minimax-m3|glm-5\.2/i;
++function isListed(config: Record<string, unknown> | undefined): boolean {
++  return LISTED_MODEL.test(String(config?.model ?? ""));
++}
++
++function loadGolden(manifestPath: string): GoldenLoci {
++  const manifest = parseYaml(readFileSync(manifestPath, "utf8")) as {
++    cases: Array<{
++      id: string;
++      label: string;
++      expect_loci?: Array<{ path: string }>;
++    }>;
++  };
++  const golden: GoldenLoci = new Map();
++  for (const c of manifest.cases) {
++    if (c.label === "has-issue" && c.expect_loci?.length) {
++      golden.set(
++        c.id,
++        c.expect_loci.map((l) => l.path)
++      );
++    }
++  }
++  return golden;
++}
++
++function loadReports(dir: string): MissReport[] {
++  const reports: MissReport[] = [];
++  for (const f of readdirSync(dir)) {
++    if (!f.endsWith(".json")) {
++      continue;
++    }
++    try {
++      reports.push(
++        JSON.parse(readFileSync(join(dir, f), "utf8")) as MissReport
++      );
++    } catch {
++      // A malformed/partial report is skipped, not counted — never fabricate coverage from an unreadable file.
++    }
++  }
++  return reports;
++}
++
++function pct(hit: number, total: number): string {
++  return total === 0
++    ? "—".padStart(11)
++    : `${(100 * (hit / total)).toFixed(0).padStart(3)}% (${hit}/${total})`;
++}
++
++function main(): void {
++  const manifestPath = arg("manifest", `${ROOT}eval/golden/manifest.yaml`);
++  const reportsDir = arg("reports-dir", `${ROOT}eval/reports`);
++  const golden = loadGolden(manifestPath);
++  const reports = loadReports(reportsDir);
++
++  const overall = perLocusHitRates(reports, golden);
++  const listed = new Map(
++    perLocusHitRates(reports, golden, isListed).map((r) => [r.key, r])
++  );
++  const other = new Map(
++    perLocusHitRates(reports, golden, (c) => !isListed(c)).map((r) => [
++      r.key,
++      r,
++    ])
++  );
++
++  console.log(
++    `\n▸ golden miss map — ${reports.length} reports, ${reportsCoveringGolden(reports, golden)} cover ≥1 golden case\n`
++  );
++  console.log(
++    `${"locus (case#loci)".padEnd(28)} ${"overall".padEnd(13)} ${"listed*".padEnd(13)} ${"other".padEnd(13)} path`
++  );
++  for (const r of overall) {
++    const s = listed.get(r.key);
++    const w = other.get(r.key);
++    console.log(
++      `${r.key.padEnd(28)} ${pct(r.hit, r.total).padEnd(13)} ${pct(s?.hit ?? 0, s?.total ?? 0).padEnd(13)} ${pct(w?.hit ?? 0, w?.total ?? 0).padEnd(13)} ${r.path}`
++    );
++  }
++  console.log(
++    `\n* "listed" = model name matches ${LISTED_MODEL.source} (glm-5.2 + named candidates); "other" = the rest. A named-set membership test, NOT a proven strength ordering.`
++  );
++  console.log(
++    "File-level only — an upper bound on true defect recall (the judge measures root-cause matches). See eval/RESULTS.md '#45 AC1'.\n"
++  );
++}
++
++main();
+diff --git a/src/eval/locus-match.ts b/src/eval/locus-match.ts
+new file mode 100644
+index 0000000..58da05a
+--- /dev/null
++++ b/src/eval/locus-match.ts
+@@ -0,0 +1,14 @@
++/**
++ * File-level locus match: does a reviewer finding land on the same file as an expected defect locus? This is the
++ * boundary-safe, path-suffix/basename rule the eval uses for `hitLoci` recall, shared so the miss-map
++ * (`missmap.ts`) scores loci by the SAME definition the eval reports do — one source, no drift. It is file-level
++ * only: it cannot see whether the finding names the real root cause (that's the judge's defect-level metric).
++ */
++export function sameFile(findingPath: string, locusPath: string): boolean {
++  return (
++    findingPath === locusPath ||
++    findingPath.endsWith(`/${locusPath}`) ||
++    locusPath.endsWith(`/${findingPath}`) ||
++    findingPath.split("/").pop() === locusPath.split("/").pop()
++  );
++}
+diff --git a/src/eval/missmap.test.ts b/src/eval/missmap.test.ts
+new file mode 100644
+index 0000000..e2b46fb
+--- /dev/null
++++ b/src/eval/missmap.test.ts
+@@ -0,0 +1,85 @@
++import { expect, test } from "bun:test";
++import { sameFile } from "./locus-match.js";
++import {
++  type GoldenLoci,
++  type MissReport,
++  perLocusHitRates,
++  reportsCoveringGolden,
++} from "./missmap.js";
++
++// ── sameFile (shared file-match rule) ────────────────────────────────────────
++
++test("sameFile: exact, suffix, and basename matches all count; unrelated paths don't", () => {
++  expect(sameFile("src/a.ts", "src/a.ts")).toBe(true);
++  expect(sameFile("packages/x/src/a.ts", "src/a.ts")).toBe(true); // finding deeper than locus
++  expect(sameFile("a.ts", "pkg/a.ts")).toBe(true); // locus deeper than finding
++  expect(sameFile("dir/a.ts", "other/a.ts")).toBe(true); // same basename
++  expect(sameFile("src/a.ts", "src/b.ts")).toBe(false);
++});
++
++// ── perLocusHitRates ─────────────────────────────────────────────────────────
++
++const golden: GoldenLoci = new Map([
++  ["case-a", ["src/a.ts", "src/b.ts"]],
++  ["case-c", ["src/c.ts"]],
++]);
++
++function report(
++  config: Record<string, unknown>,
++  results: MissReport["results"]
++): MissReport {
++  return { config, results };
++}
++
++test("perLocusHitRates: counts a locus hit when any finding is sameFile, per report", () => {
++  const reports: MissReport[] = [
++    report({}, [{ findings: [{ path: "src/a.ts" }], id: "case-a" }]), // hits a#0, misses a#1
++    report({}, [
++      { findings: [{ path: "x/a.ts" }, { path: "src/b.ts" }], id: "case-a" },
++    ]), // hits a#0 (basename) and a#1
++  ];
++  const rows = perLocusHitRates(reports, golden);
++  const byKey = new Map(rows.map((r) => [r.key, r]));
++  expect(byKey.get("case-a#0")).toMatchObject({ hit: 2, rate: 1, total: 2 });
++  expect(byKey.get("case-a#1")).toMatchObject({ hit: 1, rate: 0.5, total: 2 });
++  // case-c never appeared → total 0, rate 0 (never a fabricated hit)
++  expect(byKey.get("case-c#0")).toMatchObject({ hit: 0, rate: 0, total: 0 });
++});
++
++test("perLocusHitRates: rows are sorted hardest-first (lowest rate)", () => {
++  const reports: MissReport[] = [
++    report({}, [
++      { findings: [{ path: "src/b.ts" }], id: "case-a" }, // hits a#1 only
++      { findings: [{ path: "src/c.ts" }], id: "case-c" }, // hits c#0
++    ]),
++  ];
++  const rows = perLocusHitRates(reports, golden);
++  // a#0 (0/1) is hardest, before a#1 and c#0 (both 1/1)
++  expect(rows[0]?.key).toBe("case-a#0");
++  expect(rows[0]?.rate).toBe(0);
++});
++
++test("perLocusHitRates: a segment predicate restricts the tally to matching configs", () => {
++  const reports: MissReport[] = [
++    report({ model: "strong-x" }, [
++      { findings: [{ path: "src/a.ts" }], id: "case-a" }, // strong hits a#0
++    ]),
++    report({ model: "weak-y" }, [
++      { findings: [], id: "case-a" }, // weak misses a#0
++    ]),
++  ];
++  const strong = perLocusHitRates(reports, golden, (c) =>
++    String(c?.model).startsWith("strong")
++  );
++  const a0 = strong.find((r) => r.key === "case-a#0");
++  expect(a0).toMatchObject({ hit: 1, total: 1 }); // only the strong report counted
++});
++
++test("reportsCoveringGolden: counts reports that ran at least one golden case", () => {
++  const reports: MissReport[] = [
++    report({}, [{ findings: [], id: "case-a" }]),
++    report({}, [{ findings: [], id: "not-golden" }]), // covers nothing
++    report({}, [{ findings: [], id: "case-c" }]),
++  ];
++  expect(reportsCoveringGolden(reports, golden)).toBe(2);
++});
+diff --git a/src/eval/missmap.ts b/src/eval/missmap.ts
+new file mode 100644
+index 0000000..259a0b3
+--- /dev/null
++++ b/src/eval/missmap.ts
+@@ -0,0 +1,100 @@
++/**
++ * Golden-corpus miss map (issue #45 AC1). Aggregates the file-level recall of each expected defect locus across
++ * a set of saved eval reports, so "which loci are missed, and how consistently" is a reproducible measurement
++ * rather than a hand-written table. Pure: it takes already-parsed reports + the golden loci and returns stats,
++ * so it's testable without touching disk or a model. The CLI wrapper (`scripts/missmap.ts`) reads the manifest
++ * and `eval/reports/`.
++ *
++ * File-level only (via `sameFile`): a hit means a finding on the locus's file, not that it named the root cause.
++ * So these rates are an UPPER bound on true (defect-level) recall — the judge measures the rest.
++ */
++import { sameFile } from "./locus-match.js";
++
++export interface MissReport {
++  config?: Record<string, unknown>;
++  results?: Array<{
++    id: string;
++    findings?: Array<{ path: string }>;
++  }>;
++}
++
++/** A locus key is `<caseId>#<lociIndex>`, e.g. `ts-vite-21019#0`. */
++export interface LocusStat {
++  /** reports (covering this case) in which some finding hit the locus's file */
++  hit: number;
++  key: string;
++  path: string;
++  /** hit / total, or 0 when total is 0 */
++  rate: number;
++  /** reports that ran this locus's case at all */
++  total: number;
++}
++
++/** golden has-issue cases → their expected locus file paths, in manifest order. */
++export type GoldenLoci = Map<string, string[]>;
++
++/**
++ * Per-locus file-hit rate across `reports`. A report contributes to a locus's `total` iff it ran that locus's
++ * case; `hit` increments when any of that result's findings is `sameFile` as the locus. An optional `segment`
++ * predicate restricts the tally to reports whose config matches (e.g. grounded-only, strong-model-only) so a
++ * miss can be attributed to a config axis. Rows are returned hardest-first (lowest rate).
++ */
++export function perLocusHitRates(
++  reports: MissReport[],
++  golden: GoldenLoci,
++  segment?: (config: Record<string, unknown> | undefined) => boolean
++): LocusStat[] {
++  const stat = new Map<string, { hit: number; total: number; path: string }>();
++  for (const [id, loci] of golden) {
++    for (const [i, path] of loci.entries()) {
++      stat.set(`${id}#${i}`, { hit: 0, path, total: 0 });
++    }
++  }
++
++  for (const report of reports) {
++    if (segment && !segment(report.config)) {
++      continue;
++    }
++    for (const result of report.results ?? []) {
++      const loci = golden.get(result.id);
++      if (!loci) {
++        continue;
++      }
++      const findings = result.findings ?? [];
++      loci.forEach((locusPath, i) => {
++        const s = stat.get(`${result.id}#${i}`);
++        if (!s) {
++          return;
++        }
++        s.total += 1;
++        if (findings.some((f) => sameFile(f.path, locusPath))) {
++          s.hit += 1;
++        }
++      });
++    }
++  }
++
++  return [...stat.entries()]
++    .map(([key, s]) => ({
++      hit: s.hit,
++      key,
++      path: s.path,
++      rate: s.total === 0 ? 0 : s.hit / s.total,
++      total: s.total,
++    }))
++    .sort((a, b) => a.rate - b.rate);
++}
++
++/** How many of `reports` ran at least one of the golden cases — the denominator context for the table. */
++export function reportsCoveringGolden(
++  reports: MissReport[],
++  golden: GoldenLoci
++): number {
++  let n = 0;
++  for (const report of reports) {
++    if ((report.results ?? []).some((r) => golden.has(r.id))) {
++      n += 1;
++    }
++  }
++  return n;
++}

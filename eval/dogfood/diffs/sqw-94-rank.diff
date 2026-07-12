@@ -1,0 +1,61 @@
+diff --git a/eval/RESULTS.md b/eval/RESULTS.md
+index d682cd5..52b1904 100644
+--- a/eval/RESULTS.md
++++ b/eval/RESULTS.md
+@@ -760,3 +760,56 @@ Columns `listed`/`other` split reports by whether the model name matches a hand-
+ but confirming *which* model and by how much needs a paid model-rank measurement (≥3 reports/condition + a
+ cross-family judge — the standing bar). That's a **paid-spend go/no-go** the maintainer owns; flagged on #45,
+ not run unattended.
++
++## opencode-Go model rank — with & without reasoning (2026-07-11)
++
++Maintainer granted paid-spend + asked to rank the whole opencode-Go lineup (flat-fee) with and without reasoning.
++Design (council): a fresh **glm-5.2 control** as anchor, all arms **structurer-pinned to `zai:glm-5.2`** (the confound
++that silently swung earlier probes), candidates screened at **off** then **low** on golden, scored at
++**DEFECT-level** (file-level is an upper bound and — proven here — misleading). Anchor judged rigorously
++(N=3 × deepseek-v3.2 cross-family judge × `--judge-repeats 2`); candidates screen-judged (N=1, single judge) —
++so candidate numbers are screen-grade, not a settled rank. The screen is decisive not because it's precise but
++because no candidate showed an edge even on its best single draw (see below), so none warranted the paid N=3
++confirm — but the *magnitudes* are noisy and must not be read as a fine ranking.
++
++**Anchor — glm-5.2 (z.ai, free), golden N=3, deepseek cross-family judge:** defect **0–6, median 3.5 / 11**
++(file 7/11). The spread is almost all *analysis* variance (per-report medians 0.5–5; judge variance only 1–2) —
++i.e. glm-5.2's run-to-run swing, the reason single-run ranks never reproduce.
++
++**Candidates (golden, N=1 screen; defect via judge):**
++
++| model (opencode-Go) | off file | off defect | low file | low defect |
++|---|---|---|---|---|
++| minimax-m3 | 4 | 4 | 5 | 3 |
++| minimax-m2.7 | 5 | 2 | 4 | 0 |
++| qwen3.7-max | 5 | 1 | 4 | 2 |
++| qwen3.7-plus | 5 | 0 | 6 | 2 |
++| qwen3.6-plus | 3 | 1 | 6 | 2 |
++| kimi-k2.6 | 9 | 2 | 4 | 3 |
++| mimo-v2.5-pro | 4 | — | 7 | 3 |
++
++(kimi-k2.7-code and glm-5.1 hung with no output and were dropped; deepseek-v4-* on Go are reasoning-mandatory-only
++tiers and already lost this session; grok-4.5 / minimax-m2 on OpenRouter are `reasoning.mandatory=true` → auto-
++disqualified as a *default* by the #36 reasoning-trap rule.)
++
++**Verdict — no switch. glm-5.2 stays the honest free default.** No candidate scored above 4 defect on any single
++screen draw, and the one 4 (minimax-m3, off) sits well inside the anchor's own **0–6** range (median 3.5) — so
++even the best draw doesn't separate from the free baseline. A *switch rule proposed here* (≥2-loci gain with
++non-overlapping ranges, reproduced on contam-safe, operationally viable) is nowhere met. **Low reasoning did not
++lift defect recall** above the free baseline for any model (refining, not contradicting, the earlier "low is
++often the file sweet spot" note — it helps *file* recall, not *defect* recall). This is a **screen-and-defer**
++settlement of #49 AC4: only the anchor got the literal N≥3 × cross-family treatment; candidates were screened
++(N=1) and none cleared the bar to justify that spend — the honest reading is "no candidate worth confirming,"
++not "each proven worse at N=3."
++
++**Two methodological findings (the durable value here):**
++- **File-level model ranking is misleading.** kimi-k2.6 topped the *file* metric at off (9/11) — 2 above the
++  anchor — but scored only 2/11 *defect* (24 raw FPs: it hits the right files by over-flagging, not by finding
++  root causes). At low its file dropped to 4/11, confirming the 9 was noise. qwen3.7-plus/3.6-plus show the same
++  file(6)→defect(2) gap. Anyone ranking models on file-recall picks the wrong winner.
++- **The wall is analysis variance, not model access.** The anchor's own defect spread (0–6 across 3 runs) is
++  wider than any candidate's edge, so "which model" is dominated by run-to-run noise until N and a stable
++  cross-family judge are held fixed. This is why the recall lever is a *mechanism* change (enumeration/grounding),
++  not a model swap. Reproduce the anchor with `bun run scripts/eval.ts --provider zai --model glm-5.2 --thinking
++  off --structurer zai:glm-5.2 --repeat 3` then `scripts/judge.ts --reports … --judge-repeats 2 --model
++  openrouter:deepseek/deepseek-v3.2`.
