@@ -831,3 +831,56 @@ enumeration does not lift defect recall. It stays **opt-in / off by default and 
 review path** — a documented dead-end, not a regression. (Consistent with the null Verifier result and cc-dcp's
 finding that a model can't reliably re-check its own blind spot by re-reading the same diff.) The enumeration
 miss-class, if it's to be cracked, needs a different mechanism than "ask the model to look again."
+
+## Claude subscription models via `claude -p` — first rank (2026-07-12, #32/#45)
+
+Ranked Claude subscription models as the ANALYSIS pass, driven through the `claude -p` CLI (the ToS-legitimate
+way to use a Max/Pro subscription — not API-key wiring), structurer-pinned zai:glm-5.2, **deepseek-v3.2
+cross-family judge, repeats=3** (median; the #90 guard drops impossible `defect>file` passes). golden, 16 configs.
+Analysis $ is **notional** subscription quota (`total_cost_usd` from `claude -p`), not a real charge.
+
+`claude -p` facts that shaped the grid (measured/doc-confirmed): `--effort ∈ {low,medium,high,xhigh,max}`, **no
+`none`; DEFAULT == `high`** — so a no-`--effort` run duplicates `--effort high` (this cost a 30% dupe on the
+first launch). Genuine reasoning-OFF = env `MAX_THINKING_TOKENS=0` (verified ~halves opus tokens); **Fable can't
+disable thinking; Haiku has no effort levels.**
+
+| config | defect median /11 | analysis $ (notional) | usable passes |
+|---|---|---|---|
+| fable-5 @low | **5** | 3.15 | 3/3 |
+| opus-4-8 @high | 4 | 2.35 | 3/3 |
+| fable-5 @medium | 4 | 4.03 | 3/3 |
+| sonnet-5 @off | 4 | **0.83** | 2/3 |
+| sonnet-5 @high | 3 | 1.93 | 3/3 |
+| sonnet-4-6 @low | 3 (2–4) | 0.36 | 3/3 |
+| opus-4-8 @off | 3 | 1.23 | 3/3 |
+| sonnet-5 @medium / @low | 2 | 1.30 / 0.54 | 3/3 |
+| sonnet-4-6 @medium / @high | 2 | 1.12 / 1.19 | 3/3 |
+| sonnet-4-6 @off | 1 | 0.56 | 3/3 |
+| opus-4-8 @low | 1 | 1.41 | 3/3 |
+| haiku-4-5 (default) | 1 | 0.58 | 1/3 |
+| opus-4-8 @medium | *no usable pass (judge hallucinated 3/3)* | 2.03 | 0/3 |
+| **glm-5.2 (free baseline)** | **~3–3.5** (canonical N=3 = 3.5; 2 reports re-judged here = 2, 3) | **0** | |
+
+**Findings.**
+1. **Only fable-5@low (median 5) clearly beats free glm-5.2 (~3–3.5).** The next tier — sonnet-5@off, opus-4-8@high,
+   fable @medium/@high (all median 4) — is only *marginally* above baseline (~+0.5–1, inside the noise); most
+   configs sit at or below glm. So frontier Claude *can* lift defect recall, but modestly — the 2nd family after
+   Sakana Fugu (5–6) to top glm, reinforcing that the recall wall is **soft/model-liftable**, not that Claude is a
+   slam-dunk.
+2. **Reasoning effort is NOT the lever** — non-monotonic; `off` frequently ties or beats `high` (sonnet-5 off 4 >
+   high 3 > med 2; opus high 4 > off 3 > med n/a; fable low 5 ≥ med/high 4). ⇒ **xhigh/max not worth testing**
+   (≥$5/config on fable/opus for ~zero expected gain). The MODEL lifts recall; effort doesn't.
+3. **Claude is noisier than glm** — 19–37 raw findings on clean cases vs glm's tighter output (a precision cost).
+   Grounding, not a model swap, is the FP lever.
+4. **Cost.** Analysis **$27.76 notional** across 16 configs (fable $3–5 each, the effort ramp, and verbose output
+   drove it — a pre-run estimate of $2.5–3.5 was ~8× low). Judge **~$0.27** OR credits (deepseek ~$0.004/report —
+   judging is ~free; the analysis pass is the whole cost).
+
+**Caveats.** N=1 analysis report per Claude config (glm baseline N=2–3), so within-band ordering is a **LEAD, not a
+verdict** — sonnet-4-6@low alone ranged 2–4. Golden only; no contam-safe Claude cross-check yet, so memorization
+isn't excluded. deepseek-v3.2 hallucinated on 2–3 reports even cross-family (the guard caught them; opus@medium
+lost all 3 passes → no number).
+
+**Operating point UNCHANGED: free glm-5.2 stays the default** (defect ~3–3.5, $0, fast, private). If a maintainer
+wants max recall and will pay, **sonnet-5@off (median 4, ~$0.83/run, reasoning OFF)** is the value pick and
+fable-5@low (5) the ceiling at ~4× the cost.

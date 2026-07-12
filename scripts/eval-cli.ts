@@ -77,7 +77,7 @@ function claudeAnalysis(
   model: string,
   effort: string | undefined,
   diff: string
-): { status: "error" | "ok" | "timeout"; text: string } {
+): { cost: number; status: "error" | "ok" | "timeout"; text: string } {
   const args = [
     "-p",
     "--safe-mode",
@@ -104,15 +104,20 @@ function claudeAnalysis(
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 240_000,
     });
-    const j = JSON.parse(raw) as { is_error?: boolean; result?: string };
+    const j = JSON.parse(raw) as {
+      is_error?: boolean;
+      result?: string;
+      total_cost_usd?: number;
+    };
+    const cost = j.total_cost_usd ?? 0;
     if (j.is_error) {
-      return { status: "error", text: "" };
+      return { cost, status: "error", text: "" };
     }
-    return { status: "ok", text: (j.result ?? "").trim() };
+    return { cost, status: "ok", text: (j.result ?? "").trim() };
   } catch (e) {
     const err = e as { code?: string; signal?: string };
     const timedOut = err.signal === "SIGTERM" || err.code === "ETIMEDOUT";
-    return { status: timedOut ? "timeout" : "error", text: "" };
+    return { cost: 0, status: timedOut ? "timeout" : "error", text: "" };
   }
 }
 
@@ -193,9 +198,31 @@ interface Case {
   label: string;
 }
 
+/**
+ * Report labeling. `claude -p` has NO reasoning-off effort value (default effort == high per docs), so the real
+ * off lane is env `MAX_THINKING_TOKENS=0`. A no-`--effort` run is therefore "off" only when that env is set, else
+ * "default" — detect it so the report is self-documenting and the filename suffix stays unambiguous.
+ */
+function reportLabels(effort: string | undefined): {
+  effortLabel: string;
+  suffix: string;
+  thinkOff: boolean;
+} {
+  const thinkOff = process.env.MAX_THINKING_TOKENS === "0";
+  const effortLabel = effort ?? (thinkOff ? "off" : "default");
+  let suffix = "";
+  if (effort) {
+    suffix = `-${effort}`;
+  } else if (thinkOff) {
+    suffix = "-off";
+  }
+  return { effortLabel, suffix, thinkOff };
+}
+
 async function main() {
   const model = arg("model") ?? "claude-sonnet-5";
   const effort = arg("effort");
+  const { effortLabel, suffix, thinkOff } = reportLabels(effort);
   // Structurer pinned to zai:glm-5.2 by default — matches the paid model rank (#94) so scores are comparable.
   const structArg = arg("structurer") ?? "zai:glm-5.2";
   const structLane: ModelLane = {
@@ -221,9 +248,10 @@ async function main() {
   }
   const keys = readZaiKey();
   console.log(
-    `\n▸ eval-cli  analysis=claude/${model}${effort ? `@${effort}` : ""}  structurer=${structLane.provider}/${structLane.model}  cases=${cases.length}\n`
+    `\n▸ eval-cli  analysis=claude/${model}@${effortLabel}  structurer=${structLane.provider}/${structLane.model}  cases=${cases.length}\n`
   );
   const results: unknown[] = [];
+  let totalCost = 0;
   for (const c of cases) {
     const t0 = Date.now();
     let diff = "";
@@ -233,7 +261,12 @@ async function main() {
       console.log(`  ${c.id}: no diff, skipping`);
       continue;
     }
-    const { text: analysis, status } = claudeAnalysis(model, effort, diff);
+    const {
+      text: analysis,
+      status,
+      cost,
+    } = claudeAnalysis(model, effort, diff);
+    totalCost += cost;
     let findings: Finding[] = [];
     if (analysis) {
       // biome-ignore lint/performance/noAwaitInLoops: sequential by design — one subscription-rate-limited review at a time
@@ -248,6 +281,7 @@ async function main() {
       `  [${c.label === "clean" ? "clean    " : "has-issue"}] ${c.id.padEnd(28)} raw=${findings.length} hits=${hitLoci}/${loci.length} ${status === "ok" ? "" : `(${status.toUpperCase()})`} ${(ms / 1000).toFixed(0)}s`
     );
     results.push({
+      cost,
       findings: findings.map((f) => ({
         line: f.line,
         message: f.message,
@@ -264,15 +298,17 @@ async function main() {
   }
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const modelSlug = model.replace(/[^a-z0-9.-]/gi, "_");
-  const reportPath = `${ROOT}eval/reports/cli-${modelSlug}${effort ? `-${effort}` : ""}-${stamp}.json`;
+  const reportPath = `${ROOT}eval/reports/cli-${modelSlug}${suffix}-${stamp}.json`;
   writeFileSync(
     reportPath,
     JSON.stringify(
       {
         config: {
           analysis: `claude-cli/${model}`,
-          effort: effort ?? "off",
+          effort: effortLabel,
           structurer: `${structLane.provider}/${structLane.model}`,
+          thinkingDisabled: thinkOff,
+          totalCostUsd: totalCost,
         },
         results,
       },
@@ -281,7 +317,7 @@ async function main() {
     )
   );
   console.log(
-    `\n  report: ${reportPath}\n  judge: bun run scripts/judge.ts --report ${reportPath}${manifestPath.includes("contam") ? " --manifest eval/contam-safe/manifest.yaml" : ""}\n`
+    `\n  subscription cost (analysis, from claude -p): $${totalCost.toFixed(4)} over ${results.length} cases\n  report: ${reportPath}\n  judge: bun run scripts/judge.ts --report ${reportPath}${manifestPath.includes("contam") ? " --manifest eval/contam-safe/manifest.yaml" : ""}\n`
   );
 }
 
