@@ -67,6 +67,20 @@ this diff for the SAME underlying root cause, and report each additional occurre
 applied in one place but not its siblings is a common defect, so a bug you found once may recur elsewhere in this
 diff. Do this now, in this same response, before concluding.`;
 
+/**
+ * Prompted CoT scaffold (recall + precision lever, 2026-07-12): force an explain → find → self-critique sequence
+ * IN the prompt — distinct from native reasoning tokens, which the literature + our own rank show don't help a
+ * classification-shaped task like review. Step 1 (explain) targets localization/recall; step 3 (self-critique)
+ * targets false positives. CodeRabbit-style. A/B via `--scaffold`; off by default like the other opt-in notes.
+ */
+const COT_SCAFFOLD_NOTE = `
+
+Work through the review in three explicit, ordered steps in your response:
+1. UNDERSTAND — briefly state what the changed code does and what the diff is trying to achieve.
+2. FIND — given that understanding, list every candidate bug, correctness issue, or regression the change could introduce.
+3. VERIFY — for each candidate, critically decide whether it is a REAL defect that THIS PR's changed lines introduce, or a false positive; keep only the ones you are confident are real and drop the rest.
+Your final review (the prose findings the instructions above ask for) must contain only the issues that survived step 3.`;
+
 const GROUNDING_NOTE = `
 
 You can inspect the repository at this PR's revision with tools: read_repo_file(path) reads a file's full
@@ -194,6 +208,7 @@ export function buildAnalysisSystem(request: WorkerRequest): string {
     request.systemPrompt +
     (request.repoReader ? GROUNDING_NOTE : "") +
     ANALYSIS_NOTE +
+    (request.cotScaffold ? COT_SCAFFOLD_NOTE : "") +
     (request.proposeRuleDrift ? RULE_DRIFT_NOTE : "") +
     (request.surveyor ? SURVEYOR_NOTE : "")
   );

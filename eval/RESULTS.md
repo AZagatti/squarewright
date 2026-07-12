@@ -898,3 +898,49 @@ lost all 3 passes → no number).
 **Operating point UNCHANGED: free glm-5.2 stays the default** (defect ~3–3.5, $0, fast, private). If a maintainer
 wants max recall and will pay, **sonnet-5@off (median 4, ~$0.83/run, reasoning OFF)** is the value pick and
 fable-5@low (5) the ceiling at ~4× the cost.
+
+## Prompted CoT scaffold (`--cot-scaffold`) — a real FALSE-POSITIVE cut; recall impact NOT established (2026-07-12)
+
+A prompted CoT scaffold — append a 3-step UNDERSTAND → FIND → VERIFY(drop false positives) instruction to the
+analysis prompt (`COT_SCAFFOLD_NOTE` in `src/pi/worker.ts`, opt-in `--cot-scaffold`; distinct from native reasoning,
+which doesn't help this classification-shaped task). Motivated by the reasoning-vs-review literature + CodeRabbit's
+public scaffold. **Two red-team councils gated this** — the first caught the initial write-up overclaiming; these are
+the corrected numbers (interleaved base/scaffold, thinking pinned off, `cotScaffold` flag persisted per report so arms
+are auditable, structurer pinned `zai:glm-5.2`, deepseek-v3.2 judge `--judge-repeats 2`).
+
+| model | N/arm | clean-FP base → scaffold | defect base → scaffold | latency |
+|---|---|---|---|---|
+| **glm-5.2** (default) | 4 | 12–26 (med 18) → 6–11 (med 8.5) **non-overlapping, −53%** | {0,1.5,2.5,2.5} med 2 → {1.5,3.5,3.5,·} med 3.5 *(overlap)* | +17% (≈557→651s) |
+| minimax-m3 | 4 | 16–39 (med 30) → 6–12 (med 10.5) **non-overlapping, −65%** | {2,2,3,2} med 2 → {2,0,3,0} med 1 *(overlap)* | +3% |
+| sonnet-5 @off | 3 / 2† | 33–36 → 21–22 **non-overlapping, −37%** | {3,3.5,2.5} med 3 → {2.5,4} *(N=2, inconclusive)* | — |
+
+**The one supported claim: the FP cut is real and replicates.** Non-overlapping ranges on glm-5.2 and minimax-m3
+(exact permutation p≈0.03 each), same direction on all three model families. This clears the switch-rule bar for a
+precision lever.
+
+**Recall impact is NOT established — do not read this as "recall held."** A statistical red-team found every recall
+comparison underpowered: glm-5.2's apparent hold leans on one judge-hallucination exclusion (restore it and the
+median drops into base's range) and the ranges overlap; sonnet-5 is N=2 (a crash-truncated arm — treat as *not
+measured*); minimax-m3's apparent drop (two 0-draws) is not significant (U=5, p≈0.15–0.3) and its base {2,2,2,3} is
+suspiciously tight (likely a lucky draw). The earlier "held on capable models, dropped on the weak one" story was a
+narrative fit to noise and is retracted. Honest line: **FP cut proven; recall neither proven held nor proven hurt at
+this N.** Recall stays the tool's dominant failure mode (~2–3.5/11 ≈ 18–32%) and is unchanged by this lever.
+
+**Other measured facts:** cost +~21% analysis tokens (longer output). Reasoning-ON + scaffold (glm) deepens the
+conservatism (FP even lower) without changing recall — reasoning-OFF is the operating point. The **structurer
+re-harvest confound was checked and cleared**: on a clean case the model's FIND listed 5 candidates, VERIFY kept 1,
+and the structurer extracted 1 (not 5) — the pinned `glm-5.2` structurer respects the VERIFY pruning; the weaker
+default `glm-5-turbo` also extracted 1 but the *wrong* one (kept a reject) → scaffold pairs better with a capable
+structurer.
+
+**NOT shipped to the production review path.** `--cot-scaffold` is an **eval-only lever** (like SURVEYOR): it exists
+in `WorkerRequest`/`eval.ts`/`eval-cli.ts` but is NOT wired into `src/assembly/review.ts`, and there is no
+`.squarewright.yml` field. Graduating it to an opt-in product flag (schema shape + whether to dogfood it here) is a
+deferred maintainer product decision, not resolved by this entry. **Still unmeasured:** scaffold × SURVEYOR
+interaction (contradictory epilogues — untested together), the real dogfood composition (rules + rule-drift +
+scaffold on glm-5.2), and a contam-safe run (precision is less exposed to memorization than recall, but a model's
+*familiarity* with famous-repo idioms could inflate the golden baseline FP rate — flagged, deferred).
+
+†sonnet-5 ran via `scripts/eval-cli.ts` (`claude -p`), whose reports are gitignored and not in `runs.jsonl` — its
+numbers live only here + in local reports, so it is the least auditable leg (a follow-up should log eval-cli runs to
+`runs.jsonl`). glm-5.2 and minimax-m3 are durably logged.

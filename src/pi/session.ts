@@ -24,6 +24,12 @@ export interface RepoReader {
 export interface WorkerRequest {
   budget?: { maxToolCalls?: number; maxTokens?: number };
   context: ReviewContext;
+  /**
+   * Enable the prompted CoT scaffold (recall + precision lever, 2026-07-12): forces an explain → find →
+   * self-critique sequence in the analysis prompt. Distinct from native reasoning tokens (which don't help a
+   * classification-shaped task like review). Opt-in + measured via `--scaffold`.
+   */
+  cotScaffold?: boolean;
   lane: ModelLane;
   /** persona id, stamped onto findings for provenance/feedback */
   persona?: string;
