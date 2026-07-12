@@ -27,7 +27,7 @@ export interface WorkerRequest {
   /**
    * Enable the prompted CoT scaffold (recall + precision lever, 2026-07-12): forces an explain → find →
    * self-critique sequence in the analysis prompt. Distinct from native reasoning tokens (which don't help a
-   * classification-shaped task like review). Opt-in + measured via `--scaffold`.
+   * classification-shaped task like review). Opt-in + measured via `--cot-scaffold`.
    */
   cotScaffold?: boolean;
   lane: ModelLane;

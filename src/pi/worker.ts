@@ -71,7 +71,7 @@ diff. Do this now, in this same response, before concluding.`;
  * Prompted CoT scaffold (recall + precision lever, 2026-07-12): force an explain → find → self-critique sequence
  * IN the prompt — distinct from native reasoning tokens, which the literature + our own rank show don't help a
  * classification-shaped task like review. Step 1 (explain) targets localization/recall; step 3 (self-critique)
- * targets false positives. CodeRabbit-style. A/B via `--scaffold`; off by default like the other opt-in notes.
+ * targets false positives. CodeRabbit-style. A/B via `--cot-scaffold`; off by default like the other opt-in notes.
  */
 const COT_SCAFFOLD_NOTE = `
 
@@ -200,8 +200,8 @@ interface SubmittedFinding {
 }
 
 /**
- * Assemble the Pass-1 analysis system prompt: the persona/rules preamble plus the grounding, rule-drift, and
- * SURVEYOR notes the request opts into. Exported for test — the opt-in notes must be present iff their flag is.
+ * Assemble the Pass-1 analysis system prompt: the persona/rules preamble plus the grounding, CoT-scaffold,
+ * rule-drift, and SURVEYOR notes the request opts into. Exported for test — opt-in notes present iff their flag is.
  */
 export function buildAnalysisSystem(request: WorkerRequest): string {
   return (

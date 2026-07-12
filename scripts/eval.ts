@@ -431,7 +431,7 @@ async function main() {
   const proposeRuleDrift = flag("rule-drift");
   // --surveyor: SURVEYOR coverage pass (recall lever #45) — measure recall/precision with the flag on vs off.
   const surveyor = flag("surveyor");
-  // --scaffold: prompted CoT scaffold (explain → find → self-critique) — A/B recall+precision lever (2026-07-12).
+  // --cot-scaffold: prompted CoT scaffold (explain → find → self-critique) — A/B recall+precision lever (2026-07-12).
   const doScaffold = flag("cot-scaffold");
   const withContext = (prompt: string) => rulesPreamble + withNote(prompt);
   const spendGuard = () => {
@@ -646,7 +646,7 @@ async function main() {
       consensus: doPersonas && samples > 1 ? consensus : undefined,
       // scaffold (prompted CoT) changes the analysis prose — persist it so scaffold-on vs -off arms are
       // auditable from the durable log, not reconstructed from run-order/cleanFP heuristics (the gap the
-      // scaffold council flagged as a reproducibility blocker). Mirrors eval-cli.ts's config.scaffold.
+      // scaffold council flagged as a reproducibility blocker). Mirrors eval-cli.ts's config.cotScaffold.
       cotScaffold: doScaffold,
       ground: doGround,
       model,
