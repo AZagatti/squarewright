@@ -46,6 +46,16 @@ Ground every finding in the diff — do not speculate about code you cannot see.
 findings over many nits. If the change looks fine, say so. Write your review as prose: for every issue,
 state the file path, line number, a severity (error/warning/info), and why it is a problem.`;
 
+// Prompted CoT scaffold (mirrors COT_SCAFFOLD_NOTE in src/pi/worker.ts) — appended to the persona when --cot-scaffold is
+// set, so the Claude analysis A/B matches the glm-5.2 scaffold experiment. explain → find → self-critique.
+const COT_SCAFFOLD_TAIL = `
+
+Work through the review in three explicit, ordered steps:
+1. UNDERSTAND — briefly state what the changed code does and what the diff is trying to achieve.
+2. FIND — given that understanding, list every candidate bug, correctness issue, or regression the change could introduce.
+3. VERIFY — for each candidate, critically decide whether it is a REAL defect that THIS PR's changed lines introduce, or a false positive; keep only the ones you are confident are real and drop the rest.
+Your final review must contain only the issues that survived step 3.`;
+
 interface SubmittedFinding {
   line?: number;
   message: string;
@@ -76,7 +86,8 @@ function readZaiKey(): Record<string, string> {
 function claudeAnalysis(
   model: string,
   effort: string | undefined,
-  diff: string
+  diff: string,
+  persona: string
 ): { cost: number; status: "error" | "ok" | "timeout"; text: string } {
   const args = [
     "-p",
@@ -88,7 +99,7 @@ function claudeAnalysis(
     "--model",
     model,
     "--append-system-prompt",
-    PERSONA,
+    persona,
   ];
   if (effort) {
     args.push("--effort", effort);
@@ -223,6 +234,8 @@ async function main() {
   const model = arg("model") ?? "claude-sonnet-5";
   const effort = arg("effort");
   const { effortLabel, suffix, thinkOff } = reportLabels(effort);
+  const doScaffold = process.argv.includes("--cot-scaffold");
+  const persona = doScaffold ? PERSONA + COT_SCAFFOLD_TAIL : PERSONA;
   // Structurer pinned to zai:glm-5.2 by default — matches the paid model rank (#94) so scores are comparable.
   const structArg = arg("structurer") ?? "zai:glm-5.2";
   const structLane: ModelLane = {
@@ -265,7 +278,7 @@ async function main() {
       text: analysis,
       status,
       cost,
-    } = claudeAnalysis(model, effort, diff);
+    } = claudeAnalysis(model, effort, diff, persona);
     totalCost += cost;
     let findings: Finding[] = [];
     if (analysis) {
@@ -293,18 +306,22 @@ async function main() {
       label: c.label,
       lociTotal: loci.length,
       ms,
+      // SQW_DUMP_RAW=1 persists the pass-1 analysis prose so the structurer-re-harvest confound is auditable:
+      // compare what the model's VERIFY step kept vs what the structurer actually extracted.
+      ...(process.env.SQW_DUMP_RAW === "1" ? { rawAnalysis: analysis } : {}),
       status,
     });
   }
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const modelSlug = model.replace(/[^a-z0-9.-]/gi, "_");
-  const reportPath = `${ROOT}eval/reports/cli-${modelSlug}${suffix}-${stamp}.json`;
+  const reportPath = `${ROOT}eval/reports/cli-${modelSlug}${suffix}${doScaffold ? "-cotscaffold" : ""}-${stamp}.json`;
   writeFileSync(
     reportPath,
     JSON.stringify(
       {
         config: {
           analysis: `claude-cli/${model}`,
+          cotScaffold: doScaffold,
           effort: effortLabel,
           structurer: `${structLane.provider}/${structLane.model}`,
           thinkingDisabled: thinkOff,

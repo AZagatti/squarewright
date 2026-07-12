@@ -431,6 +431,8 @@ async function main() {
   const proposeRuleDrift = flag("rule-drift");
   // --surveyor: SURVEYOR coverage pass (recall lever #45) — measure recall/precision with the flag on vs off.
   const surveyor = flag("surveyor");
+  // --cot-scaffold: prompted CoT scaffold (explain → find → self-critique) — A/B recall+precision lever (2026-07-12).
+  const doScaffold = flag("cot-scaffold");
   const withContext = (prompt: string) => rulesPreamble + withNote(prompt);
   const spendGuard = () => {
     if (aborted || localSpend <= maxSpend) {
@@ -454,7 +456,7 @@ async function main() {
     ? `${structurerLane.provider}/${structurerLane.model}`
     : "zai/glm-5-turbo";
   console.log(
-    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}${doPersonas ? ` batching=${batching}` : ""}${samples > 1 ? ` samples=${samples}${consensus > 1 ? `/consensus≥${consensus}` : ""}` : ""}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cases=${cases.length}  conc=${concurrency}`
+    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}${doPersonas ? ` batching=${batching}` : ""}${samples > 1 ? ` samples=${samples}${consensus > 1 ? `/consensus≥${consensus}` : ""}` : ""}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cot-scaffold=${doScaffold}  cases=${cases.length}  conc=${concurrency}`
   );
 
   // One full pass over the corpus. Repeated N times (--repeat) through the SHARED spend guard, so the cap holds
@@ -508,6 +510,7 @@ async function main() {
               // biome-ignore lint/performance/noAwaitInLoops: sequential by design — each run feeds the local spend guard (spendGuard/aborted) checked right after, so later runs must know the running spend before firing
               const pr = await worker.run({
                 context,
+                cotScaffold: doScaffold,
                 lane: passLane,
                 persona: pass.id,
                 proposeRuleDrift,
@@ -539,6 +542,7 @@ async function main() {
         } else {
           const pr = await worker.run({
             context,
+            cotScaffold: doScaffold,
             lane,
             persona: "persona:general",
             proposeRuleDrift,
@@ -640,6 +644,10 @@ async function main() {
       // distinguishable in the durable log (runs.jsonl), not just in someone's terminal scrollback.
       batching: doPersonas ? batching : undefined,
       consensus: doPersonas && samples > 1 ? consensus : undefined,
+      // scaffold (prompted CoT) changes the analysis prose — persist it so scaffold-on vs -off arms are
+      // auditable from the durable log, not reconstructed from run-order/cleanFP heuristics (the gap the
+      // scaffold council flagged as a reproducibility blocker). Mirrors eval-cli.ts's config.cotScaffold.
+      cotScaffold: doScaffold,
       ground: doGround,
       model,
       personas: doPersonas,
