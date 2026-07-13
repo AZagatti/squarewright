@@ -80,6 +80,14 @@ export interface ReviewContext {
   /** unified-diff per file + metadata (the only PR-derived input trusted as *data*, never executed) */
   files: ChangedFile[];
   headSha: string;
+  /**
+   * The issue this PR declares it closes (`Closes #N`), fetched at gather for the AC-conformance check. Its text
+   * is UNTRUSTED and attacker-openable (anyone can file an issue, even one the PR author doesn't own) — it is
+   * consumed ONLY as user-turn reference data for the AC-check pass (see `renderAnalysisPrompt`, gated on
+   * `acCheck`), never injected into a trusted/precedence-taking system preamble. Absent unless a linked issue was
+   * found and fetched.
+   */
+  linkedIssue?: { body: string; number: number; title: string };
   prNumber: number;
   repo: string;
   title: string;
