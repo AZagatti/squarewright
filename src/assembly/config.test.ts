@@ -69,4 +69,44 @@ personas:
       "No .squarewright.yml"
     );
   });
+
+  test("rejects duplicate persona ids (would silently drop a lens / mis-route its lane)", () => {
+    const dup = `
+lanes:
+  - { id: cheap, provider: zai, model: glm-5-turbo }
+personas:
+  - { id: gen, lane: cheap, prompt: a }
+  - { id: gen, lane: cheap, prompt: b }
+`;
+    expect(() => loadAssemblyConfig(configDir(dup))).toThrow(
+      "duplicate persona id"
+    );
+  });
+
+  test("rejects duplicate lane ids", () => {
+    const dup = `
+lanes:
+  - { id: cheap, provider: zai, model: glm-5-turbo }
+  - { id: cheap, provider: openrouter, model: x }
+personas:
+  - { id: gen, lane: cheap, prompt: a }
+`;
+    expect(() => loadAssemblyConfig(configDir(dup))).toThrow(
+      "duplicate lane id"
+    );
+  });
+
+  test("rejects an unknown/typo'd key instead of silently ignoring it (strict)", () => {
+    // `cotScafold` (typo) must NOT silently leave the scaffold off — strict mode rejects the config
+    const typo = `${MINIMAL}cotScafold: true\n`;
+    expect(() => loadAssemblyConfig(configDir(typo))).toThrow();
+    // a typo'd persona key is caught too
+    const personaTypo = `
+lanes:
+  - { id: cheap, provider: zai, model: glm-5-turbo }
+personas:
+  - { id: gen, lane: cheap, prompt: a, laen: cheap }
+`;
+    expect(() => loadAssemblyConfig(configDir(personaTypo))).toThrow();
+  });
 });
