@@ -79,6 +79,8 @@ jobs:
           # Trusted workflow_run signals — the ONLY inputs trusted to decide WHERE to post.
           EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           EVENT_REPO: ${{ github.event.workflow_run.repository.full_name }}
+          # The bot's own comment author, so re-reviews only touch OUR comments (issue #157).
+          SQUAREWRIGHT_BOT_LOGIN: "github-actions[bot]"
           # Provider key lives ONLY in this trusted phase. Default lanes are z.ai's free glm-5-turbo.
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
         run: bun run src/cli.ts review --phase post --post --input artifacts

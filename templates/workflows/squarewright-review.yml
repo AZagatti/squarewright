@@ -57,6 +57,10 @@ jobs:
           # artifact is untrusted; `--post` cross-checks its claims against these and refuses on any mismatch.
           EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           EVENT_REPO: ${{ github.event.workflow_run.repository.full_name }}
+          # The bot's own comment author, so re-reviews only edit/replace OUR sticky+inline comments, never a
+          # third-party's forged-marker comment (issue #157). Under the default GH_TOKEN this is github-actions[bot];
+          # change it to your PAT's username or `<app-slug>[bot]` if you post with a PAT or GitHub App instead.
+          SQUAREWRIGHT_BOT_LOGIN: "github-actions[bot]"
           # Provider keys live ONLY in this trusted phase. Set the ones matching your .squarewright.yml lanes
           # (ZAI_API_KEY for the default z.ai lanes) plus OPENROUTER_API_KEY for the structurer pass.
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

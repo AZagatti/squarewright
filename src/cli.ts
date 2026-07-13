@@ -104,7 +104,10 @@ program
             env: process.env,
             loadConfig: loadAssemblyConfig,
             lookup: createGhPullLookup(ghRunner),
-            poster: createGhPoster(ghRunner),
+            poster: createGhPoster(ghRunner, {
+              selfLogin:
+                process.env.SQUAREWRIGHT_BOT_LOGIN?.trim() || undefined,
+            }),
             readArtifact: readGatherArtifact,
             review: (config, context) =>
               runReviewPost(config, context, {
@@ -157,7 +160,9 @@ program
         env: process.env,
         fetchFinding: teachFindingFetcher(process.env),
         interpreter: createReplyInterpreter({ apiKeys }),
-        poster: createGhPoster(ghRunner),
+        poster: createGhPoster(ghRunner, {
+          selfLogin: process.env.SQUAREWRIGHT_BOT_LOGIN?.trim() || undefined,
+        }),
       });
       if (res.posted) {
         console.error(

@@ -71,29 +71,60 @@ function parseJson<T>(stdout: string, endpoint: string): T {
   }
 }
 
-/** The id of the existing sticky comment on the PR, or null if none has been posted yet. */
+/** A PR comment as returned by the GitHub list endpoints — `user.login` is the TRUE authenticated author. */
+interface GhComment {
+  body: string;
+  id: number;
+  user?: { login?: string };
+}
+
+/**
+ * Is this a comment WE may edit/delete? It must carry `marker` AND — when we know our own login — be authored by
+ * us. `selfLogin` unknown (a hand-rolled workflow with no `SQUAREWRIGHT_BOT_LOGIN`) falls back to marker-only, i.e.
+ * EXACTLY today's behavior — fail-SAFE (never worse than before; refusing would be a self-inflicted outage). The
+ * author guard closes the hijack in issue #157: a third party can forge our marker but NOT our `user.login` (GitHub
+ * sets it to the real authenticated actor), so a decoy comment they post is no longer PATCH-hijacked or deleted.
+ * Login compare is case-insensitive (GitHub logins are), matching `src/safety/trust.ts`.
+ */
+function isOurComment(
+  c: GhComment,
+  marker: string,
+  selfLogin?: string
+): boolean {
+  if (!c.body.startsWith(marker)) {
+    return false;
+  }
+  if (!selfLogin) {
+    return true;
+  }
+  return c.user?.login?.toLowerCase() === selfLogin.toLowerCase();
+}
+
+/** The id of the existing sticky comment on the PR, or null if none we authored has been posted yet. */
 async function findStickyId(
   run: GhRunner,
-  target: VerifiedTarget
+  target: VerifiedTarget,
+  selfLogin?: string
 ): Promise<number | null> {
   const endpoint = `repos/${target.repo}/issues/${target.prNumber}/comments`;
   const stdout = await ghApi(run, [endpoint, "--paginate"]);
-  const comments = parseJson<{ body: string; id: number }[]>(stdout, endpoint);
-  const found = comments.find((c) => c.body.startsWith(STICKY_MARKER));
+  const comments = parseJson<GhComment[]>(stdout, endpoint);
+  const found = comments.find((c) => isOurComment(c, STICKY_MARKER, selfLogin));
   return found ? found.id : null;
 }
 
-/** The ids of our prior inline comments (the ones carrying `INLINE_MARKER`), captured BEFORE we post the new set. */
+/** The ids of OUR prior inline comments (carry `INLINE_MARKER` + authored by us), captured BEFORE we post anew. */
 async function priorInlineIds(
   run: GhRunner,
-  target: VerifiedTarget
+  target: VerifiedTarget,
+  selfLogin?: string
 ): Promise<number[]> {
   const endpoint = `repos/${target.repo}/pulls/${target.prNumber}/comments`;
   const stdout = await ghApi(run, [endpoint, "--paginate"]);
-  const comments = parseJson<{ body: string; id: number }[]>(stdout, endpoint);
+  const comments = parseJson<GhComment[]>(stdout, endpoint);
   // startsWith (not includes): a human "Quote reply" prefixes the quoted marker with `> `, so it won't match
   return comments
-    .filter((c) => c.body.startsWith(INLINE_MARKER))
+    .filter((c) => isOurComment(c, INLINE_MARKER, selfLogin))
     .map((c) => c.id);
 }
 
@@ -119,8 +150,16 @@ async function deleteInlineByIds(
   );
 }
 
-/** A `Poster` backed by the `gh` CLI, driven through the injected `run`. */
-export function createGhPoster(run: GhRunner): Poster {
+/**
+ * A `Poster` backed by the `gh` CLI, driven through the injected `run`. `selfLogin` (from `SQUAREWRIGHT_BOT_LOGIN`,
+ * declared in the workflow templates — `github-actions[bot]` by default) scopes sticky/inline edit+delete to OUR
+ * OWN comments (issue #157). Omitted → marker-only matching, exactly today's behavior (fail-safe).
+ */
+export function createGhPoster(
+  run: GhRunner,
+  opts: { selfLogin?: string } = {}
+): Poster {
+  const { selfLogin } = opts;
   return {
     postComment: async (target, body) => {
       const payload = JSON.stringify({ body });
@@ -142,7 +181,7 @@ export function createGhPoster(run: GhRunner): Poster {
       // comments carry the same marker, so we couldn't tell them apart afterward), post, then best-effort delete
       // the captured old ids. Order: capture → post → delete. A post failure leaves the old set intact (stale but
       // present); a delete failure leaves a duplicate (recoverable) — neither is data loss.
-      const priorIds = await priorInlineIds(run, target);
+      const priorIds = await priorInlineIds(run, target, selfLogin);
       if (inline.length > 0) {
         const payload = JSON.stringify({
           comments: inline.map((c) => ({
@@ -170,7 +209,7 @@ export function createGhPoster(run: GhRunner): Poster {
     },
     upsertSticky: async (target, body) => {
       const payload = JSON.stringify({ body });
-      const existing = await findStickyId(run, target);
+      const existing = await findStickyId(run, target, selfLogin);
       const apiArgs =
         existing === null
           ? [`repos/${target.repo}/issues/${target.prNumber}/comments`]
