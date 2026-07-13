@@ -1131,3 +1131,31 @@ backfires; (b) the catchable (same-diff) subset is already handled by the base p
 real (falsifiability passed) but chasing it with a dedicated lens doesn't earn its place. Corpus kept for the
 record + any future retest. This is the measure-before-build discipline returning a clean NO-GO — the same one
 that corrected the scaffold flip.
+
+## AC-conformance probe — real value (catches a silent miss) but imperfect precision (2026-07-13, C lead)
+
+C (AC-conformance: PR "Closes #N" → check the issue's acceptance criteria) differs from the B divergence no-go:
+its premise is a fetched FACT (the issue body), not an invented guess. Built a self-repo AC corpus (`eval/ac/`,
+8 hand-verified cases incl. one gold silent-miss) and ran a targeted probe: give glm-5.2 the issue's ACs + the
+closing PR's diff, ask it to flag ONLY criteria that are unmet AND not openly acknowledged (silent misses).
+
+| Case | Ground truth | Probe result |
+|---|---|---|
+| ac-sw-70 (gold: ship-gate AC silently unmet on a bug-free PR) | flag | **caught (2/2 runs)** |
+| ac-sw-39 (one AC unmet but documented/reversed) | don't flag | clean ✓ |
+| ac-sw-37 (clean full match, control) | don't flag | clean ✓ |
+| ac-sw-71 (AC gap disclosed in PR body) | don't flag | **false-flagged ✗** |
+
+**Verdict: a promising LEAD, not a settled win — scaffold-shaped (value + a precision cost), NOT divergence-shaped
+(net-negative).** The unique value is real: the model caught a silently-narrowed deliverable (PR #80 substituted one
+manual smoke test for an explicit falsifiable ship-gate) that no defect persona — and no human review of that PR —
+caught. But it false-flagged 1 of 3 legitimately-disclosed deviations, confirming the measured precision risk: the
+silent-vs-disclosed distinction is imperfect. N is tiny (4 cases, N=1–2) — a lead, not a rate.
+
+**Decision: worth building as an OPT-IN feature (scaffold posture), NOT default, and NOT tonight.** Prereqs before a
+build: (1) a fuller measurement (all 8 corpus cases + a few external, replicated) to get a real precision number on
+the disclosed-vs-silent call; (2) prompt/design work on that distinction (the advocate's separate-pass + verbatim-
+citation + "acknowledged deviations are fine" framing); (3) the issue-fetch plumbing + untrusted-issue-text channel
+(new `issues:read` scope — a real trust surface). Unlike B, the value proposition cleared the bar; the open question
+is precision, not existence. Also a finding about squarewright's OWN process: PR #80 shipped without meeting its
+stated ship-gate and no review caught it — a live example of exactly the gap this feature targets.
