@@ -125,9 +125,12 @@ export const DEFAULT_PERSONAS: Persona[] = [
     solo: true,
     thinking: "low",
     when: [
-      "**/Dockerfile*",
+      "**/Dockerfile*", // Dockerfile, Dockerfile.prod
+      "**/*.Dockerfile", // suffix convention for multi-target builds: worker.Dockerfile, backend.Dockerfile
       "**/docker-compose*.yml",
       "**/docker-compose*.yaml",
+      "**/compose*.yml", // Compose v2's recommended prefix-less name: compose.yml, compose.override.yml
+      "**/compose*.yaml",
       "**/.dockerignore",
     ],
   },
