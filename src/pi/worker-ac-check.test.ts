@@ -41,6 +41,20 @@ test("buildAnalysisSystem: acCheck on appends the strict silent-vs-justified AC 
   expect(s).toContain("does NOT count as acknowledging THIS criterion"); // the sonnet-threading distinction
 });
 
+test("renderAnalysisPrompt: labels the PR number when present", () => {
+  const p = renderAnalysisPrompt(ctx({ prNumber: 42, title: "my change" }));
+  expect(p).toContain("PR #42 — my change");
+});
+
+test("renderAnalysisPrompt: omits the 'PR #' label when there is no PR number (commit-only eval case)", () => {
+  // A bare-commit recall-eval case has no PR; the prompt must not fabricate one (e.g. 'PR #0' / 'PR #undefined').
+  const p = renderAnalysisPrompt(
+    ctx({ prNumber: undefined, title: "spotipy@4f5759d" })
+  );
+  expect(p).not.toContain("PR #");
+  expect(p).toContain("spotipy@4f5759d"); // the title still labels the change
+});
+
 test("renderAnalysisPrompt: injects the linked issue ONLY when acCheck is on (no confound leak otherwise)", () => {
   const withIssue = ctx({
     linkedIssue: { body: "AC: must do X", number: 42, title: "Do X" },

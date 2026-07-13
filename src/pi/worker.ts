@@ -422,9 +422,13 @@ export function renderAnalysisPrompt(
   acCheck = false,
   fenceToken: string = randomBytes(6).toString("hex")
 ): string {
+  const title = clampCp(ctx.title, MAX_PR_TITLE);
   const parts: string[] = [
     "Review this pull request. Report only real issues in the changed lines; ground every claim in the code.",
-    `\nPR #${ctx.prNumber} — ${clampCp(ctx.title, MAX_PR_TITLE)}`,
+    // Omit the "PR #" label rather than fabricate a number when there's no PR (offline recall-eval commit cases).
+    ctx.prNumber === undefined
+      ? `\n${title}`
+      : `\nPR #${ctx.prNumber} — ${title}`,
   ];
   const body = clampCp(ctx.body.trim(), MAX_PR_BODY);
   if (body) {

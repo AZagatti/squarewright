@@ -16,7 +16,7 @@ and can compare models/prompts/verifiers on a **fixed** baseline.
 cases:
   - id: ts-hono-5067        # unique kebab id; also the diff filename
     repo: honojs/hono
-    pr: 5067
+    pr: 5067                 # the source PR — OR use `commit:` (see below) for a change with no PR
     stack: ts               # ts | css | rust | go | python | ruby | ci | config | docker | ...
     kind: bugfix            # bugfix | refactor | feature | perf | test | config | security
     label: clean            # clean | has-issue
@@ -27,6 +27,9 @@ cases:
         about: "one-line description of the issue a reviewer should catch"
 ```
 
+- **`pr:` vs `commit:`** — set exactly one. Use `pr: <n>` for a change that landed as a PR (the diff is frozen
+  from `gh pr diff`). Use `commit: <sha>` for a defect introduced by a direct-to-`main` commit with no PR (the diff
+  is frozen from the commit and grounding reads files at that SHA). Example: `ci-spotipy-pwnrequest`.
 - **clean** cases measure the **false-positive rate** — a good reviewer should stay quiet (0 real findings).
 - **has-issue** cases measure **recall** — a good reviewer should flag `expect_loci`. Ground-truth must be
   evidence-backed (a reviewer comment, a follow-up fix/revert, or a linked issue) — never invented.

@@ -327,6 +327,20 @@ describe("runReviewCommand", () => {
     expect(seen.order).toEqual(["review"]);
   });
 
+  test("--post: fails CLOSED (throws, no lookup/model/post) when the context carries no PR number", async () => {
+    // Defense-in-depth: the real artifact schema always supplies a prNumber, but a context without one must never
+    // reach verifyPostingTarget/poster — it fails closed before the gh lookup and before the paid model call.
+    const { deps, seen } = harness({});
+    const noPr = {
+      ...deps,
+      readArtifact: () => ({ ...POST_CONTEXT, prNumber: undefined }),
+    };
+    await expect(
+      runReviewCommand({ ...OPTS, post: true }, noPr)
+    ).rejects.toThrow("no PR number");
+    expect(seen.order).toEqual([]); // no lookup, no review, no post
+  });
+
   test("--post: verifies before the model runs, then posts review before sticky", async () => {
     const { deps, seen } = harness({});
 

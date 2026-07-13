@@ -14,7 +14,7 @@ import type {
   TrustedRunSignal,
   VerifiedTarget,
 } from "../safety/trust.js";
-import { verifyPostingTarget } from "../safety/trust.js";
+import { type ClaimedTarget, verifyPostingTarget } from "../safety/trust.js";
 import type { AssemblyConfig } from "./config.js";
 import { type ReviewOutput, runReview } from "./review.js";
 
@@ -164,7 +164,20 @@ export async function runReviewCommand(
   let target: VerifiedTarget | undefined;
   if (opts.post) {
     const trusted = readTrustedRunSignal(deps.env);
-    const verified = await verifyPostingTarget(context, trusted, deps.lookup);
+    if (context.prNumber === undefined) {
+      // The posting path always reviews a PR (gather derives prNumber from the pull_request event, and
+      // ghMetaSchema requires it). A context with no PR number can only be the offline commit-case eval, which
+      // never posts — fail closed rather than cross-check against a fabricated target.
+      throw new Error(
+        "Refusing to post: the review context carries no PR number (only offline commit-case evals lack one)."
+      );
+    }
+    const claimed: ClaimedTarget = {
+      headSha: context.headSha,
+      prNumber: context.prNumber,
+      repo: context.repo,
+    };
+    const verified = await verifyPostingTarget(claimed, trusted, deps.lookup);
     if (verified === null) {
       // The commit has no open PR (merged/closed before this async review ran) — nothing to post to. Return the
       // benign no-op BEFORE the model runs, so we neither post nor spend on a review that has nowhere to go.
