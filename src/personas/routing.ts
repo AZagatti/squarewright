@@ -102,9 +102,19 @@ export function matchGlob(glob: string, path: string): boolean {
   return false;
 }
 
-/** A persona with no `when` (or `when: [always]`) runs on every reviewable change. */
+/**
+ * A persona with no `when` (or `when: [always]`) runs on every reviewable change. The `"always"` sentinel is
+ * matched CASE-INSENSITIVELY: `when: ["Always"]` is a plausible authoring typo, and without this it would be
+ * treated as a literal glob that matches no path — silently turning the persona into a dead lens with no
+ * disclosure (an unmatched persona isn't even a cap-drop candidate). `when` isn't schema-constrained to the
+ * keyword, so this is the only guard against the case-typo.
+ */
 function isAlways(p: Persona): boolean {
-  return !p.when || p.when.length === 0 || p.when.includes("always");
+  return (
+    !p.when ||
+    p.when.length === 0 ||
+    p.when.some((w) => w.toLowerCase() === "always")
+  );
 }
 
 /** The outcome of routing: which personas run, and which MATCHED the change-set but were cut by the cap. */
@@ -145,7 +155,10 @@ export function selectPersonasWithDrops(
 
   if (opts.cap && matched.length > opts.cap) {
     const { cap } = opts;
-    // priority order: always-on personas first, then the most-specific (scoped) matches
+    // priority order: always-on personas first, then the scoped (glob-matched) personas in their CONFIG
+    // DECLARATION order — there is no glob-specificity ranking, so an earlier-declared scoped persona survives the
+    // cap ahead of a later one. (Which scoped lens matters most for a given PR is a product call, not decided here;
+    // whatever is cut is disclosed via `dropped`, so a dropped lens is never silent.)
     const ordered = [
       ...matched.filter(isAlways),
       ...matched.filter((p) => !isAlways(p)),

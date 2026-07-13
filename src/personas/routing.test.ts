@@ -37,6 +37,22 @@ describe("matchGlob: **/X matches whole segments only, not partial filenames", (
   });
 });
 
+test('the `always` sentinel is case-insensitive — a `when: ["Always"]` typo isn\'t a dead lens', () => {
+  const typo: Persona = {
+    id: "gen",
+    lane: "cheap",
+    prompt: "x",
+    when: ["Always"], // case typo: would be a literal glob matching nothing without the fix
+  };
+  // a change-set no glob would match — the case-typo'd always-on persona must still run
+  const selected = selectPersonas(
+    [typo],
+    [{ patch: "@@ @@", path: "docs/readme.md", status: "modified" }],
+    { cap: 4 }
+  );
+  expect(selected.map((s) => s.id)).toEqual(["gen"]);
+});
+
 const FILES: ChangedFile[] = [
   { patch: "@@ -1,1 +1,2 @@\n a\n+b\n", path: "src/a.ts", status: "modified" },
 ];
