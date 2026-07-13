@@ -232,8 +232,11 @@ personas:
     thinking: low
     when:
       - "**/Dockerfile*"
+      - "**/*.Dockerfile"
       - "**/docker-compose*.yml"
       - "**/docker-compose*.yaml"
+      - "**/compose*.yml"
+      - "**/compose*.yaml"
       - "**/.dockerignore"
   - id: marshal
     label: CI

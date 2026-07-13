@@ -100,4 +100,26 @@ describe("default personas: NO default pairing (deliberate)", () => {
       passes.some((p) => p.personaIds.length > 1 && p.id !== "baseline")
     ).toBe(false);
   });
+
+  test("the Docker lens (stevedore) routes to modern filename conventions, not just Dockerfile/docker-compose", () => {
+    // suffix-style Dockerfiles (multi-target builds) and Compose v2's prefix-less compose.yaml were silently
+    // invisible to the Docker reviewer's globs before — a real coverage gap in the shipped default config.
+    for (const path of [
+      "worker.Dockerfile",
+      "services/api/backend.Dockerfile",
+      "compose.yaml",
+      "compose.yml",
+      "compose.override.yaml",
+    ]) {
+      const selected = selectPersonas(DEFAULT_PERSONAS, [file(path)], {
+        cap: 6,
+      });
+      expect(selected.some((p) => p.id === "stevedore")).toBe(true);
+    }
+    // and it still does NOT fire on an ordinary source file
+    const none = selectPersonas(DEFAULT_PERSONAS, [file("src/index.ts")], {
+      cap: 6,
+    });
+    expect(none.some((p) => p.id === "stevedore")).toBe(false);
+  });
 });
