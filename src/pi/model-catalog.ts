@@ -17,7 +17,7 @@
  * root (or point `SQW_MODELS_JSON` at one) and every lane picks it up. See `models.json.example`,
  * `docs/reference/custom-model-catalog.md`, and Pi's `docs/models.md` for the schema.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   type AuthStorage,
@@ -89,6 +89,49 @@ export function supersessionWarning(
 }
 
 /**
+ * Warn text for custom `models.json` models declared WITHOUT a `cost` block (#160). Pi's schema makes `cost`
+ * optional, so such a model loads fine — but every request through its lane then reports `usage.cost.total === 0`,
+ * silently hiding real spend (AGENTS.md §4). Reads the RAW catalog because the parsed registry can't tell "unpriced"
+ * (0 by omission) from "genuinely free" (an explicit `cost` of 0). Returns null when the path is absent/unreadable
+ * or every model carries a `cost`. Pure: `read` is injected so it's testable without a real file.
+ */
+export function missingCostWarning(
+  path: string | undefined,
+  read: (p: string) => string = (p) => readFileSync(p, "utf8")
+): string | null {
+  if (!path) {
+    return null;
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(read(path));
+  } catch {
+    return null; // malformed catalogs are handled by getError()'s warning downstream
+  }
+  if (typeof raw !== "object" || raw === null) {
+    return null; // JSON.parse can yield null / a non-object — nothing to inspect
+  }
+  const { providers } = raw as {
+    providers?: Record<string, { models?: { cost?: unknown; id?: string }[] }>;
+  };
+  if (!providers || typeof providers !== "object") {
+    return null;
+  }
+  const missing: string[] = [];
+  for (const [prov, def] of Object.entries(providers)) {
+    for (const m of def?.models ?? []) {
+      if (m && typeof m === "object" && !("cost" in m)) {
+        missing.push(`${prov}/${m.id ?? "(no id)"}`);
+      }
+    }
+  }
+  if (missing.length === 0) {
+    return null;
+  }
+  return `⚠️  models.json: ${missing.length} custom model(s) declared with no \`cost\` block (${missing.join(", ")}) — Pi loads them, but every request reports $0 cost, HIDING real spend. Add a cost block (per-token input/output) to each.`;
+}
+
+/**
  * Create a `ModelRegistry` for the project's catalog: resolves the `models.json` path and hands it to Pi, which
  * merges that file's models over the built-ins (custom wins). The caller keeps `authStorage` (it's reused for
  * the agent session). Two honesty guards (AGENTS.md §4/§5): a project catalog that supersedes a global one warns
@@ -111,6 +154,10 @@ export function createModelRegistry(authStorage: AuthStorage): ModelRegistry {
   );
   if (superseded) {
     console.warn(superseded);
+  }
+  const missingCost = missingCostWarning(path);
+  if (missingCost) {
+    console.warn(missingCost);
   }
   const registry = ModelRegistry.create(authStorage, path);
   const error = registry.getError();

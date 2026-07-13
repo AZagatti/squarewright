@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import {
   MODELS_JSON_ENV,
+  missingCostWarning,
   missingOverrideWarning,
   resolveModelsJsonPath,
   supersessionWarning,
@@ -91,6 +92,39 @@ test("missingOverrideWarning: silent when the env is unset (benign default, not 
   expect(
     missingOverrideWarning({ [MODELS_JSON_ENV]: "   " }, () => false)
   ).toBeNull();
+});
+
+// ── missingCostWarning (money-safety guard: custom model with no cost → silent $0) ──
+
+const catalog = (models: unknown[]): string =>
+  JSON.stringify({ providers: { openrouter: { models } } });
+
+test("missingCostWarning: warns for a custom model declared without a cost block", () => {
+  const w = missingCostWarning("/x.json", () =>
+    catalog([{ contextWindow: 200_000, id: "newest" }])
+  );
+  expect(w).toContain("openrouter/newest");
+  expect(w).toContain("HIDING real spend");
+});
+
+test("missingCostWarning: silent when every model has a cost (incl. an explicit free 0)", () => {
+  const w = missingCostWarning("/x.json", () =>
+    catalog([
+      { cost: { input: 1, output: 2 }, id: "paid" },
+      { cost: { input: 0, output: 0 }, id: "free" }, // explicit 0 = genuinely free, not "unpriced"
+    ])
+  );
+  expect(w).toBeNull();
+});
+
+test("missingCostWarning: silent when path is undefined or the file is unreadable/malformed", () => {
+  expect(missingCostWarning(undefined)).toBeNull();
+  expect(
+    missingCostWarning("/x.json", () => {
+      throw new Error("ENOENT");
+    })
+  ).toBeNull();
+  expect(missingCostWarning("/x.json", () => "{ not json")).toBeNull();
 });
 
 // ── merge semantics via a real ModelRegistry (no network — pure file parsing) ──
