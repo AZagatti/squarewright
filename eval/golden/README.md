@@ -45,11 +45,21 @@ bun run scripts/eval.ts --model qwen/qwen3-coder --stack rust
 
 # --analysis-recall: ALSO score loci against the raw pass-1 analysis PROSE (before the structurer runs), so a
 # model rank separates the analysis model's reachability from the structurer's extraction drop (the #78 confound).
-# Reports two columns: hits (structured) and ahits (analysis-level); `ahits − hits` = loci the analysis named
-# but the structurer dropped. Use it when a model's low structured recall might be a structurer artifact, not
-# an analysis-model ceiling.
+# Reports two columns: hits (structured) and ahits (analysis-level), plus a per-locus `drop` (analysis-named ∧
+# ¬structured). Use it when a model's low structured recall might be a structurer artifact, not an analysis ceiling.
 bun run scripts/eval.ts --model zai/glm-5.2 --analysis-recall
 ```
+
+**`drop` is an UPPER BOUND, not a point estimate.** The match is FILE-LEVEL: it counts the analysis *naming* the
+file, which includes a clean-verdict review ("I found no issues") that merely mentions the file in passing — that
+is NOT a structurer drop. Dogfooded on the golden set (2026-07-13), ~1/3 of the reported drops were such
+clean-verdict mentions. **Confirm a real drop per-case**: a rich analysis that flags a defect + `raw=0` structured
+findings on that file = a true structurer drop; a clean-verdict mention is not. A defect-level judge is the real fix.
+
+**Do NOT infer "a stronger structurer would recover the drop" from a naive structurer A/B** (`--structurer` swap
+across two runs): the eval re-runs pass-1 (analysis) every time and analysis is non-deterministic, so two runs'
+structured recall differ by analysis variance, not just structurer quality. Settling that needs a **fixed-analysis**
+A/B — cache one pass-1 output per case, then re-run only pass-2 across structurers on that frozen prose (not yet built).
 
 Reports are written to `eval/reports/<model>-<stamp>.json` for side-by-side comparison.
 

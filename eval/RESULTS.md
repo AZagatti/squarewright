@@ -1260,3 +1260,27 @@ populated:
 Minor follow-up (cosmetic, not blocking): AC findings are PR-level (no meaningful diff line), and the render showed
 a "```suggestion null```" block for them — the structurer should omit `suggestion` for AC-style findings, or render
 should skip an empty/"null" suggestion. Small render nit; the finding content is correct.
+
+## Structurer drop: a real-but-unquantified recall lead (2026-07-13, `--analysis-recall`, #25)
+
+First use of the new `--analysis-recall` mode (PR #120) on the free default (glm-5.2 analysis + glm-5-turbo
+structurer), 8 golden has-issue cases, N=1:
+
+- **Structured recall 4/11 · analysis-level (file-mention) recall 9/11.** The analysis prose names ~9/11 golden
+  loci; the pipeline only delivers 4. The gap is (partly) EXTRACTION, not reasoning — which, if it holds, means the
+  structurer, not the analysis model, caps recall for the free default. That reframes the standing "glm-5.2 recall
+  ~3-4/11" (memory) as a *structured* number, below what the analysis reaches.
+- **Validated per-case (read the raw prose), the drop is REAL on some cases:** `config-swup-1052` — a rich
+  multi-finding analysis flagged `tsconfig.json:20` as a correctness regression, yet `raw=0` structured findings.
+  `ts-vite-21019` — analysis correctly flagged the `prepareOutDir.ts` cpSync self-copy regression; structured 0/2.
+- **But the `drop` metric OVERCOUNTS** (honesty fix in this PR): file-level matching counts the analysis *naming*
+  a file, including `css-tailwindcss-17247` where the analysis concluded "I found no issues" and merely mentioned
+  `utilities.ts`. ~2 of 6 drops were such clean-verdict mentions → `drop` is an UPPER BOUND, not a point estimate.
+
+**NOT yet established — and a trap I avoided:** whether a *stronger structurer* recovers the drop. A naive
+`--structurer zai:glm-5.2` swap also scored 4/11 — but the eval re-runs pass-1 every time and analysis is
+non-deterministic, so the two runs' per-case results shuffled (go-cli/docker-grafana regressed, rust-tokio
+improved): that is analysis variance, not a clean structurer signal. **Settling this needs a FIXED-ANALYSIS
+structurer A/B** — cache one pass-1 output per case, re-run only pass-2 across structurers on the frozen prose.
+That build is the clean next experiment (deserves fresh context, not the tail of a loop). If it confirms the
+structurer as a cheap recall lever, it may be the campaign's first real recall win (most recall levers have been null).

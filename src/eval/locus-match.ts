@@ -29,6 +29,12 @@ const PATH_TOKEN_RE = /[\w./-]*\w+\.\w{1,8}/g;
  * PER LOCUS (drop = analysis-named ∧ ¬structured; synth = structured ∧ ¬analysis-named), not by subtracting totals:
  * `analysisRecall ≥ structuredRecall` is NOT an invariant (the structurer can synthesize a locus-matching path
  * from a vague description the prose never literally names), so a scalar difference could mislead.
+ *
+ * IMPORTANT — this is FILE-LEVEL: it detects that the analysis NAMED the file, which is looser than "the analysis
+ * flagged the defect there". A clean-verdict review ("I found no issues") that merely mentions the file in passing
+ * scores an analysis-hit, so `drop` (analysis-named ∧ ¬structured) is an UPPER BOUND on structurer loss, not a
+ * point estimate — dogfooded on the golden set, ~1/3 of drops were clean-verdict mentions. Confirm a drop per-case
+ * (a rich analysis + zero structured findings = a true structurer drop). A defect-level judge is the real fix.
  */
 export function analysisMentionsLocus(
   analysisText: string,
