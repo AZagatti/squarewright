@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readGatherArtifact } from "./artifact.js";
+import { readCapped, readGatherArtifact } from "./artifact.js";
 
 function fixtureDir(files: unknown, meta: unknown): string {
   const dir = mkdtempSync(join(tmpdir(), "sqw-artifact-"));
@@ -10,6 +10,17 @@ function fixtureDir(files: unknown, meta: unknown): string {
   writeFileSync(join(dir, "pr-meta.json"), JSON.stringify(meta));
   return dir;
 }
+
+describe("readCapped (parse-time size guard, #161)", () => {
+  test("refuses a file over the cap before parsing; reads one under it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sqw-cap-"));
+    const p = join(dir, "big.json");
+    writeFileSync(p, JSON.stringify({ x: "y".repeat(500) })); // ~515 bytes
+    expect(() => readCapped(p, 100)).toThrow("over the 100-byte cap");
+    // under the cap, it returns the content unchanged (normal path)
+    expect(readCapped(p, 10_000)).toContain('"x"');
+  });
+});
 
 describe("readGatherArtifact", () => {
   test("maps gather JSON into a ReviewContext", () => {
