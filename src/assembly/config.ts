@@ -34,6 +34,38 @@ function requireUniqueIds(label: string) {
   };
 }
 
+/**
+ * Cross-reference check: every `persona.lane` (and `defaultLane`, if set) must name a declared lane. A typo or a
+ * lane rename that forgets a persona otherwise passes config load AND `squarewright doctor` cleanly, then throws
+ * mid-review at `laneForPass` ("lane X is not defined"). Rejecting it at LOAD makes `doctor` catch it and every
+ * command fail fast with a clear message. Runs as a top-level refine so it sees the fully-parsed lanes + personas.
+ */
+function requireLaneRefsResolve(
+  config: {
+    defaultLane?: string;
+    lanes: { id: string }[];
+    personas: { id: string; lane: string }[];
+  },
+  ctx: z.RefinementCtx
+) {
+  const laneIds = new Set(config.lanes.map((l) => l.id));
+  const known = () => [...laneIds].join(", ");
+  for (const p of config.personas) {
+    if (!laneIds.has(p.lane)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `persona "${p.id}" references lane "${p.lane}", which is not defined. Declared lanes: [${known()}].`,
+      });
+    }
+  }
+  if (config.defaultLane !== undefined && !laneIds.has(config.defaultLane)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `defaultLane "${config.defaultLane}" is not a defined lane. Declared lanes: [${known()}].`,
+    });
+  }
+}
+
 const modelLane = z
   .object({
     id: z.string(),
@@ -114,7 +146,8 @@ export const assemblyConfigSchema = z
      */
     structurer: modelLane.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine(requireLaneRefsResolve);
 
 export type AssemblyConfig = z.infer<typeof assemblyConfigSchema>;
 

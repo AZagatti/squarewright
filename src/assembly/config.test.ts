@@ -96,6 +96,46 @@ personas:
     );
   });
 
+  test("rejects a persona whose lane references an undefined lane (typo/rename) — caught at load, not mid-review", () => {
+    // "chea" ≠ "cheap": otherwise passes config load AND `doctor`, then throws mid-review at laneForPass.
+    const dangling = `
+lanes:
+  - { id: cheap, provider: zai, model: glm-5-turbo }
+personas:
+  - { id: gen, lane: chea, prompt: a }
+`;
+    // ZodError JSON-escapes quotes in its message, so match the quote-free phrase.
+    expect(() => loadAssemblyConfig(configDir(dangling))).toThrow(
+      "references lane"
+    );
+  });
+
+  test("rejects a defaultLane that references an undefined lane", () => {
+    const dangling = `
+defaultLane: nope
+lanes:
+  - { id: cheap, provider: zai, model: glm-5-turbo }
+personas:
+  - { id: gen, lane: cheap, prompt: a }
+`;
+    expect(() => loadAssemblyConfig(configDir(dangling))).toThrow(
+      "is not a defined lane"
+    );
+  });
+
+  test("accepts a config whose persona lanes + defaultLane all resolve", () => {
+    const ok = `
+defaultLane: cheap
+lanes:
+  - { id: cheap, provider: zai, model: glm-5-turbo }
+  - { id: strong, provider: openrouter, model: big }
+personas:
+  - { id: gen, lane: cheap, prompt: a }
+  - { id: sec, lane: strong, prompt: b }
+`;
+    expect(loadAssemblyConfig(configDir(ok)).personas).toHaveLength(2);
+  });
+
   test("rejects an unknown/typo'd key instead of silently ignoring it (strict)", () => {
     // `cotScafold` (typo) must NOT silently leave the scaffold off — strict mode rejects the config
     const typo = `${MINIMAL}cotScafold: true\n`;
