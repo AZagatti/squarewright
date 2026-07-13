@@ -118,3 +118,43 @@ test("renderAnalysisPrompt: long issue body is capped (cost/DoS)", () => {
   expect(p).toContain("END LINKED ISSUE [TOK]");
   expect(p.length).toBeLessThan(12_000);
 });
+
+// --- untrusted-artifact size caps (the gather artifact is attacker-authorable — bound the prompt-spend vector) ---
+
+test("renderAnalysisPrompt: an enormous PR body is truncated (surprise-spend bound)", () => {
+  const huge = "b".repeat(50_000);
+  const p = renderAnalysisPrompt(ctx({ body: huge }));
+  // the body is capped at ~8000 chars, not the full 50k
+  expect(p).not.toContain("b".repeat(8100));
+  expect(p).toContain("b".repeat(8000));
+});
+
+test("renderAnalysisPrompt: the total diff is bounded and the truncation is disclosed", () => {
+  // one multi-hundred-K patch alone blows past the 200k total-diff cap
+  const files = [
+    { patch: "y".repeat(500_000), path: "big.ts", status: "modified" as const },
+  ];
+  const p = renderAnalysisPrompt(ctx({ files }));
+  // the patch is truncated to the cap, and the model is told so (not read as the whole change)
+  expect(p).not.toContain("y".repeat(200_100));
+  expect(p).toContain("diff truncated");
+});
+
+test("renderAnalysisPrompt: files beyond the total-diff budget are omitted and counted", () => {
+  // 60 files × 5k chars = 300k, over the 200k budget → some files omitted
+  const files = Array.from({ length: 60 }, (_, i) => ({
+    patch: "z".repeat(5000),
+    path: `f${i}.ts`,
+    status: "modified" as const,
+  }));
+  const p = renderAnalysisPrompt(ctx({ files }));
+  expect(p).toContain("file(s) omitted");
+  // bounded well under the 300k of raw patch content
+  expect(p.length).toBeLessThan(230_000);
+});
+
+test("renderAnalysisPrompt: a normal small PR is NOT truncated (no false disclosure)", () => {
+  const p = renderAnalysisPrompt(ctx());
+  expect(p).not.toContain("diff truncated");
+  expect(p).toContain("@@ -1 +1 @@"); // the real (small) patch is present in full
+});
