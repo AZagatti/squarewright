@@ -466,6 +466,121 @@ export interface PiWorkerOptions {
 
 const SETTINGS = agentSessionSettings;
 
+export interface StructureResult {
+  costUsd: number;
+  findings: Finding[];
+  structTokens: { input: number; output: number };
+  /** did the model actually call submit_findings? (false ⇒ findings is empty by omission, not a clean review) */
+  submitted: boolean;
+  summary?: string;
+  toolCalls: number;
+}
+
+/**
+ * Pass 2 in isolation: turn a FIXED analysis-prose string into structured findings via the reliable extractor.
+ * Extracted from `run()` so both the production worker AND the fixed-analysis structurer A/B
+ * (scripts/structurer-ab.ts) drive the EXACT same pass-2 — the A/B measures the real structurer's drop, not a
+ * reimplementation that could drift. `run()` delegates here, so there is no behavior change to production.
+ */
+export async function structureAnalysis(
+  analysisText: string,
+  opts: { structLane: ModelLane; persona: string; proposeRuleDrift: boolean },
+  deps: {
+    authStorage: AuthStorage;
+    modelRegistry: ReturnType<typeof createModelRegistry>;
+  }
+): Promise<StructureResult> {
+  const { structLane, persona, proposeRuleDrift } = opts;
+  const structModel = deps.modelRegistry.find(
+    structLane.provider,
+    structLane.model
+  );
+  if (!structModel) {
+    throw new Error(
+      `Structurer model not found: ${structLane.provider}/${structLane.model}.`
+    );
+  }
+  let toolCalls = 0;
+  let captured: { summary: string; findings: SubmittedFinding[] } | undefined;
+  const submitFindings = defineTool({
+    description:
+      "Submit the structured findings extracted from the analysis. Call exactly once.",
+    execute: (_id, params) => {
+      captured = params as {
+        summary: string;
+        findings: SubmittedFinding[];
+      };
+      return Promise.resolve({
+        content: [
+          {
+            text: `Recorded ${captured.findings.length} finding(s).`,
+            type: "text",
+          },
+        ],
+        details: {},
+      });
+    },
+    label: "Submit findings",
+    name: "submit_findings",
+    parameters: buildFindingsSchema(proposeRuleDrift),
+  });
+  const loader2 = new DefaultResourceLoader({
+    agentDir: getAgentDir(),
+    cwd: process.cwd(),
+    systemPromptOverride: () => buildStructurerSystem(proposeRuleDrift),
+  });
+  await loader2.reload();
+  const { session: s2 } = await createAgentSession({
+    authStorage: deps.authStorage,
+    customTools: [submitFindings],
+    model: structModel,
+    modelRegistry: deps.modelRegistry,
+    noTools: "builtin",
+    resourceLoader: loader2,
+    sessionManager: SessionManager.inMemory(),
+    settingsManager: SETTINGS(),
+    thinkingLevel: structLane.thinking ?? "off",
+  });
+  s2.subscribe((e) => {
+    if (e.type === "tool_execution_start") {
+      toolCalls += 1;
+    }
+  });
+  const analysisForStructuring =
+    analysisText.length > 0
+      ? analysisText
+      : "(the reviewer produced no analysis text)";
+  await s2.prompt(
+    "Extract the findings from this code-review analysis into submit_findings " +
+      `(empty findings array if it reports no issues):\n\n${analysisForStructuring}`
+  );
+  let nudges = 0;
+  while (captured === undefined && nudges < 2) {
+    nudges += 1;
+    // biome-ignore lint/performance/noAwaitInLoops: each nudge is only sent if the previous one failed to elicit submit_findings — inherently sequential/dependent
+    await s2.prompt(
+      "Call submit_findings now, exactly once, with the findings from the analysis (empty array if none)."
+    );
+  }
+  const costUsd = sumCost(s2.messages);
+  const structTokens = sumTokens(s2.messages);
+  s2.dispose();
+
+  // biome-ignore lint/suspicious/noUnnecessaryConditions: runtime guard — the model may still not have called submit_findings after the nudge loop exhausts its retries; Biome's flow analysis can't see that the while loop can exit with `captured` still undefined
+  const submitted = captured?.findings ?? [];
+  const findings: Finding[] = capRuleDrift(
+    submitted.map((f) => submittedToFinding(f, persona, proposeRuleDrift))
+  );
+  return {
+    costUsd,
+    findings,
+    structTokens,
+    submitted: captured !== undefined,
+    summary: captured?.summary,
+    toolCalls,
+  };
+}
+
 export function createPiWorker(options: PiWorkerOptions): PiWorker {
   return {
     async run(request: WorkerRequest): Promise<WorkerResult> {
@@ -519,101 +634,28 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
       const analysisTokens = sumTokens(s1.messages);
       s1.dispose();
 
-      // ── Pass 2: structure (fixed reliable extractor, no reasoning) ──
+      // ── Pass 2: structure (fixed reliable extractor, no reasoning) — delegated to structureAnalysis so the
+      // fixed-analysis structurer A/B drives the identical pass-2 (no drift between production and measurement).
       const structLane = options.structurerLane ?? DEFAULT_STRUCTURER;
-      const structModel = modelRegistry.find(
-        structLane.provider,
-        structLane.model
-      );
-      if (!structModel) {
-        throw new Error(
-          `Structurer model not found: ${structLane.provider}/${structLane.model}.`
-        );
-      }
       const proposeRuleDrift = request.proposeRuleDrift ?? false;
-      let captured:
-        | { summary: string; findings: SubmittedFinding[] }
-        | undefined;
-      const submitFindings = defineTool({
-        description:
-          "Submit the structured findings extracted from the analysis. Call exactly once.",
-        execute: (_id, params) => {
-          captured = params as {
-            summary: string;
-            findings: SubmittedFinding[];
-          };
-          return Promise.resolve({
-            content: [
-              {
-                text: `Recorded ${captured.findings.length} finding(s).`,
-                type: "text",
-              },
-            ],
-            details: {},
-          });
-        },
-        label: "Submit findings",
-        name: "submit_findings",
-        parameters: buildFindingsSchema(proposeRuleDrift),
-      });
-      const loader2 = new DefaultResourceLoader({
-        agentDir: getAgentDir(),
-        cwd: process.cwd(),
-        systemPromptOverride: () => buildStructurerSystem(proposeRuleDrift),
-      });
-      await loader2.reload();
-      const { session: s2 } = await createAgentSession({
-        authStorage,
-        customTools: [submitFindings],
-        model: structModel,
-        modelRegistry,
-        noTools: "builtin",
-        resourceLoader: loader2,
-        sessionManager: SessionManager.inMemory(),
-        settingsManager: SETTINGS(),
-        thinkingLevel: structLane.thinking ?? "off",
-      });
-      s2.subscribe((e) => {
-        if (e.type === "tool_execution_start") {
-          toolCalls += 1;
-        }
-      });
-      const analysisForStructuring =
-        analysisText.length > 0
-          ? analysisText
-          : "(the reviewer produced no analysis text)";
-      await s2.prompt(
-        "Extract the findings from this code-review analysis into submit_findings " +
-          `(empty findings array if it reports no issues):\n\n${analysisForStructuring}`
-      );
-      let nudges = 0;
-      while (captured === undefined && nudges < 2) {
-        nudges += 1;
-        // biome-ignore lint/performance/noAwaitInLoops: each nudge is only sent if the previous one failed to elicit submit_findings — inherently sequential/dependent
-        await s2.prompt(
-          "Call submit_findings now, exactly once, with the findings from the analysis (empty array if none)."
-        );
-      }
-      costUsd += sumCost(s2.messages);
-      const structTokens = sumTokens(s2.messages);
-      s2.dispose();
-
       const persona = request.persona ?? "persona:general";
-      // biome-ignore lint/suspicious/noUnnecessaryConditions: runtime guard — the model may still not have called submit_findings after the nudge loop exhausts its retries; Biome's flow analysis can't see that the while loop can exit with `captured` still undefined
-      const submitted = captured?.findings ?? [];
-      const findings: Finding[] = capRuleDrift(
-        submitted.map((f) => submittedToFinding(f, persona, proposeRuleDrift))
+      const structured = await structureAnalysis(
+        analysisText,
+        { persona, proposeRuleDrift, structLane },
+        { authStorage, modelRegistry }
       );
+      toolCalls += structured.toolCalls;
+      costUsd += structured.costUsd;
 
       return {
-        findings,
+        findings: structured.findings,
         usage: {
           analysisText,
           analysisTokens,
           costUsd,
-          structTokens,
-          submitted: captured !== undefined,
-          summary: captured?.summary,
+          structTokens: structured.structTokens,
+          submitted: structured.submitted,
+          summary: structured.summary,
           toolCalls,
         },
       };
