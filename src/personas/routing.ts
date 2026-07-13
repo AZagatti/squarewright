@@ -125,6 +125,11 @@ export function selectPersonasWithDrops(
   const hasCode = paths.some((p) => CODE_EXTS.has(ext(p)));
 
   const matched = personas.filter((p) => {
+    // The AC-conformance auditor is context-gated (runs iff the PR has a fetched linkedIssue), not file/glob-gated —
+    // `runReview` fires it as its own dedicated pass, so it never competes for the glob-routed cap here.
+    if (p.acCheck) {
+      return false;
+    }
     if (p.needsCode && !hasCode) {
       return false;
     }

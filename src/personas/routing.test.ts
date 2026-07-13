@@ -78,6 +78,23 @@ describe("selectPersonas cap is group-aware", () => {
   });
 });
 
+test("an acCheck (AC-conformance) persona is excluded from glob routing — it's context-gated, not file-gated", () => {
+  const picked = selectPersonas(
+    [
+      { id: "gen", lane: "cheap", prompt: "g", when: ["always"] },
+      {
+        acCheck: true,
+        id: "auditor",
+        lane: "strong",
+        prompt: "a",
+        when: ["always"],
+      },
+    ],
+    FILES
+  );
+  expect(picked.map((x) => x.id)).toEqual(["gen"]);
+});
+
 describe("selectPersonasWithDrops reports what the cap cut", () => {
   test("reports matched-but-dropped personas in original order (for honest disclosure)", () => {
     const { selected, dropped } = selectPersonasWithDrops(

@@ -80,6 +80,58 @@ function laneForPass(
 }
 
 /**
+ * Run the opt-in AC-conformance auditor as its OWN pass — iff the config has an `acCheck` persona AND the PR closes
+ * a fetched issue (`context.linkedIssue`). Kept a separate Worker call (with `acCheck` on, which injects the
+ * UNTRUSTED issue text into the user turn only) so that text never enters the defect personas' context — the
+ * measured intent-confound. Returns the pass result + resolved lens, or `null` when it doesn't apply (no AC persona,
+ * or a PR that links nothing) so production is unaffected until a repo adds the persona.
+ */
+async function runAcPass(
+  personas: AssemblyConfig["personas"],
+  config: AssemblyConfig,
+  context: ReviewContext,
+  worker: PiWorker
+): Promise<{
+  findings: Finding[];
+  incomplete: boolean;
+  lens: { id: string; label: string };
+  model: string;
+  summary?: string;
+} | null> {
+  const acPersona = personas.find((p) => p.acCheck);
+  if (!(acPersona && context.linkedIssue)) {
+    return null;
+  }
+  const base = config.lanes.find((l) => l.id === acPersona.lane);
+  if (!base) {
+    const known = config.lanes.map((l) => l.id).join(", ");
+    throw new Error(
+      `AC persona "${acPersona.id}" references lane "${acPersona.lane}", which is not defined. Known lanes: [${known}].`
+    );
+  }
+  const lane: ModelLane = {
+    ...base,
+    thinking: acPersona.thinking ?? base.thinking,
+  };
+  const result = await worker.run({
+    acCheck: true,
+    budget: config.budget,
+    context,
+    lane,
+    persona: acPersona.id,
+    // no rules preamble / rule-drift: the AC pass checks the linked issue's criteria, not project rules.
+    systemPrompt: acPersona.prompt,
+  });
+  return {
+    findings: result.findings,
+    incomplete: result.usage?.submitted === false,
+    lens: { id: acPersona.id, label: acPersona.label ?? acPersona.id },
+    model: lane.model,
+    summary: result.usage?.summary?.trim() || undefined,
+  };
+}
+
+/**
  * Compose an Assembly over a PR into review output. No network — inject a `PiWorker`.
  *
  * When `opts.repoReader` is supplied, project context relevant to the changed files is prepended to every pass
@@ -172,6 +224,19 @@ export async function runReview(
     if (result.usage?.summary?.trim()) {
       summaries.push(result.usage.summary.trim());
     }
+  }
+
+  const ac = await runAcPass(personas, config, context, worker);
+  if (ac) {
+    all.push(...ac.findings);
+    if (ac.incomplete) {
+      incompletePassIds.add(ac.lens.id);
+    }
+    if (ac.summary) {
+      summaries.push(ac.summary);
+    }
+    modelsUsed.add(ac.model);
+    lenses.push(ac.lens); // attribute AC findings + list it in the honesty footer roster
   }
 
   const findings = aggregateFindings(all);
