@@ -31,6 +31,15 @@ export interface WorkerRequest {
    * `cotScaffold` flag (graduated in PR #101) or `--cot-scaffold`/`eval-cli` in the harness.
    */
   cotScaffold?: boolean;
+  /**
+   * Enable the consistency/divergence note (EVAL-ONLY settling experiment, #45-adjacent): a diff-scoped,
+   * no-grounding probe that flags a hunk breaking a security/correctness pattern its siblings in the SAME diff
+   * uphold, with a forced sibling citation. Narrowed to safety-relevant divergences (never cosmetic style) to test
+   * whether "divergence-from-repo-pattern" is a real defect-adjacent class or an FP factory on the free model.
+   * Opt-in via `--divergence` in the harnesses; deliberately NOT set by the production assembly (review.ts) until
+   * it clears the scaffold's no-precision-cost bar. Distinct from `surveyor` (same-diff same-root-cause enumeration).
+   */
+  divergence?: boolean;
   lane: ModelLane;
   /** persona id, stamped onto findings for provenance/feedback */
   persona?: string;

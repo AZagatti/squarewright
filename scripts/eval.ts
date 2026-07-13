@@ -433,6 +433,9 @@ async function main() {
   const surveyor = flag("surveyor");
   // --cot-scaffold: prompted CoT scaffold (explain → find → self-critique) — A/B recall+precision lever (2026-07-12).
   const doScaffold = flag("cot-scaffold");
+  // --divergence: consistency/divergence note (EVAL-ONLY settling experiment, 2026-07-13 council) — diff-scoped,
+  // security/correctness-only, citation-forced. Measures whether flagging pattern-divergence FP-floods on the free model.
+  const doDivergence = flag("divergence");
   const withContext = (prompt: string) => rulesPreamble + withNote(prompt);
   const spendGuard = () => {
     if (aborted || localSpend <= maxSpend) {
@@ -456,7 +459,7 @@ async function main() {
     ? `${structurerLane.provider}/${structurerLane.model}`
     : "zai/glm-5-turbo";
   console.log(
-    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}${doPersonas ? ` batching=${batching}` : ""}${samples > 1 ? ` samples=${samples}${consensus > 1 ? `/consensus≥${consensus}` : ""}` : ""}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cot-scaffold=${doScaffold}  cases=${cases.length}  conc=${concurrency}`
+    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}${doPersonas ? ` batching=${batching}` : ""}${samples > 1 ? ` samples=${samples}${consensus > 1 ? `/consensus≥${consensus}` : ""}` : ""}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cot-scaffold=${doScaffold}  divergence=${doDivergence}  cases=${cases.length}  conc=${concurrency}`
   );
 
   // One full pass over the corpus. Repeated N times (--repeat) through the SHARED spend guard, so the cap holds
@@ -511,6 +514,7 @@ async function main() {
               const pr = await worker.run({
                 context,
                 cotScaffold: doScaffold,
+                divergence: doDivergence,
                 lane: passLane,
                 persona: pass.id,
                 proposeRuleDrift,
@@ -543,6 +547,7 @@ async function main() {
           const pr = await worker.run({
             context,
             cotScaffold: doScaffold,
+            divergence: doDivergence,
             lane,
             persona: "persona:general",
             proposeRuleDrift,
@@ -648,6 +653,9 @@ async function main() {
       // auditable from the durable log, not reconstructed from run-order/cleanFP heuristics (the gap the
       // scaffold council flagged as a reproducibility blocker). Mirrors eval-cli.ts's config.cotScaffold.
       cotScaffold: doScaffold,
+      // divergence note persisted alongside the other analysis-prose levers so its on/off arms are auditable
+      // from the durable log (eval-only settling experiment, 2026-07-13 council).
+      divergence: doDivergence,
       ground: doGround,
       model,
       personas: doPersonas,

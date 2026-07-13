@@ -81,6 +81,28 @@ Work through the review in three explicit, ordered steps in your response:
 3. VERIFY — for each candidate, critically decide whether it is a REAL defect that THIS PR's changed lines introduce, or a false positive; keep only the ones you are confident are real and drop the rest.
 Your final review (the prose findings the instructions above ask for) must contain only the issues that survived step 3.`;
 
+/**
+ * Consistency/divergence note (EVAL-ONLY settling experiment, 2026-07-13 council): a diff-scoped, no-grounding
+ * probe of whether "flag a hunk that breaks a security/correctness pattern its siblings uphold" is a real
+ * defect-adjacent finding class or a false-positive factory on the free default model. Narrowed on both axes the
+ * council demanded: SECURITY/CORRECTNESS invariants only (never cosmetic style — that's what maintainers mute),
+ * and a FORCED citation to the concrete sibling in THIS diff (so a finding is checkable, not an opinion). Compares
+ * only against hunks already in the diff — no repo reads, so it never turns on grounding (which measurably
+ * collapsed precision on this model). Opt-in via `--divergence`; NOT wired into production review.ts until the
+ * experiment clears the scaffold's bar (no clean-case precision cost).
+ */
+const DIVERGENCE_NOTE = `
+
+Consistency check — do this while reviewing, only for security- or correctness-relevant patterns. Many diffs
+change several similar places at once (handlers, queries, config entries, error paths, permission checks). If
+OTHER hunks in THIS diff establish a safety-relevant convention — validating input before use, using a
+parameterized/escaping helper, checking a permission or auth, scrubbing a secret before logging, handling an
+error/failure path — and exactly one changed hunk BREAKS that convention with no reason visible in the diff,
+report it as a finding. Flag ONLY divergences that carry a real correctness or security risk; never report mere
+style, naming, or formatting differences. You MUST cite the specific sibling location (path:line) in this diff
+that establishes the convention you are comparing against — if you cannot point to a concrete sibling hunk here,
+do not raise the finding.`;
+
 const GROUNDING_NOTE = `
 
 You can inspect the repository at this PR's revision with tools: read_repo_file(path) reads a file's full
@@ -209,6 +231,7 @@ export function buildAnalysisSystem(request: WorkerRequest): string {
     (request.repoReader ? GROUNDING_NOTE : "") +
     ANALYSIS_NOTE +
     (request.cotScaffold ? COT_SCAFFOLD_NOTE : "") +
+    (request.divergence ? DIVERGENCE_NOTE : "") +
     (request.proposeRuleDrift ? RULE_DRIFT_NOTE : "") +
     (request.surveyor ? SURVEYOR_NOTE : "")
   );
