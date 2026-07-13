@@ -35,6 +35,7 @@ import type { RepoReader } from "../src/pi/session.js";
 import { createVerifier } from "../src/pi/verifier.js";
 import { createPiWorker } from "../src/pi/worker.js";
 import { renderReviewRules } from "../src/rules/review-rules.js";
+import { similarFilesPreamble } from "../src/rules/similar-files.js";
 import {
   estimatePassSpend,
   openrouterPrice,
@@ -440,6 +441,10 @@ async function main() {
   // report separates the analysis model's reachability from the structurer's extraction drop (the #78 confound).
   // `analysisRecall − structuredRecall` = loci a capable analysis surfaced but the structurer dropped.
   const doAnalysisRecall = flag("analysis-recall");
+  // --similar-files: DETERMINISTIC project-pattern alignment (2026-07-13 council pilot) — inject a few same-intent
+  // sibling files (read directly, NOT via the model's grounding tools) as a reference preamble, to test whether
+  // convention-alignment lifts the free model's recall without the precision collapse naive agentic grounding caused.
+  const doSimilar = flag("similar-files");
   const withContext = (prompt: string) => rulesPreamble + withNote(prompt);
   const spendGuard = () => {
     if (aborted || localSpend <= maxSpend) {
@@ -463,7 +468,7 @@ async function main() {
     ? `${structurerLane.provider}/${structurerLane.model}`
     : "zai/glm-5-turbo";
   console.log(
-    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}${doPersonas ? ` batching=${batching}` : ""}${samples > 1 ? ` samples=${samples}${consensus > 1 ? `/consensus≥${consensus}` : ""}` : ""}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cot-scaffold=${doScaffold}  divergence=${doDivergence}  analysis-recall=${doAnalysisRecall}  cases=${cases.length}  conc=${concurrency}`
+    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}${doPersonas ? ` batching=${batching}` : ""}${samples > 1 ? ` samples=${samples}${consensus > 1 ? `/consensus≥${consensus}` : ""}` : ""}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cot-scaffold=${doScaffold}  divergence=${doDivergence}  analysis-recall=${doAnalysisRecall}  similar-files=${doSimilar}  cases=${cases.length}  conc=${concurrency}`
   );
 
   // One full pass over the corpus. Repeated N times (--repeat) through the SHARED spend guard, so the cap holds
@@ -496,6 +501,16 @@ async function main() {
           title: `${c.repo}#${c.pr}`,
         };
         const repoReader = doGround ? ghRepoReader(c.repo, c.pr) : undefined;
+        // Similar-files alignment reads siblings DIRECTLY to build a preamble; it must NOT hand the worker a
+        // repoReader (that would enable the model's grounding tools — the agentic path that collapsed precision).
+        const similarPreamble = doSimilar
+          ? await similarFilesPreamble(
+              repoReader ?? ghRepoReader(c.repo, c.pr),
+              context.files.map((f) => f.path)
+            )
+          : "";
+        const withCtx = (prompt: string) =>
+          similarPreamble + withContext(prompt);
         const t0 = Date.now();
         let findings: Finding[];
         // raw pass-1 prose across every pass/sample — unioned like the structured findings are, so
@@ -527,7 +542,7 @@ async function main() {
                 proposeRuleDrift,
                 repoReader,
                 surveyor,
-                systemPrompt: withContext(pass.prompt),
+                systemPrompt: withCtx(pass.prompt),
               });
               all.push(...pr.findings);
               if (pr.usage?.analysisText) {
@@ -563,7 +578,7 @@ async function main() {
             proposeRuleDrift,
             repoReader,
             surveyor,
-            systemPrompt: withContext(PERSONA),
+            systemPrompt: withCtx(PERSONA),
           });
           ({ findings } = pr);
           if (pr.usage?.analysisText) {
@@ -685,7 +700,7 @@ async function main() {
       // analysis-recall mode is part of what's measured — persist it so the pre-structurer recall column in a
       // report is distinguishable from a plain run (where issueHitsAnalysis is 0 because the mode was off).
       analysisRecall: doAnalysisRecall || undefined,
-      // batching mode is part of what's measured — persist it so split/current/batched runs are
+      // batching mode is part of what is measured — persist it so split/current/batched runs are
       // distinguishable in the durable log (runs.jsonl), not just in someone's terminal scrollback.
       batching: doPersonas ? batching : undefined,
       consensus: doPersonas && samples > 1 ? consensus : undefined,
@@ -701,6 +716,7 @@ async function main() {
       personas: doPersonas,
       provider,
       samples: doPersonas ? samples : undefined,
+      similarFiles: doSimilar || undefined,
       // the structurer (pass 2) is part of what's measured — a weak structurer silently drops findings from a
       // capable analysis model (the nosub bug), so a rank is only auditable if the report records which one ran.
       structurer: structurerLane
