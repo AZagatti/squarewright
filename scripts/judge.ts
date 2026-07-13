@@ -21,6 +21,8 @@ import {
   type DefectLocus,
   defectFileViolations,
   hallucinationWarning,
+  harshJudgeSuspect,
+  harshJudgeWarning,
   type JudgedFinding,
   summarize,
   summarizeMatrix,
@@ -170,6 +172,7 @@ async function runPasses(
   hallucinatedPasses: number;
   perCase: Map<string, number[]>;
   perPassRecall: number[];
+  suspectHarshPasses: number;
   ungraded: number;
 }> {
   const perCase = new Map<string, number[]>();
@@ -177,6 +180,7 @@ async function runPasses(
   let ungraded = 0;
   let calls = 0;
   let hallucinatedPasses = 0;
+  let suspectHarshPasses = 0;
   for (let k = 0; k < ctx.repeats; k += 1) {
     // biome-ignore lint/performance/noAwaitInLoops: sequential by design — the shared spend guard must see each pass's cost before the next fires
     const pass = await judgeOnePass(judge, lane, scored, ctx);
@@ -202,6 +206,12 @@ async function runPasses(
       }
       continue;
     }
+    // MIRROR guard: a pass that graded 0 matches while findings landed on ≥2 loci's files is an under-permissive
+    // (suspect-harsh) judge — flag it (do NOT exclude; unlike hallucination, a genuine 0 is possible), so a harsh
+    // judge like kimi-k2.6 can't silently write a spurious 0 recall into runs.jsonl.
+    if (harshJudgeSuspect(pass.passCases)) {
+      suspectHarshPasses += 1;
+    }
     perPassRecall.push(pass.passTotal);
     if (ctx.repeats > 1) {
       console.log(
@@ -209,7 +219,14 @@ async function runPasses(
       );
     }
   }
-  return { calls, hallucinatedPasses, perCase, perPassRecall, ungraded };
+  return {
+    calls,
+    hallucinatedPasses,
+    perCase,
+    perPassRecall,
+    suspectHarshPasses,
+    ungraded,
+  };
 }
 
 function printReport(
@@ -289,13 +306,19 @@ async function runSingle(reportPath: string, ctx: JudgeCtx): Promise<number> {
     `  passes: ${ctx.repeats}${ctx.paid ? `  (PAID judge — spend cap $${ctx.maxSpend})` : ""}\n`
   );
 
-  const { perCase, perPassRecall, ungraded, calls, hallucinatedPasses } =
-    await runPasses(ctx.judge, ctx.lane, scored, {
-      guard: ctx.guard,
-      price: ctx.price,
-      repeats: ctx.repeats,
-      total,
-    });
+  const {
+    perCase,
+    perPassRecall,
+    ungraded,
+    calls,
+    hallucinatedPasses,
+    suspectHarshPasses,
+  } = await runPasses(ctx.judge, ctx.lane, scored, {
+    guard: ctx.guard,
+    price: ctx.price,
+    repeats: ctx.repeats,
+    total,
+  });
   printReport(scored, perCase, perPassRecall, {
     fileHits,
     repeats: ctx.repeats,
@@ -310,6 +333,11 @@ async function runSingle(reportPath: string, ctx: JudgeCtx): Promise<number> {
     // so the ratio can't read as "all passes failed" when some were spend-aborted before the check.
     const evaluated = perPassRecall.length + hallucinatedPasses;
     console.log(`\n${hallucinationWarning(hallucinatedPasses, evaluated)}`);
+  }
+  if (suspectHarshPasses > 0) {
+    console.log(
+      `\n${harshJudgeWarning(suspectHarshPasses, perPassRecall.length)}`
+    );
   }
   if (ctx.paid) {
     console.log(
@@ -351,6 +379,7 @@ async function runMatrix(
   let ungraded = 0;
   let calls = 0;
   let hallucinatedPasses = 0;
+  let suspectHarshPasses = 0;
   let evaluatedPasses = 0;
   for (const p of reportPaths) {
     // Money is guarded across the WHOLE matrix: once the cap trips, don't start another report's passes.
@@ -376,6 +405,7 @@ async function runMatrix(
     ungraded += pass.ungraded;
     calls += pass.calls;
     hallucinatedPasses += pass.hallucinatedPasses;
+    suspectHarshPasses += pass.suspectHarshPasses;
     // Passes that ran to completion and were invariant-checked (recorded + excluded), across all reports — the
     // honest denominator for the hallucination banner, unlike the per-report ctx.repeats.
     evaluatedPasses += perPassRecall.length + pass.hallucinatedPasses;
@@ -419,6 +449,9 @@ async function runMatrix(
     console.log(
       `\n${hallucinationWarning(hallucinatedPasses, evaluatedPasses)}`
     );
+  }
+  if (suspectHarshPasses > 0) {
+    console.log(`\n${harshJudgeWarning(suspectHarshPasses, evaluatedPasses)}`);
   }
   if (matrix.length === 0) {
     console.log(

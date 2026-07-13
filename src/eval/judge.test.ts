@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   defectFileViolations,
   hallucinationWarning,
+  harshJudgeSuspect,
   summarize,
   summarizeMatrix,
   sumUsage,
@@ -20,6 +21,37 @@ test("ungradedWarning: flags a fully-broken judge (all calls ungraded)", () => {
 
 test("ungradedWarning: flags partial tool-call failures too", () => {
   expect(ungradedWarning(3, 8)).toContain("3/8");
+});
+
+test("harshJudgeSuspect: flags 0 defects while ≥2 cases had file hits (under-permissive judge)", () => {
+  // kimi-k2.6's golden failure: reliably grades, never violates defect⊆file, but scores everything 0.
+  expect(
+    harshJudgeSuspect([
+      { defect: 0, file: 2 },
+      { defect: 0, file: 1 },
+      { defect: 0, file: 0 },
+    ])
+  ).toBe(true);
+});
+
+test("harshJudgeSuspect: NOT flagged when it found any match (a genuine grader)", () => {
+  expect(
+    harshJudgeSuspect([
+      { defect: 1, file: 2 },
+      { defect: 0, file: 1 },
+    ])
+  ).toBe(false);
+});
+
+test("harshJudgeSuspect: NOT flagged on a genuinely clean/unflagged report (0 defects but <2 file hits)", () => {
+  // A real all-miss where the reviewer barely landed on the right files is not suspect — could be honest.
+  expect(
+    harshJudgeSuspect([
+      { defect: 0, file: 1 },
+      { defect: 0, file: 0 },
+      { defect: 0, file: 0 },
+    ])
+  ).toBe(false);
 });
 
 test("defectFileViolations: no violation when every case has defect ≤ file", () => {

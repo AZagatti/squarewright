@@ -658,6 +658,9 @@ async function main() {
       structurer: structurerLane
         ? `${structurerLane.provider}/${structurerLane.model}`
         : "zai/glm-5-turbo",
+      // surveyor persisted alongside cotScaffold so a scaffold×surveyor interaction run's arms are auditable
+      // from the durable log, not reconstructed from run-order.
+      surveyor,
       thinking: thinkingSet ? thinking : "per-persona",
       verify: doVerify,
     };
