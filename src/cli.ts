@@ -59,7 +59,14 @@ program
   )
   .option("-C, --cwd <dir>", "repo root to scaffold into", process.cwd())
   .action(async (opts: { cwd: string }) => {
-    await scaffold(opts.cwd);
+    try {
+      await scaffold(opts.cwd);
+    } catch (e) {
+      // scaffold does real fs I/O (mkdir/cp/write) that can fail (perms, missing/unwritable --cwd). Match the
+      // other commands: a clean one-line error + exit 2, never a raw stack trace on the first command users run.
+      console.error(e instanceof Error ? e.message : String(e));
+      process.exitCode = 2;
+    }
   });
 
 program
