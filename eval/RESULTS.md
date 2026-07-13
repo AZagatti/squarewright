@@ -933,7 +933,10 @@ and the structurer extracted 1 (not 5) — the pinned `glm-5.2` structurer respe
 default `glm-5-turbo` also extracted 1 but the *wrong* one (kept a reject) → scaffold pairs better with a capable
 structurer.
 
-**NOT shipped to the production review path.** `--cot-scaffold` is an **eval-only lever** (like SURVEYOR): it exists
+**GRADUATED to production (2026-07-13, PR #101):** `cotScaffold` is now a `.squarewright.yml` flag (config.ts →
+review.ts → worker), **off by default**. The paragraph below described its earlier eval-only status.
+
+`--cot-scaffold` began as an **eval-only lever** (like SURVEYOR): it exists
 in `WorkerRequest`/`eval.ts`/`eval-cli.ts` but is NOT wired into `src/assembly/review.ts`, and there is no
 `.squarewright.yml` field. Graduating it to an opt-in product flag (schema shape + whether to dogfood it here) is a
 deferred maintainer product decision, not resolved by this entry. **Still unmeasured:** scaffold × SURVEYOR

@@ -25,9 +25,10 @@ export interface WorkerRequest {
   budget?: { maxToolCalls?: number; maxTokens?: number };
   context: ReviewContext;
   /**
-   * Enable the prompted CoT scaffold (recall + precision lever, 2026-07-12): forces an explain → find →
-   * self-critique sequence in the analysis prompt. Distinct from native reasoning tokens (which don't help a
-   * classification-shaped task like review). Opt-in + measured via `--cot-scaffold`.
+   * Enable the prompted CoT scaffold (PRECISION lever — cuts false positives ~50–60%; recall impact NOT
+   * established): forces an explain → find → self-critique sequence in the analysis prompt. Distinct from native
+   * reasoning tokens (which don't help a classification-shaped task like review). Opt-in via the `.squarewright.yml`
+   * `cotScaffold` flag (graduated in PR #101) or `--cot-scaffold`/`eval-cli` in the harness.
    */
   cotScaffold?: boolean;
   lane: ModelLane;
