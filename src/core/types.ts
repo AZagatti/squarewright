@@ -95,7 +95,13 @@ export interface ReviewContext {
    * found and fetched.
    */
   linkedIssue?: { body: string; number: number; title: string };
-  prNumber: number;
+  /**
+   * The PR number, when the change under review is a PR (the production path always sets it — gather derives it from
+   * a `pull_request` event). Optional only so the offline recall-eval can review a bare-commit change that has no PR
+   * (`scripts/eval.ts` commit cases); prompt rendering omits the "PR #" label when it's absent rather than fabricate
+   * one. Never absent on the posting path (a `VerifiedTarget` carries its own required `prNumber`).
+   */
+  prNumber?: number;
   repo: string;
   title: string;
 }

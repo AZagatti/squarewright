@@ -74,7 +74,7 @@ export function renderPrompt(finding: Finding, ctx: ReviewContext): string {
       ? `${cps.slice(0, MAX_VERIFY_DIFF).join("")}\n[diff truncated at ${MAX_VERIFY_DIFF} chars]`
       : raw;
   return [
-    `A reviewer flagged this finding on PR #${ctx.prNumber}:`,
+    `A reviewer flagged this finding${ctx.prNumber === undefined ? "" : ` on PR #${ctx.prNumber}`}:`,
     `\n  file: ${finding.path}:${finding.line}`,
     `  severity: ${finding.severity}`,
     `  claim: ${finding.message}`,

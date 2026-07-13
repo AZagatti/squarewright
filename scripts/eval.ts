@@ -71,15 +71,42 @@ interface Locus {
   path: string;
 }
 interface Case {
+  /**
+   * A direct-to-`main` commit SHA, for a case with NO wrapping PR (e.g. a maintainer push later reverted). Mutually
+   * exclusive with `pr` — exactly one must be set (validated in `loadCases`). The diff is frozen from the commit and
+   * grounding reads files at that SHA, exactly as `pr` cases ground at the PR head.
+   */
+  commit?: string;
   evidence?: string;
   expect_loci?: Locus[];
   id: string;
   kind?: string;
   label: "clean" | "has-issue";
   note?: string;
-  pr: number;
+  pr?: number;
   repo: string;
   stack: string;
+}
+
+/**
+ * The immutable ref a case is frozen/grounded at: a `pr` case's head SHA, or a `commit` case's SHA verbatim. One
+ * definition so freeze, grounding, and the review-context label all agree on the same commit.
+ */
+function caseSha(c: Case): string {
+  if (c.commit) {
+    return c.commit;
+  }
+  if (c.pr === undefined) {
+    throw new Error(`case ${c.id}: neither pr nor commit set`);
+  }
+  return headSha(c.repo, c.pr);
+}
+
+/** Human label for a case's provenance: `repo#123` for a PR, `repo@abc1234` for a bare commit. */
+function caseTitle(c: Case): string {
+  return c.pr === undefined
+    ? `${c.repo}@${(c.commit ?? "").slice(0, 7)}`
+    : `${c.repo}#${c.pr}`;
 }
 
 function arg(name: string): string | undefined {
@@ -169,9 +196,8 @@ function headSha(repo: string, pr: number): string {
   return sha;
 }
 
-/** RepoReader backed by the GitHub contents API at the PR's head SHA (immutable => reproducible). */
-function ghRepoReader(repo: string, pr: number): RepoReader {
-  const sha = headSha(repo, pr);
+/** RepoReader backed by the GitHub contents API at an immutable SHA (PR head or bare commit) => reproducible. */
+function ghRepoReader(repo: string, sha: string): RepoReader {
   const fetch = (path: string): unknown => {
     const q = path
       ? `repos/${repo}/contents/${path}?ref=${sha}`
@@ -226,6 +252,15 @@ function loadCases(): Case[] {
   };
   // biome-ignore lint/suspicious/noUnnecessaryConditions: runtime guard against a malformed/empty manifest.yaml — the `as` cast doesn't validate the parsed YAML at runtime
   let cases = doc.cases ?? [];
+  for (const c of cases) {
+    const hasPr = c.pr !== undefined;
+    const hasCommit = c.commit !== undefined;
+    if (hasPr === hasCommit) {
+      throw new Error(
+        `manifest case "${c.id}": set EXACTLY ONE of pr / commit (got ${hasPr ? "both" : "neither"}).`
+      );
+    }
+  }
   const stack = arg("stack");
   const id = arg("id");
   if (stack) {
@@ -257,14 +292,20 @@ function freeze(cases: Case[]): void {
       continue;
     }
     try {
-      const diff = execFileSync(
-        "gh",
-        ["pr", "diff", String(c.pr), "--repo", c.repo],
-        {
-          encoding: "utf8",
-          maxBuffer: 50 * 1024 * 1024,
-        }
-      );
+      // A bare-commit case has no PR to `gh pr diff`; fetch the commit's own diff via the REST API (v3.diff media
+      // type), which returns the same unified-diff shape `gh pr diff` produces for PR cases.
+      const args = c.commit
+        ? [
+            "api",
+            "-H",
+            "Accept: application/vnd.github.v3.diff",
+            `repos/${c.repo}/commits/${c.commit}`,
+          ]
+        : ["pr", "diff", String(c.pr), "--repo", c.repo];
+      const diff = execFileSync("gh", args, {
+        encoding: "utf8",
+        maxBuffer: 50 * 1024 * 1024,
+      });
       writeFileSync(p, diff);
       console.log(`  froze  ${c.id}  (${diff.length} chars)`);
     } catch (e) {
@@ -498,14 +539,16 @@ async function main() {
           headSha: "",
           prNumber: c.pr,
           repo: c.repo,
-          title: `${c.repo}#${c.pr}`,
+          title: caseTitle(c),
         };
-        const repoReader = doGround ? ghRepoReader(c.repo, c.pr) : undefined;
+        const repoReader = doGround
+          ? ghRepoReader(c.repo, caseSha(c))
+          : undefined;
         // Similar-files alignment reads siblings DIRECTLY to build a preamble; it must NOT hand the worker a
         // repoReader (that would enable the model's grounding tools — the agentic path that collapsed precision).
         const similarPreamble = doSimilar
           ? await similarFilesPreamble(
-              repoReader ?? ghRepoReader(c.repo, c.pr),
+              repoReader ?? ghRepoReader(c.repo, caseSha(c)),
               context.files.map((f) => f.path)
             )
           : "";
