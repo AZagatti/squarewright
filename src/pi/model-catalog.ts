@@ -52,6 +52,25 @@ export function resolveModelsJsonPath(
 }
 
 /**
+ * Warn text for a SET-but-ABSENT `SQW_MODELS_JSON`: the operator explicitly pointed at a catalog (likely one
+ * carrying cost/reasoning-trap `maxTokens` caps) but no file exists there. `resolveModelsJsonPath` then returns
+ * `undefined` — indistinguishable from "no catalog configured" — so the review silently falls back to the default
+ * catalog and those caps stop applying, with no signal. This guard makes the money-relevant "set but missing" case
+ * loud, distinct from the benign "env unset" default. Returns `null` when the env is unset or the file exists.
+ * Pure: `fileExists` is injected so it's testable without a real fs.
+ */
+export function missingOverrideWarning(
+  env: NodeJS.ProcessEnv = process.env,
+  fileExists: (p: string) => boolean = existsSync
+): string | null {
+  const override = env[MODELS_JSON_ENV]?.trim();
+  if (!override || fileExists(override)) {
+    return null;
+  }
+  return `⚠️  ${MODELS_JSON_ENV} is set to "${override}" but no file exists there — ignoring it and falling back to the default catalog (built-ins + any global ${globalModelsJsonPath()}). Any cost/reasoning-trap overrides you intended are NOT applied; fix the path or unset ${MODELS_JSON_ENV}.`;
+}
+
+/**
  * Warn text for the one case that silently drops safety settings: a project catalog is active (`resolved` set)
  * AND a different global `~/.pi/agent/models.json` exists on disk. Pi will load only `resolved`, so the global
  * file — possibly holding cost-trap `maxTokens` caps — stops applying. Returns `null` when there's nothing to
@@ -77,6 +96,12 @@ export function supersessionWarning(
  * models".
  */
 export function createModelRegistry(authStorage: AuthStorage): ModelRegistry {
+  // A SET-but-absent SQW_MODELS_JSON silently loses its intended cost caps — warn before resolving (which can't
+  // tell that case apart from "unset", both collapsing to undefined).
+  const missingOverride = missingOverrideWarning();
+  if (missingOverride) {
+    console.warn(missingOverride);
+  }
   const path = resolveModelsJsonPath();
   const globalPath = globalModelsJsonPath();
   const superseded = supersessionWarning(
