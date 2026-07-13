@@ -964,6 +964,8 @@ arms 0/11 (uninformative). RE-JUDGED with free **zai:glm-5.2** (the working defa
 caught by a new `harshJudgeSuspect` guard in judge.ts). glm-5.2 judge is same-family on the glm row (self-preference
 caveat), cross-family on minimax/sonnet.
 
+All cells are **medians of N=3 raw draws** (spread in `runs.jsonl` for FP/file-recall; defect medians from the glm-5.2 judge console, not durably logged — a known gap).
+
 | model | clean-FP base/scaf/surv/both | file-recall (NOT defect) | **defect recall** base/scaf/surv/both (glm-5.2 judge) |
 |---|---|---|---|
 | glm-5.2 | 18 / 7 / 19 / 8 | 6 / 5 / 8 / 6 | 3 / 3 / 3.5 / **3.5** |
@@ -971,9 +973,10 @@ caveat), cross-family on minimax/sonnet.
 | sonnet-5 (N=1–2, not measured) | 35 / 18 / 32 / 24 | 10 / 8 / 9 / 6 | 3 / 4 / 4.5 / *excl* |
 
 **Verdict — coexist, no destructive conflict; surveyor is neutralized under scaffold.**
-- **Defect recall: `both` ≈ `scaffold`** (glm 3.5≈3; minimax 2=2) — surveyor adds no net defect-recall when stacked
-  and doesn't hurt; the scaffold's VERIFY prune drops surveyor's additions (real and noise). Now measured at the
-  defect level (not the circular file-recall a council flagged).
+- **Defect recall: `both` doesn't clearly beat `scaffold`** — cleanly on minimax (`both` 2 = `scaffold` 2, surveyor
+  neutralized), AMBIGUOUS on glm (`both` 3.5 equals `surveyor` 3.5 *and* is ≈ `scaffold` 3 — the data can't tell
+  "neutralized" from "surveyor's bump persists" there). Net: surveyor adds no *clear* defect-recall when stacked and
+  doesn't hurt. Now measured at defect level (not the circular file-recall a council flagged), but underpowered.
 - **FP: the scaffold cut survives surveyor on glm-5.2** (`both` 8 separates below base/surveyor 18/19) — but this is
   **non-significant** (N=3 vs N=3 → best possible p=0.1, below the bar), clean on glm-5.2 only, and **NOT clean on
   minimax** (`both` FP was {4,8,21} — one of three draws showed no cut). Not "on all 3 models."

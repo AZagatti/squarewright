@@ -381,6 +381,10 @@ async function runMatrix(
   let hallucinatedPasses = 0;
   let suspectHarshPasses = 0;
   let evaluatedPasses = 0;
+  // Denominator for the harsh-judge banner: only the completed, non-hallucinated passes are harsh-checked (a
+  // hallucinated pass `continue`s before that check), so count those — not evaluatedPasses (which folds in
+  // hallucinated passes and would understate the ratio).
+  let harshCheckedPasses = 0;
   for (const p of reportPaths) {
     // Money is guarded across the WHOLE matrix: once the cap trips, don't start another report's passes.
     if (ctx.guard.tripped()) {
@@ -406,6 +410,7 @@ async function runMatrix(
     calls += pass.calls;
     hallucinatedPasses += pass.hallucinatedPasses;
     suspectHarshPasses += pass.suspectHarshPasses;
+    harshCheckedPasses += perPassRecall.length;
     // Passes that ran to completion and were invariant-checked (recorded + excluded), across all reports — the
     // honest denominator for the hallucination banner, unlike the per-report ctx.repeats.
     evaluatedPasses += perPassRecall.length + pass.hallucinatedPasses;
@@ -451,7 +456,9 @@ async function runMatrix(
     );
   }
   if (suspectHarshPasses > 0) {
-    console.log(`\n${harshJudgeWarning(suspectHarshPasses, evaluatedPasses)}`);
+    console.log(
+      `\n${harshJudgeWarning(suspectHarshPasses, harshCheckedPasses)}`
+    );
   }
   if (matrix.length === 0) {
     console.log(
