@@ -34,6 +34,20 @@ export interface TeachCommandResult {
   posted?: TeachTarget;
 }
 
+/**
+ * Stable per-reply dedupe marker, embedded invisibly at the top of a teach suggestion so a workflow RE-RUN (a
+ * redelivery, a manual re-run of the same `issue_comment` event) detects its own prior post and skips instead of
+ * double-suggesting (#159). `TEACH_COMMENT_ID` is the triggering comment's GitHub id — a trusted event field,
+ * exactly one teach fire per comment, so it's a stable idempotency key. Absent id → no marker → today's
+ * always-post behavior (fail-safe: a hand-rolled workflow that doesn't export it keeps working, just without
+ * dedup). The HTML-comment form renders invisibly on GitHub and sits at position 0 so `isOurComment`'s
+ * `startsWith` match finds it.
+ */
+function teachDedupeMarker(commentId: string | undefined): string | undefined {
+  const id = commentId?.trim();
+  return id ? `<!-- squarewright:teach:${id} -->` : undefined;
+}
+
 /** Fail closed: a required trusted signal is missing, so refuse rather than guess a target. */
 function requireEnv(env: NodeJS.ProcessEnv, key: string): string {
   const v = env[key];
@@ -82,10 +96,22 @@ export async function runTeachCommand(
 
   if (outcome.kind === "post") {
     const target: TeachTarget = { issueNumber, repo };
-    await deps.poster.postComment(
-      { prNumber: issueNumber, repo },
-      outcome.body
-    );
+    // Idempotency (#159): a workflow re-run for the same reply must not double-suggest. When we can key off the
+    // triggering comment id, skip if we've already posted for it; otherwise embed the marker so a future run can.
+    const dedupeMarker = teachDedupeMarker(env.TEACH_COMMENT_ID);
+    if (
+      dedupeMarker &&
+      (await deps.poster.hasOwnComment(
+        { prNumber: issueNumber, repo },
+        dedupeMarker
+      ))
+    ) {
+      return { outcome: { kind: "skip", reason: "already-posted" } };
+    }
+    const body = dedupeMarker
+      ? `${dedupeMarker}\n\n${outcome.body}`
+      : outcome.body;
+    await deps.poster.postComment({ prNumber: issueNumber, repo }, body);
     return { outcome, posted: target };
   }
   return { outcome };
