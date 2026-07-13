@@ -276,6 +276,52 @@ test("renderSticky: a single huge finding message is clipped", () => {
   expect(out.length).toBeLessThan(3000); // not the full 5000-char message
 });
 
+test("renderSticky: a pathological path is clipped so it can't drop later findings", () => {
+  const findings: AggregatedFinding[] = [
+    {
+      consensus: 1,
+      line: 1,
+      message: "first",
+      path: "p".repeat(100_000), // a huge model-authored path
+      rule: "r",
+      severity: "error",
+      sources: ["r"],
+    },
+    {
+      consensus: 1,
+      line: 2,
+      message: "SECOND-REAL-FINDING",
+      path: "src/real.ts",
+      rule: "r",
+      severity: "error",
+      sources: ["r"],
+    },
+  ];
+  const out = renderSticky({ findings, summary: "x" });
+  // the huge path is clipped (not 100k of it in the body) and the later real finding survives
+  expect(out).not.toContain("p".repeat(1300));
+  expect(out).toContain("SECOND-REAL-FINDING");
+  expect(out).toContain("src/real.ts");
+});
+
+test("renderSticky: a backtick in a path does not break the `path:line` code span", () => {
+  const findings: AggregatedFinding[] = [
+    {
+      consensus: 1,
+      line: 7,
+      message: "an issue",
+      path: "src/a`b.ts", // a lone backtick would otherwise close the inline-code span early
+      rule: "r",
+      severity: "warning",
+      sources: ["r"],
+    },
+  ];
+  const out = renderSticky({ findings, summary: "x" });
+  // the raw backtick is replaced with an inert look-alike, so the span stays intact (no stray "`b.ts" spill)
+  expect(out).not.toContain("a`b.ts");
+  expect(out).toContain("src/aˋb.ts:7");
+});
+
 test("renderSticky: an oversize review is truncated under GitHub's limit, with a notice", () => {
   const findings: AggregatedFinding[] = Array.from({ length: 200 }, (_, i) => ({
     consensus: 1,

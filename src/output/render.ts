@@ -39,6 +39,16 @@ function safeLine(line: number): string {
   return Number.isFinite(line) ? String(line) : "?";
 }
 
+/**
+ * Make text safe INSIDE a single-backtick inline-code span: a literal backtick closes the span early and spills the
+ * rest into raw markdown. `mdSafe` only neutralizes 3+ backtick runs (fence-escape defense), so replace every
+ * backtick with a visually-similar modifier grave-accent (inert in markdown). Used for `path` in the `path:line`
+ * location span — an ordinary filename with a backtick would otherwise mis-render that finding's location.
+ */
+function codeSpanSafe(s: string): string {
+  return s.replace(/`/g, "ˋ");
+}
+
 /** Neutralize untrusted text before embedding it in a comment. */
 export function mdSafe(text: string): string {
   return (
@@ -223,7 +233,10 @@ export function renderSticky(input: StickyInput): string {
   );
 
   for (const f of findings) {
-    const loc = `\`${mdSafe(f.path)}:${safeLine(f.line)}\``;
+    // clip: `path` is model-authored + unbounded in the submit_findings schema — without a length cap one
+    // pathological path can consume the whole MAX_BODY budget and truncate away every later (real) finding, the
+    // same drop-class the other fields already cap. codeSpanSafe: keep a backtick in the path from breaking the span.
+    const loc = `\`${codeSpanSafe(mdSafe(clip(f.path)))}:${safeLine(f.line)}\``;
     // A rule-drift proposal (ADR-0005 §2) gets the 📖 marker + a paste-ready block instead of the severity emoji.
     const marker = f.proposedRule ? "📖 `rule-drift`" : SEV_EMOJI[f.severity];
     lines.push(
