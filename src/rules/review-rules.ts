@@ -38,8 +38,17 @@ function parseEntry(entry: string): { isDir: boolean; name: string } {
   return { isDir: false, name: entry };
 }
 
-/** The `globs` value from a parsed frontmatter mapping, keeping only real string entries. */
+/**
+ * The `globs` value from a parsed frontmatter mapping, as a list of strings. A BARE STRING is coerced to a
+ * one-element list: `globs: "src/x/**"` (scalar) is the obvious way a maintainer scopes a rule, and silently
+ * dropping it to `[]` would promote the rule to "applies to every PR" (empty globs = unscoped) — injecting a
+ * file-scoped, possibly PERMISSIVE rule repo-wide, where it could suppress findings on unrelated PRs. An array
+ * keeps only its real string entries; anything else (number, mapping, null) yields `[]` (the unscoped default).
+ */
 function normalizeGlobs(raw: unknown): string[] {
+  if (typeof raw === "string") {
+    return [raw];
+  }
   return Array.isArray(raw)
     ? raw.filter((g): g is string => typeof g === "string")
     : [];
