@@ -54,6 +54,13 @@ export const assemblyConfigSchema = z.object({
   contextDocs: z
     .array(z.object({ globs: z.array(z.string()), path: z.string() }))
     .optional(),
+  /**
+   * Prompted CoT scaffold: appends an UNDERSTAND → FIND → VERIFY(drop false positives) instruction to the analysis
+   * prompt. A PRECISION lever — cuts false positives ~50–60% (non-overlapping on golden AND this repo's own dogfood
+   * PRs, eval/RESULTS.md 2026-07-12/13); recall impact NOT established. Off by default. Distinct from native
+   * reasoning (which doesn't help this classification-shaped task).
+   */
+  cotScaffold: z.boolean().default(false),
   /** default lane id when a persona doesn't specify one */
   defaultLane: z.string().optional(),
   /** local feedback loop toggles */

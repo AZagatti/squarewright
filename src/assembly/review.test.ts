@@ -132,6 +132,40 @@ describe("runReview", () => {
     expect(received?.budget).toBeUndefined();
   });
 
+  test("forwards config.cotScaffold to the worker when opted in", async () => {
+    let received: WorkerRequest | undefined;
+    const worker: PiWorker = {
+      run: (req) => {
+        received = req;
+        return Promise.resolve({
+          findings: [],
+          usage: { submitted: true, toolCalls: 0 },
+        });
+      },
+    };
+
+    await runReview(CONTEXT, { ...CONFIG, cotScaffold: true }, worker);
+
+    expect(received?.cotScaffold).toBe(true);
+  });
+
+  test("cotScaffold is off (falsy) when the config doesn't set it", async () => {
+    let received: WorkerRequest | undefined;
+    const worker: PiWorker = {
+      run: (req) => {
+        received = req;
+        return Promise.resolve({
+          findings: [],
+          usage: { submitted: true, toolCalls: 0 },
+        });
+      },
+    };
+
+    await runReview(CONTEXT, CONFIG, worker);
+
+    expect(received?.cotScaffold).toBeFalsy();
+  });
+
   test("fails fast when a persona's lane is not defined (no silent fallback)", () => {
     const badConfig: AssemblyConfig = {
       grounders: [],

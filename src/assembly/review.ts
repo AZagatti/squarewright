@@ -144,6 +144,8 @@ export async function runReview(
       // read it, because a hard mid-run tool-call/token cap needs an abort primitive Pi doesn't expose.
       budget: config.budget,
       context,
+      // Prompted CoT scaffold (precision lever) — off unless the repo opts in via `.squarewright.yml`.
+      cotScaffold: config.cotScaffold,
       lane,
       persona: pass.id,
       // Rule-drift proposals (ADR-0005 §2) only when the repo has adopted the rules/docs system — a non-empty

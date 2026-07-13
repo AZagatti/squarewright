@@ -24,6 +24,9 @@ function lane(id: string, model: string): ModelLane {
 export function renderDefaultConfig(): string {
   const config = {
     budget: { maxToolCalls: 30 },
+    // Prompted CoT scaffold — cuts false positives (precision), recall impact not established. Off by default;
+    // set true to trade a bit of latency/tokens for fewer false alarms. See eval/RESULTS.md.
+    cotScaffold: false,
     defaultLane: "cheap",
     feedback: { aggregate: false, enabled: true },
     grounders: [],
