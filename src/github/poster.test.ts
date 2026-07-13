@@ -254,10 +254,10 @@ describe("spawnRunner (real subprocess contract)", () => {
 });
 
 describe("createGhPullLookup", () => {
-  test("lists open PRs for the commit and drops closed ones", async () => {
+  test("lists open PRs whose HEAD is the commit and drops closed ones", async () => {
     const body = JSON.stringify([
-      { number: 7, state: "open" },
-      { number: 3, state: "closed" },
+      { head: { sha: "cafe1234" }, number: 7, state: "open" },
+      { head: { sha: "cafe1234" }, number: 3, state: "closed" },
     ]);
     const { run, calls } = fakeRunner(() => ({ stdout: body }));
 
@@ -269,6 +269,29 @@ describe("createGhPullLookup", () => {
       "repos/o/r/commits/cafe1234/pulls",
       "--paginate",
     ]);
+  });
+
+  test("drops a history-associated PR whose HEAD is a DIFFERENT commit (stacked-PR false-refusal fix)", async () => {
+    // the endpoint returns PRs that merely have `sha` somewhere in their history; a stacked PR-B shares PR-A's
+    // history but has its own head. Only the PR actually AT `sha` must count — else the >1 guard falsely refuses.
+    const body = JSON.stringify([
+      { head: { sha: "cafe1234" }, number: 7, state: "open" }, // PR-A: head IS the reviewed commit
+      { head: { sha: "beef5678" }, number: 8, state: "open" }, // PR-B: stacked, head elsewhere
+    ]);
+    const { run } = fakeRunner(() => ({ stdout: body }));
+
+    expect(await createGhPullLookup(run)("o/r", "cafe1234")).toEqual([
+      { number: 7 },
+    ]);
+  });
+
+  test("a force-pushed PR (head moved off the reviewed sha) resolves to zero → benign no-op", async () => {
+    const body = JSON.stringify([
+      { head: { sha: "moved999" }, number: 7, state: "open" },
+    ]);
+    const { run } = fakeRunner(() => ({ stdout: body }));
+
+    expect(await createGhPullLookup(run)("o/r", "cafe1234")).toEqual([]);
   });
 });
 
