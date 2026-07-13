@@ -8,11 +8,20 @@
  *   pr-files.json — the GitHub "list PR files" API array ({ filename, status, patch? })
  *   pr-meta.json  — { number, title, base_sha, head_sha, repo, body }
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { ChangedFile, ReviewContext } from "../core/types.js";
 import { parseIssueRefs } from "../github/issue-refs.js";
+
+/**
+ * Parse-time size ceiling for a gather artifact (#161, defense-in-depth companion to #150's prompt-side caps). The
+ * gather workflow is attacker-authorable, and `readFileSync` + `JSON.parse` load the WHOLE file into memory before
+ * any zod/#150 cap runs — so a multi-GB forged `pr-files.json` could exhaust the runner at parse time. 50 MB is far
+ * above any real gather output (GitHub's own PR-files API omits huge patches), so this only trips a pathological
+ * artifact. Read the size FIRST (statSync is O(1)) and refuse before the read allocates.
+ */
+const MAX_ARTIFACT_BYTES = 50 * 1024 * 1024;
 
 const ghFileSchema = z.object({
   filename: z.string(),
@@ -43,6 +52,21 @@ function mapStatus(status: string): ChangedFile["status"] {
   return "modified";
 }
 
+/** Read a gather-artifact file as text, refusing before the read allocates if it exceeds `max` bytes (`max` is
+ * injectable for testing without a multi-GB fixture). */
+export function readCapped(
+  path: string,
+  max: number = MAX_ARTIFACT_BYTES
+): string {
+  const { size } = statSync(path);
+  if (size > max) {
+    throw new Error(
+      `gather artifact "${path}" is ${size} bytes, over the ${max}-byte cap — refusing to parse (a real gather output is far smaller).`
+    );
+  }
+  return readFileSync(path, "utf8");
+}
+
 /**
  * Read + VALIDATE a REQUIRED gather-artifact file. A missing/unreadable file, invalid JSON, OR a value that
  * doesn't match `schema` all raise the same friendly error — never a raw crash deep in the review path.
@@ -50,7 +74,7 @@ function mapStatus(status: string): ChangedFile["status"] {
 function readJson<T>(path: string, schema: z.ZodType<T>): T {
   let raw: unknown;
   try {
-    raw = JSON.parse(readFileSync(path, "utf8"));
+    raw = JSON.parse(readCapped(path));
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
     throw new Error(
@@ -71,7 +95,7 @@ function readJson<T>(path: string, schema: z.ZodType<T>): T {
 function readJsonOptional<T>(path: string, schema: z.ZodType<T>): T | null {
   let raw: unknown;
   try {
-    raw = JSON.parse(readFileSync(path, "utf8"));
+    raw = JSON.parse(readCapped(path));
   } catch {
     return null;
   }
