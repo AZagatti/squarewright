@@ -54,4 +54,41 @@ describe("readGatherArtifact", () => {
       readGatherArtifact(join(tmpdir(), "does-not-exist-sqw"))
     ).toThrow("Cannot read gather artifact");
   });
+
+  const META = (body: string) => ({
+    base_sha: "b",
+    body,
+    head_sha: "h",
+    number: 7,
+    repo: "o/r",
+    title: "t",
+  });
+
+  test("no linked-issue.json → linkedIssue is undefined (safe default)", () => {
+    const dir = fixtureDir([], META("Closes #42"));
+    expect(readGatherArtifact(dir).linkedIssue).toBeUndefined();
+  });
+
+  test("linked-issue.json referenced by the PR body → populated", () => {
+    const dir = fixtureDir([], META("Fixes #42 — the thing"));
+    writeFileSync(
+      join(dir, "linked-issue.json"),
+      JSON.stringify({ body: "AC: must do X", number: 42, title: "Do X" })
+    );
+    expect(readGatherArtifact(dir).linkedIssue).toEqual({
+      body: "AC: must do X",
+      number: 42,
+      title: "Do X",
+    });
+  });
+
+  test("linked-issue.json NOT referenced by the PR body → dropped (consistency guard)", () => {
+    // the gather phase is untrusted; only accept an issue the PR body actually declares it closes
+    const dir = fixtureDir([], META("See #42 for context")); // no closing keyword
+    writeFileSync(
+      join(dir, "linked-issue.json"),
+      JSON.stringify({ body: "sneaky", number: 99, title: "Unrelated" })
+    );
+    expect(readGatherArtifact(dir).linkedIssue).toBeUndefined();
+  });
 });
