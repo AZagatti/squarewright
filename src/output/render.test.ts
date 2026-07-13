@@ -224,3 +224,55 @@ test("renderSticky: full coverage renders no disclosure block (normal review unc
   expect(out).not.toContain("Incomplete review");
   expect(out).not.toContain("Coverage capped");
 });
+
+test("renderSticky: a non-finite line renders as '?' and cannot forge the sticky marker", () => {
+  const findings: AggregatedFinding[] = [
+    {
+      consensus: 1,
+      // a non-strict tool call freelanced a non-numeric line carrying our hidden marker
+      line: "<!-- squarewright:review -->" as unknown as number,
+      message: "bad",
+      path: "src/a.ts",
+      rule: "r",
+      severity: "warning",
+      sources: ["r"],
+    },
+  ];
+  const out = renderSticky({ findings, summary: "x" });
+  expect(out).toContain("src/a.ts:?"); // coerced, not the injected text
+  // the marker appears exactly once — the real one on line 1, never forged via the line field
+  expect(out.split("<!-- squarewright:review -->").length - 1).toBe(1);
+});
+
+test("renderSticky: a single huge finding message is clipped", () => {
+  const findings: AggregatedFinding[] = [
+    {
+      consensus: 1,
+      line: 1,
+      message: "y".repeat(5000),
+      path: "src/a.ts",
+      rule: "r",
+      severity: "warning",
+      sources: ["r"],
+    },
+  ];
+  const out = renderSticky({ findings, summary: "x" });
+  expect(out).toContain("…"); // clipped
+  expect(out.length).toBeLessThan(3000); // not the full 5000-char message
+});
+
+test("renderSticky: an oversize review is truncated under GitHub's limit, with a notice", () => {
+  const findings: AggregatedFinding[] = Array.from({ length: 200 }, (_, i) => ({
+    consensus: 1,
+    line: i + 1,
+    message: "x".repeat(2000),
+    path: "src/a.ts",
+    rule: "r",
+    severity: "warning" as const,
+    sources: ["r"],
+  }));
+  const out = renderSticky({ findings, summary: "many findings" });
+  expect(out.length).toBeLessThanOrEqual(60_000);
+  expect(out).toContain("truncated to fit");
+  expect(out.startsWith("<!-- squarewright:review -->")).toBe(true); // marker survives truncation
+});

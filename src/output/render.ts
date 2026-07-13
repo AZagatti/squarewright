@@ -20,6 +20,25 @@ const SEV_EMOJI: Record<Severity, string> = {
 
 const ZWSP = "​";
 
+/** Per-finding text cap — keeps one pathological field from dominating (or blowing) the comment. */
+const MAX_FIELD = 1200;
+/** GitHub rejects a comment body over 65536 chars, failing the WHOLE post. Stay safely under so a big review still posts. */
+const MAX_BODY = 60_000;
+
+/** Truncate untrusted text to `max` chars (before escaping, so we never cut an HTML entity in half). */
+function clip(s: string, max = MAX_FIELD): string {
+  return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
+/**
+ * A finding's `line` is typed `number`, but the structurer's tool call is non-strict (a model can freelance a
+ * non-numeric value), and it's interpolated into markdown — so coerce anything non-finite to "?" rather than let
+ * crafted text reach the comment unescaped (where it could forge our hidden markers).
+ */
+function safeLine(line: number): string {
+  return Number.isFinite(line) ? String(line) : "?";
+}
+
 /** Neutralize untrusted text before embedding it in a comment. */
 export function mdSafe(text: string): string {
   return (
@@ -186,16 +205,16 @@ export function renderSticky(input: StickyInput): string {
   );
 
   for (const f of findings) {
-    const loc = `\`${mdSafe(f.path)}:${f.line}\``;
+    const loc = `\`${mdSafe(f.path)}:${safeLine(f.line)}\``;
     // A rule-drift proposal (ADR-0005 §2) gets the 📖 marker + a paste-ready block instead of the severity emoji.
     const marker = f.proposedRule ? "📖 `rule-drift`" : SEV_EMOJI[f.severity];
     lines.push(
-      `- ${marker} ${loc}${provenance(f, labelFor)} — ${mdSafe(f.message)}`
+      `- ${marker} ${loc}${provenance(f, labelFor)} — ${mdSafe(clip(f.message))}`
     );
     if (f.proposedRule) {
       // Paste-ready `.review-rules/*.md` block — a suggestion the human adds; never an auto-write. mdSafe
       // neutralizes any fence-breaking content from the (model-authored) rule text.
-      const block = mdSafe(f.proposedRule)
+      const block = mdSafe(clip(f.proposedRule))
         .split("\n")
         .map((l) => `  ${l}`);
       lines.push(
@@ -207,9 +226,21 @@ export function renderSticky(input: StickyInput): string {
         "  ```"
       );
     } else if (f.suggestion) {
-      lines.push("", "  ```suggestion", `  ${mdSafe(f.suggestion)}`, "  ```");
+      lines.push(
+        "",
+        "  ```suggestion",
+        `  ${mdSafe(clip(f.suggestion))}`,
+        "  ```"
+      );
     }
   }
   lines.push(...honestyFooter(lenses, model));
-  return lines.join("\n");
+  const body = lines.join("\n");
+  if (body.length <= MAX_BODY) {
+    return body;
+  }
+  // Last-resort safety net: even with per-field caps, a review with very many findings could exceed GitHub's
+  // limit and fail to post entirely. Truncate to fit and say so — a degraded comment beats no comment.
+  const notice = "\n\n_…review truncated to fit GitHub's comment size limit._";
+  return body.slice(0, MAX_BODY - notice.length) + notice;
 }
