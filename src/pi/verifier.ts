@@ -59,10 +59,20 @@ export interface VerifierOptions {
   apiKeys: Record<string, string>;
 }
 
-function renderPrompt(finding: Finding, ctx: ReviewContext): string {
-  const diff = ctx.files
+/** Total diff budget fed to the verifier's model call — bounds the same untrusted-patch spend vector capped in
+ * worker.ts (#150). Eval-only path, so the run-level spend circuit breaker (scripts/eval.ts, #141) already bounds
+ * cumulative cost; this caps a SINGLE call's cost (the one that would otherwise trip the breaker). Code-point slice. */
+const MAX_VERIFY_DIFF = 200_000;
+
+export function renderPrompt(finding: Finding, ctx: ReviewContext): string {
+  const raw = ctx.files
     .map((f) => (f.patch ? `--- ${f.path} ---\n${f.patch}` : ""))
     .join("\n\n");
+  const cps = Array.from(raw);
+  const diff =
+    cps.length > MAX_VERIFY_DIFF
+      ? `${cps.slice(0, MAX_VERIFY_DIFF).join("")}\n[diff truncated at ${MAX_VERIFY_DIFF} chars]`
+      : raw;
   return [
     `A reviewer flagged this finding on PR #${ctx.prNumber}:`,
     `\n  file: ${finding.path}:${finding.line}`,
