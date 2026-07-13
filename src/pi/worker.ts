@@ -608,6 +608,7 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
       return {
         findings,
         usage: {
+          analysisText,
           analysisTokens,
           costUsd,
           structTokens,

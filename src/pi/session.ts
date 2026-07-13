@@ -103,6 +103,13 @@ export interface WorkerResult {
     /** billable tokens per pass — for the eval's immediate (lag-free) local spend guard */
     analysisTokens?: { input: number; output: number };
     structTokens?: { input: number; output: number };
+    /**
+     * The raw pass-1 analysis prose, BEFORE the structurer extracts findings. Populated for the eval's
+     * fixed-analysis recall mode (`--analysis-recall`), which scores loci against this text to isolate the
+     * analysis model's reachability from the structurer's extraction drop (the #78 confound). Not used on the
+     * production review path.
+     */
+    analysisText?: string;
   };
 }
 

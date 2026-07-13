@@ -27,7 +27,7 @@ import type {
   ReviewContext,
   ThinkingLevel,
 } from "../src/core/types.js";
-import { sameFile } from "../src/eval/locus-match.js";
+import { analysisMentionsLocus, sameFile } from "../src/eval/locus-match.js";
 import { aggregateFindings } from "../src/output/aggregate.js";
 import { buildPasses, DEFAULT_PERSONAS } from "../src/personas/defaults.js";
 import { selectPersonas } from "../src/personas/routing.js";
@@ -436,6 +436,10 @@ async function main() {
   // --divergence: consistency/divergence note (EVAL-ONLY settling experiment, 2026-07-13 council) — diff-scoped,
   // security/correctness-only, citation-forced. Measures whether flagging pattern-divergence FP-floods on the free model.
   const doDivergence = flag("divergence");
+  // --analysis-recall: ALSO score loci against the raw pass-1 analysis prose (bypassing the structurer), so the
+  // report separates the analysis model's reachability from the structurer's extraction drop (the #78 confound).
+  // `analysisRecall − structuredRecall` = loci a capable analysis surfaced but the structurer dropped.
+  const doAnalysisRecall = flag("analysis-recall");
   const withContext = (prompt: string) => rulesPreamble + withNote(prompt);
   const spendGuard = () => {
     if (aborted || localSpend <= maxSpend) {
@@ -459,7 +463,7 @@ async function main() {
     ? `${structurerLane.provider}/${structurerLane.model}`
     : "zai/glm-5-turbo";
   console.log(
-    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}${doPersonas ? ` batching=${batching}` : ""}${samples > 1 ? ` samples=${samples}${consensus > 1 ? `/consensus≥${consensus}` : ""}` : ""}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cot-scaffold=${doScaffold}  divergence=${doDivergence}  cases=${cases.length}  conc=${concurrency}`
+    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}${doPersonas ? ` batching=${batching}` : ""}${samples > 1 ? ` samples=${samples}${consensus > 1 ? `/consensus≥${consensus}` : ""}` : ""}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cot-scaffold=${doScaffold}  divergence=${doDivergence}  analysis-recall=${doAnalysisRecall}  cases=${cases.length}  conc=${concurrency}`
   );
 
   // One full pass over the corpus. Repeated N times (--repeat) through the SHARED spend guard, so the cap holds
@@ -494,6 +498,9 @@ async function main() {
         const repoReader = doGround ? ghRepoReader(c.repo, c.pr) : undefined;
         const t0 = Date.now();
         let findings: Finding[];
+        // raw pass-1 prose across every pass/sample — unioned like the structured findings are, so
+        // analysis-level recall is measured on the same evidence the structured recall sees (--analysis-recall).
+        const analysisTexts: string[] = [];
         let workerCost = 0;
         let noSubmit = 0; // passes where the model never called submit_findings (NOT a clean review — a dropped submission)
         if (doPersonas) {
@@ -523,6 +530,9 @@ async function main() {
                 systemPrompt: withContext(pass.prompt),
               });
               all.push(...pr.findings);
+              if (pr.usage?.analysisText) {
+                analysisTexts.push(pr.usage.analysisText);
+              }
               workerCost += pr.usage?.costUsd ?? 0;
               localSpend += passSpend(pr.usage);
               if (!pr.usage?.submitted) {
@@ -556,6 +566,9 @@ async function main() {
             systemPrompt: withContext(PERSONA),
           });
           ({ findings } = pr);
+          if (pr.usage?.analysisText) {
+            analysisTexts.push(pr.usage.analysisText);
+          }
           workerCost += pr.usage?.costUsd ?? 0;
           localSpend += passSpend(pr.usage);
           if (!pr.usage?.submitted) {
@@ -584,9 +597,17 @@ async function main() {
           c.expect_loci?.filter((l) =>
             findings.some((f) => sameFile(f.path, l.path))
           ).length ?? 0;
+        // --analysis-recall: score the SAME loci against the raw analysis prose (pre-structurer). A locus the
+        // analysis named but the structurer dropped counts here but not in hitLoci — that gap IS the confound.
+        const analysisProse = analysisTexts.join("\n");
+        const hitLociAnalysis = doAnalysisRecall
+          ? (c.expect_loci?.filter((l) =>
+              analysisMentionsLocus(analysisProse, l.path)
+            ).length ?? 0)
+          : 0;
         const line = `[${c.label === "clean" ? "clean    " : "has-issue"}] ${c.id.padEnd(28)} raw=${findings.length} ${
           verifier ? `confirmed=${confirmed} ` : ""
-        }${lociTotal ? `hits=${hitLoci}/${lociTotal} ` : ""}${noSubmit ? `nosub=${noSubmit} ` : ""}$${(workerCost + verifyCost).toFixed(4)} ${(ms / 1000).toFixed(0)}s`;
+        }${lociTotal ? `hits=${hitLoci}/${lociTotal} ` : ""}${doAnalysisRecall && lociTotal ? `ahits=${hitLociAnalysis}/${lociTotal} ` : ""}${noSubmit ? `nosub=${noSubmit} ` : ""}$${(workerCost + verifyCost).toFixed(4)} ${(ms / 1000).toFixed(0)}s`;
         console.log(line);
         return {
           confirmed,
@@ -598,6 +619,7 @@ async function main() {
             severity: f.severity,
           })),
           hitLoci,
+          hitLociAnalysis,
           id: c.id,
           label: c.label,
           lociTotal,
@@ -639,12 +661,16 @@ async function main() {
       0
     );
     const issueHits = issue.reduce((s, r) => s + r.hitLoci, 0);
+    const issueHitsAnalysis = issue.reduce((s, r) => s + r.hitLociAnalysis, 0);
     const issueTotal = issue.reduce((s, r) => s + r.lociTotal, 0);
     const cost = results.reduce((s, r) => s + r.costUsd, 0);
     const secs = results.reduce((s, r) => s + r.ms, 0) / 1000;
 
     const totalNoSubmit = results.reduce((s, r) => s + (r.noSubmit ?? 0), 0);
     const config = {
+      // analysis-recall mode is part of what's measured — persist it so the pre-structurer recall column in a
+      // report is distinguishable from a plain run (where issueHitsAnalysis is 0 because the mode was off).
+      analysisRecall: doAnalysisRecall || undefined,
       // batching mode is part of what's measured — persist it so split/current/batched runs are
       // distinguishable in the durable log (runs.jsonl), not just in someone's terminal scrollback.
       batching: doPersonas ? batching : undefined,
@@ -680,6 +706,11 @@ async function main() {
     console.log(
       `  has-issue cases: ${issue.length}  ·  locus recall: ${issueHits}/${issueTotal}`
     );
+    if (doAnalysisRecall) {
+      console.log(
+        `  analysis-level locus recall (pre-structurer): ${issueHitsAnalysis}/${issueTotal}  ·  structurer drop: ${issueHitsAnalysis - issueHits} loci the analysis named but the structurer dropped`
+      );
+    }
     if (totalNoSubmit) {
       console.log(
         `  ⚠ dropped submissions (model never called submit_findings): ${totalNoSubmit}`
@@ -710,6 +741,7 @@ async function main() {
           config,
           cost,
           issueHits,
+          issueHitsAnalysis: doAnalysisRecall ? issueHitsAnalysis : undefined,
           issueTotal,
           results,
           totalNoSubmit,
@@ -728,6 +760,7 @@ async function main() {
         cleanFP,
         issueCases: issue.length,
         issueHits,
+        issueHitsAnalysis: doAnalysisRecall ? issueHitsAnalysis : undefined,
         issueTotal,
         modelSeconds: Number(secs.toFixed(0)),
         realCostUsd: realCost === null ? null : Number(realCost.toFixed(4)),

@@ -42,6 +42,13 @@ bun run scripts/eval.ts --model deepseek/deepseek-v3.2 --verify
 bun run scripts/eval.ts --model qwen/qwen3-coder --stack rust
 
 # scoring: clean → false positives (raw or post-verify); has-issue → locus recall
+
+# --analysis-recall: ALSO score loci against the raw pass-1 analysis PROSE (before the structurer runs), so a
+# model rank separates the analysis model's reachability from the structurer's extraction drop (the #78 confound).
+# Reports two columns: hits (structured) and ahits (analysis-level); `ahits − hits` = loci the analysis named
+# but the structurer dropped. Use it when a model's low structured recall might be a structurer artifact, not
+# an analysis-model ceiling.
+bun run scripts/eval.ts --model zai/glm-5.2 --analysis-recall
 ```
 
 Reports are written to `eval/reports/<model>-<stamp>.json` for side-by-side comparison.
