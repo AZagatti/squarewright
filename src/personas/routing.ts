@@ -66,9 +66,13 @@ function globToRegExp(glob: string): RegExp {
     }
     if (c === "*") {
       if (glob[i + 1] === "*") {
-        re += ".*";
-        i += 1;
-        if (glob[i + 1] === "/") {
+        if (glob[i + 2] === "/") {
+          // `**/` = any number of leading path SEGMENTS, including none — emit the trailing `/` as a boundary so
+          // `**/foo` only matches a whole-segment `foo` (`foo`, `a/foo`), never a partial name like `barfoo`.
+          re += "(?:.*/)?";
+          i += 2;
+        } else {
+          re += ".*"; // bare `**` crosses segments
           i += 1;
         }
       } else {
