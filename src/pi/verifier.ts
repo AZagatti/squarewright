@@ -64,7 +64,7 @@ export interface VerifierOptions {
  * cumulative cost; this caps a SINGLE call's cost (the one that would otherwise trip the breaker). Code-point slice. */
 const MAX_VERIFY_DIFF = 200_000;
 
-function renderPrompt(finding: Finding, ctx: ReviewContext): string {
+export function renderPrompt(finding: Finding, ctx: ReviewContext): string {
   const raw = ctx.files
     .map((f) => (f.patch ? `--- ${f.path} ---\n${f.patch}` : ""))
     .join("\n\n");
