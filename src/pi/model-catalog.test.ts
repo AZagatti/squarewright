@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import {
   MODELS_JSON_ENV,
+  missingOverrideWarning,
   resolveModelsJsonPath,
   supersessionWarning,
 } from "./model-catalog.js";
@@ -25,7 +26,8 @@ test("resolveModelsJsonPath: SQW_MODELS_JSON override wins when the file exists"
 });
 
 test("resolveModelsJsonPath: a set-but-missing override resolves to undefined, not a bad path", () => {
-  // A stale SQW_MODELS_JSON must degrade to built-ins, not hand a non-existent path to the registry.
+  // A stale SQW_MODELS_JSON degrades to the default catalog (built-ins + any global file), not a non-existent path
+  // handed to the registry. `missingOverrideWarning` (below) is what makes that silent degrade loud.
   expect(
     resolveModelsJsonPath({ [MODELS_JSON_ENV]: "/does/not/exist.json" }, tmp())
   ).toBeUndefined();
@@ -63,6 +65,32 @@ test("supersessionWarning: silent when no global file exists to be superseded", 
 
 test("supersessionWarning: silent when the resolved path IS the global path", () => {
   expect(supersessionWarning(GLOBAL, GLOBAL, true)).toBeNull();
+});
+
+// ── missingOverrideWarning (money-safety guard: set-but-absent SQW_MODELS_JSON) ──
+
+test("missingOverrideWarning: warns when SQW_MODELS_JSON is set but the file is absent", () => {
+  const w = missingOverrideWarning(
+    { [MODELS_JSON_ENV]: "/gone/models.json" },
+    () => false
+  );
+  expect(w).toContain("/gone/models.json");
+  expect(w).toContain("NOT applied");
+  expect(w).toContain(MODELS_JSON_ENV);
+});
+
+test("missingOverrideWarning: silent when the override file exists", () => {
+  expect(
+    missingOverrideWarning({ [MODELS_JSON_ENV]: "/there.json" }, () => true)
+  ).toBeNull();
+});
+
+test("missingOverrideWarning: silent when the env is unset (benign default, not a misconfig)", () => {
+  expect(missingOverrideWarning({}, () => false)).toBeNull();
+  // whitespace-only is treated as unset (matches resolveModelsJsonPath's trim)
+  expect(
+    missingOverrideWarning({ [MODELS_JSON_ENV]: "   " }, () => false)
+  ).toBeNull();
 });
 
 // ── merge semantics via a real ModelRegistry (no network — pure file parsing) ──
