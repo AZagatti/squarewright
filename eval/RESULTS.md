@@ -1240,3 +1240,23 @@ lane, not a default.** The config already supports per-persona lanes — a user 
 dependency + the 2026-07-29 expiry. Free glm-5.2 stays the default (recall is model-bound; this is the paid lever,
 and it's real). This is the honest recall path, since tonight's divergence no-go closed the free deterministic-
 Grounder lever.
+
+## AC-conformance — END-TO-END proof on the gold case (2026-07-13)
+
+Validated the shipped feature (PRs #111–#115) through the REAL production path — not unit tests, not the probe.
+A full `runReview` on the gold case (issue #70's ship-gate AC, closed by PR #80 which silently missed it), config =
+one cheap defect persona (glm-5.2) + the AC `auditor` persona on a STRONG lane (`sakana/fugu`), with `linkedIssue`
+populated:
+
+- The pipeline ran end to end: linkedIssue → the acCheck persona's own pass on the strong lane → AC findings →
+  sticky. Footer correctly reads "Reviewed by: Correctness, Acceptance criteria · glm-5.2, fugu".
+- **It CAUGHT the silently-unmet ship-gate** (finding on `eval/RESULTS.md:529`, lens "Acceptance criteria"):
+  "Rule-proposal ship gate unmet — no paired fixture or ≥3-run precision range … the smoke test and #73 deferral
+  do not substitute." That is the exact gold miss no defect persona or human review of PR #80 caught — proving the
+  unique value the feature was built for, on a real case, with a real strong model.
+- Confound check held: the AC issue text went ONLY to the AC pass (its finding is AC-tagged); the defect persona ran
+  independently.
+
+Minor follow-up (cosmetic, not blocking): AC findings are PR-level (no meaningful diff line), and the render showed
+a "```suggestion null```" block for them — the structurer should omit `suggestion` for AC-style findings, or render
+should skip an empty/"null" suggestion. Small render nit; the finding content is correct.
