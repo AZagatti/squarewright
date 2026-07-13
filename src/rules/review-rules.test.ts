@@ -154,3 +154,132 @@ describe("renderReviewRules", () => {
     expect(block).toContain("RULE ONE BODY");
   });
 });
+
+describe("frontmatter parsing edge cases (bug-hunt fixes)", () => {
+  test("a rule file opening with a --- horizontal rule keeps its FULL body (not truncated as frontmatter)", async () => {
+    const content = `---
+
+Do not use \`eval()\` in this codebase — it defeats CSP.
+
+---
+
+Also avoid \`new Function(...)\`.`;
+    const reader = fakeReader(
+      { ".review-rules": ["- security.md"] },
+      { ".review-rules/security.md": content }
+    );
+    const [rule] = await loadReviewRules(reader);
+    expect(rule?.body).toContain("Do not use");
+    expect(rule?.body).toContain("Also avoid"); // the pre-fix bug deleted everything up to the 2nd ---
+    expect(rule?.globs).toEqual([]);
+  });
+
+  test("real frontmatter with a blank line between block-list globs keeps ALL globs", async () => {
+    const content = `---
+globs:
+  - "src/payments/**"
+
+  - "src/billing/**"
+---
+Extra scrutiny for money-moving code.`;
+    const reader = fakeReader(
+      { ".review-rules": ["- money.md"] },
+      { ".review-rules/money.md": content }
+    );
+    const [rule] = await loadReviewRules(reader);
+    expect(rule?.globs).toEqual(["src/payments/**", "src/billing/**"]);
+    expect(rule?.body).toBe("Extra scrutiny for money-moving code.");
+  });
+
+  test("an indented globs: key is parsed, not silently treated as apply-to-every-PR", async () => {
+    const content = `---
+  globs: ["src/payments/**"]
+---
+Scrutiny.`;
+    const reader = fakeReader(
+      { ".review-rules": ["- ind.md"] },
+      { ".review-rules/ind.md": content }
+    );
+    const [rule] = await loadReviewRules(reader);
+    expect(rule?.globs).toEqual(["src/payments/**"]);
+  });
+});
+
+describe("frontmatter guard: BLOCK-review must-fix cases", () => {
+  test("a ---opened BULLET-LIST body (the documented rule format) keeps its bullets, not swallowed as frontmatter", async () => {
+    const content = `---
+
+- Do not use \`eval()\`.
+- Do not use \`new Function()\`.
+
+---
+
+Trailing prose after the second fence.`;
+    const reader = fakeReader(
+      { ".review-rules": ["- bullets.md"] },
+      { ".review-rules/bullets.md": content }
+    );
+    const [rule] = await loadReviewRules(reader);
+    expect(rule?.body).toContain("Do not use `eval()`");
+    expect(rule?.body).toContain("new Function()");
+    expect(rule?.body).toContain("Trailing prose");
+    expect(rule?.globs).toEqual([]);
+  });
+
+  test("real frontmatter with a # comment line still parses (globs kept, raw fence NOT leaked into body)", async () => {
+    const content = `---
+# scope this rule to source
+globs: ["src/**"]
+---
+Body text here.`;
+    const reader = fakeReader(
+      { ".review-rules": ["- commented.md"] },
+      { ".review-rules/commented.md": content }
+    );
+    const [rule] = await loadReviewRules(reader);
+    expect(rule?.globs).toEqual(["src/**"]);
+    expect(rule?.body).toBe("Body text here.");
+    expect(rule?.body).not.toContain("---"); // the fence must not leak into the injected body
+  });
+});
+
+test("a ---opened body that LEADS with a colon-bearing sentence (Note:) is NOT swallowed as frontmatter", async () => {
+  const content = `---
+Note: see below for details
+
+- Do not use \`eval()\`.
+- Do not use \`new Function()\`.
+
+---
+
+Trailing prose after second fence.`;
+  const reader = fakeReader(
+    { ".review-rules": ["- note.md"] },
+    { ".review-rules/note.md": content }
+  );
+  const [rule] = await loadReviewRules(reader);
+  // "Note:" is not a documented frontmatter key (description/globs), so the block is body, not frontmatter
+  expect(rule?.body).toContain("Note: see below");
+  expect(rule?.body).toContain("Do not use `eval()`");
+  expect(rule?.body).toContain("Trailing prose");
+  expect(rule?.globs).toEqual([]);
+});
+
+test("a body opening with a literal `globs:` prose sentence + bullets is NOT mis-parsed (invalid YAML → body)", async () => {
+  // `globs: are cool things` (scalar) followed by `- bullet` (sequence) is invalid YAML → kept as body, and the
+  // bullets are NOT harvested as glob patterns (the real-YAML-parser rewrite closes this by construction).
+  const content = `---
+globs: are cool things I like to write about
+
+- bullet one
+- bullet two
+---
+Trailing.`;
+  const reader = fakeReader(
+    { ".review-rules": ["- weird.md"] },
+    { ".review-rules/weird.md": content }
+  );
+  const [rule] = await loadReviewRules(reader);
+  expect(rule?.globs).toEqual([]);
+  expect(rule?.body).toContain("bullet one");
+});

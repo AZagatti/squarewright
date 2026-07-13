@@ -9,6 +9,7 @@
  * head-revision rule file added by an untrusted PR could silently suppress findings ("ignore all security
  * issues"). This module is pure over an injected reader; choosing a base-revision reader is the caller's job.
  */
+import { parse as parseYaml } from "yaml";
 import { matchGlob } from "../personas/routing.js";
 import type { RepoReader } from "../pi/session.js";
 
@@ -16,14 +17,7 @@ import type { RepoReader } from "../pi/session.js";
 export const REVIEW_RULES_DIR = ".review-rules";
 
 const ENTRY_RE = /^([d-])\s+(.+)$/;
-const GLOBS_KEY_RE = /^globs\s*:/;
-const LIST_ITEM_RE = /^\s*-\s*(.+)$/;
-const LEADING_BRACKET_RE = /^\[/;
-const TRAILING_BRACKET_RE = /\].*$/;
-const LEADING_QUOTE_RE = /^["']/;
-const TRAILING_QUOTE_RE = /["']$/;
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
-const NEWLINE_RE = /\r?\n/;
 
 /** One maintainer-authored rule file: its path, its glob scope, and its (frontmatter-stripped) body. */
 export interface ReviewRule {
@@ -44,48 +38,38 @@ function parseEntry(entry: string): { isDir: boolean; name: string } {
   return { isDir: false, name: entry };
 }
 
-function stripQuotes(raw: string): string {
-  return raw.replace(LEADING_QUOTE_RE, "").replace(TRAILING_QUOTE_RE, "");
+/** The `globs` value from a parsed frontmatter mapping, keeping only real string entries. */
+function normalizeGlobs(raw: unknown): string[] {
+  return Array.isArray(raw)
+    ? raw.filter((g): g is string => typeof g === "string")
+    : [];
 }
 
-/** Parse a `globs:` frontmatter value — inline `["a", "b"]` or a following `- item` block list. */
-function parseGlobs(frontmatterLines: string[]): string[] {
-  const idx = frontmatterLines.findIndex((l) => GLOBS_KEY_RE.test(l));
-  if (idx === -1) {
-    return [];
-  }
-  const line = frontmatterLines[idx] as string;
-  const after = line.slice(line.indexOf(":") + 1).trim();
-  if (after.startsWith("[")) {
-    const inner = after
-      .replace(LEADING_BRACKET_RE, "")
-      .replace(TRAILING_BRACKET_RE, "");
-    // Assumes globs contain no literal comma. Safe: the shared `matchGlob` has no brace-expansion, so a
-    // `{a,b}` glob has no meaning here anyway; use the block-list form for anything exotic.
-    return inner
-      .split(",")
-      .map((x) => stripQuotes(x.trim()))
-      .filter(Boolean);
-  }
-  const out: string[] = [];
-  for (let i = idx + 1; i < frontmatterLines.length; i += 1) {
-    const item = LIST_ITEM_RE.exec(frontmatterLines[i] as string);
-    if (!item) {
-      break;
-    }
-    out.push(stripQuotes((item[1] as string).trim()));
-  }
-  return out;
-}
-
-/** Split leading `--- ... ---` YAML frontmatter (if any) from the markdown body. */
+/**
+ * Split a leading `--- … ---` YAML frontmatter block from the markdown body — using a REAL YAML parser, not a
+ * line heuristic. The fenced block is frontmatter only when it parses as a YAML MAPPING: a rule body that merely
+ * opens with a `---` divider then prose parses as a string, a `- item` bullet list parses as an array, and mixed
+ * content (`Note:` sentence + bullets) is invalid YAML — all three throw or yield a non-mapping, so we keep the
+ * whole file as body instead of silently truncating it. Only `globs` is read; everything else is ignored.
+ */
 function parseFrontmatter(content: string): { body: string; globs: string[] } {
   const fence = FRONTMATTER_RE.exec(content);
   if (!fence) {
     return { body: content.trim(), globs: [] };
   }
-  const globs = parseGlobs((fence[1] as string).split(NEWLINE_RE));
-  return { body: content.slice(fence[0].length).trim(), globs };
+  let doc: unknown;
+  try {
+    doc = parseYaml(fence[1] as string);
+  } catch {
+    return { body: content.trim(), globs: [] };
+  }
+  if (typeof doc !== "object" || doc === null || Array.isArray(doc)) {
+    return { body: content.trim(), globs: [] };
+  }
+  return {
+    body: content.slice(fence[0].length).trim(),
+    globs: normalizeGlobs((doc as { globs?: unknown }).globs),
+  };
 }
 
 /**
