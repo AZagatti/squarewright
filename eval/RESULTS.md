@@ -1159,3 +1159,29 @@ citation + "acknowledged deviations are fine" framing); (3) the issue-fetch plum
 (new `issues:read` scope — a real trust surface). Unlike B, the value proposition cleared the bar; the open question
 is precision, not existence. Also a finding about squarewright's OWN process: PR #80 shipped without meeting its
 stated ship-gate and no review caught it — a live example of exactly the gap this feature targets.
+
+## AC-conformance — follow-up CORRECTS the "promising lead": precision is fragile/unproven (2026-07-13)
+
+The probe above (#108) fed the model the issue + diff but NOT the PR description — a measurement bug (disclosures live
+in the PR body). Fixing it flipped the result and revealed C is more fragile than "promising lead" implied:
+
+| Prompt setting (glm-5.2, incl. PR body) | Gold ac-sw-70 (should flag) | Disclosed 39/71 (should not) | Read |
+|---|---|---|---|
+| Lenient ("openly acknowledged/deferred") | **MISSED** (0) | clean (0/0) | over-credits tangential transparency |
+| Strict ("explicitly acknowledged THIS criterion") | **caught** (1) | 39 false-flagged (3)* | over-flags; *partly diff-TRUNCATION (didn't see +749-line PR's later hunks) |
+
+**The gold catch flips with prompt strictness**, and there is no demonstrated clean setting on the free model at N=1:
+- *Lenient* mis-credits PR #80's honest description of a *lesser* deliverable ("ran a smoke test" + deferred a
+  different measurement to #73) as "the gate was disclosed" → misses a genuine silently-unmet GATE.
+- *Strict* catches it but flags legitimately-justified deviations — and separately, large-PR diff truncation makes it
+  flag "claimed but not present" on hunks it never saw.
+
+**Corrected verdict: UNRESOLVED, leaning fragile — NOT the clean opt-in build #108 implied.** The value is real (a
+strict prompt does catch the silent gate-miss no human/defect-review caught), but reliably distinguishing
+*silent-substitution* from *justified-deviation* is a nuanced judgment glm-5.2 doesn't do stably via prompt tuning,
+and large PRs break the diff-only view. Before any build C needs: (1) diff-truncation handling (per-file / summarize),
+(2) a robust silent-vs-justified signal — likely a STRONGER model for the AC pass (paid/quota) and/or surfacing AC
+status as INFORMATIONAL (not a hard finding a maintainer must triage), (3) higher N + external cases. This is the
+measure-before-build discipline self-correcting a premature verdict — the same pattern as the scaffold N=3→N=6 fix.
+The one durable win stands regardless: squarewright's OWN PR #80 shipped a silently-unmet ship-gate that no review
+caught — the failure mode is real even if the auto-detector isn't reliable yet.
