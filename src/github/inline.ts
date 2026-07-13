@@ -60,7 +60,7 @@ export function mapToInlineComments(
       commentable.set(f.path, commentableLines(f.patch));
     }
   }
-  const inline: InlineComment[] = [];
+  const placeable: { comment: InlineComment; finding: Finding }[] = [];
   const unplaceable: Finding[] = [];
   for (const f of findings) {
     const lines = commentable.get(f.path);
@@ -68,15 +68,24 @@ export function mapToInlineComments(
       // inline tags the finding's primary source only (the singular `source`); the sticky shows the full
       // multi-lens set via `sources`, so inline attribution can be less complete than the summary's.
       const lens = f.source ? opts.labelFor?.(f.source) : undefined;
-      inline.push({
-        body: renderInlineBody(f.message, lens),
-        line: f.line,
-        path: f.path,
+      placeable.push({
+        comment: {
+          body: renderInlineBody(f.message, lens),
+          line: f.line,
+          path: f.path,
+        },
+        finding: f,
       });
     } else {
       unplaceable.push(f);
     }
   }
+  // Cap the number of INLINE comments (GitHub + attention limit), but do NOT drop the overflow: findings past the
+  // cap fold into `unplaceable` so the sticky still surfaces them, honoring this module's "never drop silently".
   const cap = opts.cap ?? 40;
-  return { inline: inline.slice(0, cap), unplaceable };
+  const inline = placeable.slice(0, cap).map((p) => p.comment);
+  for (const p of placeable.slice(cap)) {
+    unplaceable.push(p.finding);
+  }
+  return { inline, unplaceable };
 }
