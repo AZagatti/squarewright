@@ -22,5 +22,12 @@ lanes:
   - { id: strong, model: <a-frontier-or-reasoning-model>, provider: <openrouter|anthropic|…> }
 ```
 
+**Spend on the analysis model, not the structurer.** A review runs in two passes: the *analysis* model (your lane)
+reasons over the change and writes its findings as prose, then a fixed, cheap *structurer* extracts them into
+structured output. The project's eval shows recall is bound by the **analysis** pass — swapping the structurer for a
+stronger model changed recall by nothing (it extracts exactly what the analysis already found). So put your model
+budget on the lane; leave the free `glm-5-turbo` structurer alone unless you're on a non-z.ai provider (then point
+`structurer` at one of its cheap models).
+
 Pi supports ~30 providers plus a custom-provider hook, so "any model, cheap or frontier, hosted or local" is a
 config edit, not a rewrite.
