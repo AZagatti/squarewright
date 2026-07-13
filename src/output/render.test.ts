@@ -144,3 +144,42 @@ test("renderSticky: a single-lens finding shows a bare lens tag, not a consensus
   expect(out).toContain("_[CI]_");
   expect(out).not.toContain("×1");
 });
+
+test("renderSticky: a failed lens is disclosed as incomplete, not hidden behind a clean verdict", () => {
+  const out = renderSticky({
+    findings: [],
+    incompleteLenses: [{ id: "sentinel", label: "Correctness" }],
+    lenses: [{ id: "sentinel", label: "Correctness" }],
+    summary: "",
+  });
+  // the failure is called out prominently and explicitly denied a clean reading
+  expect(out).toContain("Incomplete review");
+  expect(out).toContain("Correctness");
+  expect(out).toContain("not** reviewed");
+});
+
+test("renderSticky: cap-dropped lenses are disclosed as capped coverage", () => {
+  const out = renderSticky({
+    droppedLenses: [{ id: "marshal", label: "CI" }],
+    findings: [],
+    lenses: [
+      { id: "sentinel", label: "Correctness" },
+      { id: "warden", label: "Security" },
+    ],
+    summary: "",
+  });
+  expect(out).toContain("Coverage capped");
+  expect(out).toContain("CI");
+  // names the count so a reader knows how much was skipped
+  expect(out).toContain("1 matched lens");
+});
+
+test("renderSticky: full coverage renders no disclosure block (normal review unchanged)", () => {
+  const out = renderSticky({
+    findings: [],
+    lenses: [{ id: "sentinel", label: "Correctness" }],
+    summary: "",
+  });
+  expect(out).not.toContain("Incomplete review");
+  expect(out).not.toContain("Coverage capped");
+});

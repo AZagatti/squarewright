@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ChangedFile, Persona } from "../core/types.js";
-import { selectPersonas } from "./routing.js";
+import { selectPersonas, selectPersonasWithDrops } from "./routing.js";
 
 const FILES: ChangedFile[] = [
   { patch: "@@ -1,1 +1,2 @@\n a\n+b\n", path: "src/a.ts", status: "modified" },
@@ -75,5 +75,38 @@ describe("selectPersonas cap is group-aware", () => {
     expect(ids).toEqual(["a", "b", "c", "d"]);
     expect(ids).not.toContain("g1");
     expect(ids).not.toContain("g2");
+  });
+});
+
+describe("selectPersonasWithDrops reports what the cap cut", () => {
+  test("reports matched-but-dropped personas in original order (for honest disclosure)", () => {
+    const { selected, dropped } = selectPersonasWithDrops(
+      [p("a"), p("b"), p("c"), p("d"), p("e"), p("f")],
+      FILES,
+      { cap: 4 }
+    );
+    expect(selected.map((x) => x.id)).toEqual(["a", "b", "c", "d"]);
+    // dropped preserves the personas' own order, not the priority-sorted order
+    expect(dropped.map((x) => x.id)).toEqual(["e", "f"]);
+  });
+
+  test("no cap pressure → nothing dropped", () => {
+    const { selected, dropped } = selectPersonasWithDrops(
+      [p("a"), p("b")],
+      FILES,
+      { cap: 4 }
+    );
+    expect(selected.map((x) => x.id)).toEqual(["a", "b"]);
+    expect(dropped).toEqual([]);
+  });
+
+  test("a whole group dropped by the cap is reported as dropped, not split", () => {
+    const { selected, dropped } = selectPersonasWithDrops(
+      [p("a"), p("b"), p("c"), p("g1", "g"), p("g2", "g")],
+      FILES,
+      { cap: 4 }
+    );
+    expect(selected.map((x) => x.id)).toEqual(["a", "b", "c"]);
+    expect(dropped.map((x) => x.id)).toEqual(["g1", "g2"]);
   });
 });
