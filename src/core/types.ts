@@ -48,6 +48,13 @@ export interface ModelLane {
 
 /** A review lens the Worker applies. */
 export interface Persona {
+  /**
+   * Marks the AC-conformance auditor. Such a persona is NOT glob/file-routed (see `selectPersonasWithDrops`,
+   * which excludes it): it runs as its own dedicated pass ONLY when the PR closes an issue that was fetched into
+   * `ReviewContext.linkedIssue`, with the Worker's `acCheck` mode on. Kept a separate pass so the untrusted issue
+   * text never enters the defect personas' context. Best given a strong `lane` (eval/RESULTS.md 2026-07-13).
+   */
+  acCheck?: boolean;
   id: string;
   /** friendly name shown to users for attribution (e.g. "Security"); defaults to `id` when unset */
   label?: string;

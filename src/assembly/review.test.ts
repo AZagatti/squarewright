@@ -381,6 +381,56 @@ describe("runReview", () => {
     expect(out.sticky).toContain("2 matched lens");
   });
 
+  test("AC persona runs as its own acCheck pass ONLY when the PR has a linkedIssue", async () => {
+    const calls: WorkerRequest[] = [];
+    const worker: PiWorker = {
+      run: (req) => {
+        calls.push(req);
+        return Promise.resolve({
+          findings: [],
+          usage: { submitted: true, toolCalls: 0 },
+        });
+      },
+    };
+    const config: AssemblyConfig = {
+      grounders: [],
+      lanes: [
+        { id: "cheap", model: "glm-5-turbo", provider: "zai" },
+        { id: "strong", model: "big", provider: "openrouter" },
+      ],
+      personas: [
+        { id: "gen", lane: "cheap", prompt: "review it", when: ["always"] },
+        {
+          acCheck: true,
+          id: "auditor",
+          label: "AC",
+          lane: "strong",
+          prompt: "check ACs",
+        },
+      ],
+    };
+
+    // no linkedIssue → the auditor does NOT run; no acCheck request anywhere
+    await runReview(CONTEXT, config, worker);
+    expect(calls.some((c) => c.persona === "auditor")).toBe(false);
+    expect(calls.some((c) => c.acCheck)).toBe(false);
+
+    // with a linkedIssue → the auditor runs as its own acCheck pass on the STRONG lane
+    calls.length = 0;
+    const withIssue: ReviewContext = {
+      ...CONTEXT,
+      linkedIssue: { body: "AC: do X", number: 5, title: "T" },
+    };
+    await runReview(withIssue, config, worker);
+    const ac = calls.find((c) => c.persona === "auditor");
+    expect(ac).toBeDefined();
+    expect(ac?.acCheck).toBe(true);
+    expect(ac?.lane.model).toBe("big"); // resolved to the strong lane
+    // the defect persona still runs, and WITHOUT acCheck (no issue-text leak into it)
+    const gen = calls.find((c) => c.persona === "gen");
+    expect(gen?.acCheck).toBeFalsy();
+  });
+
   test("docs-only PR selects no personas and never calls the worker", async () => {
     let calls = 0;
     const worker: PiWorker = {

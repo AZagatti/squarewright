@@ -25,6 +25,9 @@ const modelLane = z.object({
 });
 
 const persona = z.object({
+  // AC-conformance auditor: not glob-routed; runs as its own strong-lane pass only when the PR closes a fetched
+  // issue (ReviewContext.linkedIssue), with the Worker's acCheck mode. See src/assembly/review.ts.
+  acCheck: z.boolean().optional(),
   id: z.string(),
   label: z.string().optional(),
   lane: z.string(),
