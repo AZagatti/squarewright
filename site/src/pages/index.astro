@@ -1,0 +1,314 @@
+---
+// Squarewright — marketing landing (custom Astro page at "/"). Docs live under /start, /concepts, etc. (Starlight).
+const gh = "https://github.com/AZagatti/squarewright";
+const evalRecord = "https://github.com/AZagatti/squarewright/blob/main/eval/RESULTS.md";
+const pi = "https://github.com/earendil-works/pi";
+---
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <title>Squarewright — a code reviewer you own, on the model you choose</title>
+  <meta name="description" content="Open-source toolbox that turns any model into a PR reviewer running on your own infra — with a real trust boundary, and honest about exactly how good it is." />
+  <style>
+    :root {
+      --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:72px; --s9:104px;
+      --paper:#f2efe6; --card:#faf8f2; --ink:#1a1915; --ink-2:#57534a;
+      --line:#d5d0c2; --line-2:#e4dfd2; --brass:#87590d; --brass-2:#a9741a; --brass-tint:#efe6d2;
+      --err:#a53228; --warn:#b4620a; --grid:rgba(26,25,21,.05);
+      --mono: ui-monospace,"SF Mono","SFMono-Regular",Menlo,Consolas,monospace;
+      --sans: system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    }
+    :root[data-theme="dark"], html[data-theme="dark"] {
+      --paper:#0f141a; --card:#161c24; --ink:#eae7dd; --ink-2:#98a1ac;
+      --line:#283039; --line-2:#1c222a; --brass:#d6a24c; --brass-2:#ecc079; --brass-tint:#221b0f;
+      --err:#e0796d; --warn:#e0973f; --grid:rgba(234,231,221,.055);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --paper:#0f141a; --card:#161c24; --ink:#eae7dd; --ink-2:#98a1ac;
+        --line:#283039; --line-2:#1c222a; --brass:#d6a24c; --brass-2:#ecc079; --brass-tint:#221b0f;
+        --err:#e0796d; --warn:#e0973f; --grid:rgba(234,231,221,.055);
+      }
+    }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto;} *,*::before,*::after{animation:none!important;transition:none!important;} }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans); font-weight:400; line-height:1.55;
+      -webkit-font-smoothing:antialiased;
+      background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px); background-size:32px 32px; }
+    .wrap { max-width:1000px; margin:0 auto; padding:0 clamp(18px,4vw,40px); }
+    section { padding:var(--s9) 0; border-bottom:1px solid var(--line-2); }
+    @media (max-width:640px){ section{padding:var(--s8) 0;} }
+    a { color:var(--brass); }
+    :focus-visible { outline:2px solid var(--brass-2); outline-offset:3px; }
+    .eyebrow { font-family:var(--mono); font-size:12px; letter-spacing:.2em; text-transform:uppercase; color:var(--brass); font-weight:500; margin:0 0 var(--s4); display:flex; align-items:center; gap:var(--s3); }
+    .eyebrow::before { content:""; width:20px; height:11px; flex:none; border-left:2px solid var(--brass); border-bottom:2px solid var(--brass); }
+    h1 { font-size:clamp(36px,6.6vw,66px); line-height:1.0; letter-spacing:-.035em; margin:0 0 var(--s5); font-weight:800; text-wrap:balance; }
+    h1 .b { color:var(--brass); }
+    h2 { font-size:clamp(25px,3.7vw,36px); line-height:1.06; letter-spacing:-.025em; margin:0 0 var(--s4); font-weight:700; text-wrap:balance; }
+    h3 { font-size:16px; margin:0 0 var(--s2); font-weight:600; letter-spacing:-.01em; }
+    .lede { font-size:clamp(17px,2.1vw,20px); color:var(--ink-2); max-width:62ch; margin:0 0 var(--s6); line-height:1.5; }
+    p { max-width:64ch; }
+    code { font-family:var(--mono); }
+    .reg { position:relative; background:var(--card); border:1px solid var(--line); }
+    .reg::before,.reg::after { content:""; position:absolute; width:9px; height:9px; pointer-events:none; }
+    .reg::before { top:-1px; left:-1px; border-top:2px solid var(--brass); border-left:2px solid var(--brass); }
+    .reg::after { bottom:-1px; right:-1px; border-bottom:2px solid var(--brass); border-right:2px solid var(--brass); }
+    .top { display:flex; align-items:center; justify-content:space-between; padding:var(--s5) 0 0; }
+    .logo { display:inline-flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.02em; font-size:17px; }
+    .sq { width:22px; height:22px; flex:none; color:var(--brass); }
+    .top nav { display:flex; gap:var(--s5); align-items:center; }
+    .top nav a { color:var(--ink-2); text-decoration:none; font-family:var(--mono); font-size:12.5px; letter-spacing:.02em; font-weight:500; }
+    .top nav a:hover { color:var(--brass); }
+    .pre { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--brass); border:1px solid var(--brass); padding:2px 6px; }
+    @media (max-width:640px){ .top nav a.hideable{display:none;} }
+    .hero { padding-top:clamp(40px,7vw,76px); border-bottom:none; }
+    .hero-grid { display:grid; grid-template-columns:1.08fr .92fr; gap:clamp(28px,5vw,60px); align-items:center; }
+    @media (max-width:860px){ .hero-grid{grid-template-columns:1fr;} }
+    .cta { display:flex; flex-wrap:wrap; gap:var(--s3); align-items:center; }
+    .btn { font-family:var(--mono); font-size:13.5px; font-weight:600; text-decoration:none; padding:12px 20px; border:1.5px solid var(--ink); color:var(--paper); background:var(--ink); display:inline-flex; align-items:center; gap:9px; transition:transform .12s ease; }
+    .btn:hover { transform:translateY(-1px); }
+    .btn.ghost { background:transparent; color:var(--ink); }
+    .btn.ghost:hover { border-color:var(--brass); color:var(--brass); }
+    .subnote { font-family:var(--mono); font-size:11.5px; color:var(--ink-2); margin-top:var(--s3); }
+    .subnote b { color:var(--warn); font-weight:600; }
+    /* mock */
+    .mock-wrap { position:relative; }
+    .mock-tag { position:absolute; top:-10px; right:12px; z-index:2; font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-2); background:var(--paper); border:1px solid var(--line); padding:3px 9px; }
+    .mock { box-shadow:0 24px 46px -32px rgba(0,0,0,.45); }
+    .mock-bar { display:flex; align-items:center; gap:var(--s2); padding:11px 15px; border-bottom:1px solid var(--line-2); font-family:var(--mono); font-size:11.5px; color:var(--ink-2); }
+    .mock-bar .avatar { width:20px; height:20px; background:var(--brass-tint); border:1px solid var(--line); display:grid; place-items:center; }
+    .mock-bar .avatar svg { width:12px; height:12px; color:var(--brass); }
+    .mock-body { padding:var(--s4) var(--s4) var(--s5); font-size:13.5px; }
+    .mock-body .t { font-weight:700; font-size:15px; margin:0 0 4px; }
+    .mock-body .sum { color:var(--ink-2); margin:0 0 var(--s4); font-size:13px; }
+    .find { padding:var(--s3) 0; border-top:1px dashed var(--line); }
+    .find .head { display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap; }
+    .find .loc { font-family:var(--mono); font-size:11.5px; color:var(--brass); }
+    .sev { font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; padding:1px 6px; border:1px solid; font-weight:600; }
+    .sev.err{color:var(--err);border-color:var(--err);} .sev.warn{color:var(--warn);border-color:var(--warn);}
+    .lens { font-family:var(--mono); font-size:10px; color:var(--ink-2); }
+    .find .msg { font-size:12.6px; color:var(--ink); margin:0 0 7px; }
+    .diff { font-family:var(--mono); font-size:11px; line-height:1.5; border:1px solid var(--line-2); background:var(--paper); }
+    .diff div { padding:2px 10px; white-space:pre; overflow-x:auto; }
+    .diff .del{color:var(--err);} .diff .add{color:var(--warn);}
+    .mfoot { margin-top:var(--s4); padding-top:var(--s3); border-top:1px solid var(--line-2); font-family:var(--mono); font-size:11px; color:var(--ink-2); }
+    .mfoot b { color:var(--brass); font-weight:600; }
+    /* honesty */
+    .honest { position:relative; overflow:hidden; background:var(--brass-tint); border:1px solid var(--line); padding:clamp(28px,5vw,56px); }
+    .honest .mark { position:absolute; right:-40px; bottom:-70px; width:340px; height:340px; opacity:.1; pointer-events:none; color:var(--brass); }
+    .honest .quote { position:relative; font-size:clamp(23px,3.4vw,36px); line-height:1.2; letter-spacing:-.02em; font-weight:800; max-width:20ch; margin:0; color:var(--ink); }
+    .honest .quote .b { color:var(--brass); }
+    .honest .sub { position:relative; color:var(--ink-2); font-size:15.5px; max-width:60ch; margin-top:var(--s5); }
+    .dare { position:relative; font-family:var(--mono); font-size:13px; color:var(--ink); margin-top:var(--s5); padding:var(--s3) var(--s4); border-left:2px solid var(--brass); background:var(--card); max-width:62ch; }
+    .redlines { position:relative; margin-top:var(--s6); display:grid; gap:var(--s3); }
+    .rl { font-size:14px; color:var(--ink); padding-left:26px; position:relative; max-width:72ch; }
+    .rl::before { content:""; position:absolute; left:0; top:.62em; width:16px; border-top:2px solid var(--err); transform:rotate(-8deg); }
+    .rl b { color:var(--err); font-weight:600; }
+    /* cards */
+    .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:1px; background:var(--line); border:1px solid var(--line); margin-top:var(--s2); }
+    @media (max-width:720px){ .cards{grid-template-columns:1fr;} }
+    .cell { background:var(--card); padding:var(--s5) var(--s5) var(--s6); }
+    .cell .k { font-family:var(--mono); font-size:11px; color:var(--brass); letter-spacing:.14em; text-transform:uppercase; font-weight:500; margin:0 0 var(--s3); }
+    .cell p { color:var(--ink-2); font-size:14px; margin:0; max-width:40ch; }
+    /* two-phase */
+    .phases { display:grid; grid-template-columns:1fr 64px 1fr; align-items:stretch; margin-top:var(--s3); }
+    @media (max-width:720px){ .phases{grid-template-columns:1fr;} }
+    .phase { padding:var(--s5); }
+    .phase .pk { font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; font-weight:500; margin:0 0 var(--s3); display:flex; align-items:center; gap:8px; }
+    .phase.untrusted .pk{color:var(--warn);} .phase.trusted .pk{color:var(--brass);}
+    .phase .pk .ic { width:9px; height:9px; border:1.5px solid currentColor; flex:none; }
+    .phase.trusted .pk .ic { border-radius:50%; }
+    .phase .pd { color:var(--ink-2); font-size:13.5px; margin:0; max-width:44ch; }
+    .boundary { position:relative; display:grid; place-items:center; }
+    .boundary::before { content:""; position:absolute; top:0; bottom:0; border-left:2px dashed var(--err); }
+    @media (max-width:720px){ .boundary::before{top:auto;bottom:auto;left:0;right:0;border-left:none;border-top:2px dashed var(--err);} }
+    .boundary span { position:relative; background:var(--paper); font-family:var(--mono); font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--err); writing-mode:vertical-rl; padding:8px 3px; border:1px solid var(--err); }
+    @media (max-width:720px){ .boundary span{writing-mode:horizontal-tb;padding:3px 8px;margin:var(--s3) 0;} }
+    /* ladder + split (demoted, lower) */
+    .ladder { display:grid; gap:var(--s3); margin-top:var(--s2); }
+    .rung { display:grid; grid-template-columns:42px 1fr; gap:var(--s4); align-items:baseline; padding:var(--s4) var(--s5); }
+    .rung .n { font-family:var(--mono); font-size:13px; color:var(--brass); font-weight:600; border:1.5px solid var(--brass); width:34px; height:34px; display:grid; place-items:center; }
+    .rung p { margin:3px 0 0; color:var(--ink-2); font-size:13.5px; max-width:66ch; }
+    .split { border:1px solid var(--line); background:var(--card); margin-top:var(--s3); }
+    .split .row { display:grid; grid-template-columns:1fr 1fr; }
+    .split .row.head { font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; font-weight:500; }
+    .split .row > div { padding:13px 18px; border-bottom:1px solid var(--line-2); font-size:13.5px; }
+    .split .row > div:first-child { border-right:1px solid var(--line-2); color:var(--ink-2); }
+    .split .row:last-child > div { border-bottom:none; }
+    .split .row.head > div:last-child { color:var(--brass); }
+    .status { display:flex; gap:var(--s3); align-items:flex-start; padding:var(--s4); max-width:72ch; }
+    .status .tag { font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--brass); border:1px solid var(--brass); padding:3px 8px; flex:none; margin-top:1px; }
+    .status p { margin:0; color:var(--ink-2); font-size:13.5px; }
+    footer { padding:var(--s7) 0 var(--s8); }
+    footer .row { display:flex; justify-content:space-between; flex-wrap:wrap; gap:var(--s4); align-items:center; }
+    footer .mono { font-family:var(--mono); font-size:11.5px; color:var(--ink-2); }
+    a.inline { color:var(--brass); text-decoration:none; border-bottom:1px solid var(--line); }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="sq" viewBox="0 0 24 24">
+    <path d="M4 4 L4 20 L20 20" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" fill="none"/>
+    <path d="M4 4 L15 4" stroke="currentColor" stroke-width="2.4" fill="none" opacity=".55"/>
+    <circle cx="18.5" cy="9.5" r="1.7" fill="currentColor"/>
+  </symbol></svg>
+
+  <div class="wrap">
+    <div class="top">
+      <span class="logo"><svg class="sq"><use href="#sq"/></svg> Squarewright <span class="pre">pre-v0.1</span></span>
+      <nav>
+        <a class="hideable" href="#honest">Honesty</a>
+        <a class="hideable" href="#safe">Safety</a>
+        <a class="hideable" href="/start/introduction">Docs</a>
+        <a href={gh}>GitHub ↗</a>
+      </nav>
+    </div>
+  </div>
+
+  <!-- HERO: wedge = your infra, your model, your ceiling -->
+  <section class="hero">
+    <div class="wrap">
+      <div class="hero-grid">
+        <div>
+          <p class="eyebrow">Open-source · runs on your infra · any model</p>
+          <h1>A code reviewer you own — <span class="b">only as good as the model you choose.</span></h1>
+          <p class="lede">Every hosted reviewer quietly caps its model to protect a margin. Squarewright runs on <em>any</em> model you point it at — free, frontier, or local, entirely on your own infrastructure — so the quality ceiling is your call, not a vendor's. And it publishes exactly how good it is.</p>
+          <div class="cta">
+            <a class="btn" href={gh}>Build from source</a>
+            <a class="btn ghost" href={evalRecord}>Read the eval record</a>
+          </div>
+          <p class="subnote"><b>pre-v0.1:</b> the engine is real and dogfooded; the one-command install isn't published yet — you assemble it from source today.</p>
+        </div>
+
+        <div class="mock-wrap">
+          <span class="mock-tag">illustrative example</span>
+          <div class="mock reg">
+            <div class="mock-bar"><span class="avatar"><svg><use href="#sq"/></svg></span> squarewright&nbsp;<span style="opacity:.6">commented on #128</span></div>
+            <div class="mock-body">
+              <p class="t">Squarewright review</p>
+              <p class="sum">Two issues worth a look before merge; the rest of the change reads clean.</p>
+              <div class="find">
+                <div class="head"><span class="loc">auth/session.ts:42</span><span class="sev err">error</span><span class="lens">Security</span></div>
+                <p class="msg">Token compared with <code>==</code>, not a constant-time check — every other verify path here uses <code>timingSafeEqual</code>.</p>
+                <div class="diff"><div class="del">- if (token == expected) grant(session)</div><div class="add">+ if (timingSafeEqual(token, expected)) grant(session)</div></div>
+              </div>
+              <div class="find">
+                <div class="head"><span class="loc">queue/worker.ts:88</span><span class="sev warn">warn</span><span class="lens">Correctness</span></div>
+                <p class="msg">Early <code>return</code> on the idempotent path skips the <code>unlock()</code> below it — later calls deadlock.</p>
+              </div>
+              <p class="mfoot">Reviewed by: Correctness, Security · <b>glm-5.2</b> · findings reflect the enabled lenses only — absence of findings means nothing obvious was found, <b>not</b> that the change is verified correct.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HONESTY promoted to #2 -->
+  <section id="honest">
+    <div class="wrap">
+      <div class="honest">
+        <svg class="mark" aria-hidden="true"><use href="#sq"/></svg>
+        <p class="eyebrow">The feature nobody else ships</p>
+        <p class="quote">The reviewer that tells you <span class="b">what it didn't check.</span></p>
+        <p class="sub">Squarewright is graded on real pull requests, not cherry-picked demos — recall and precision reported <em>separately</em>, because a single blended score is exactly where a vendor hides the truth. If a claim doesn't have a measurement behind it, it doesn't go on this page. And a clean review says "nothing obvious was found," never "your code is correct."</p>
+        <p class="dare">Ask a hosted reviewer for its precision on a public corpus. Ours is one link away — <a class="inline" href={evalRecord}>the eval record</a>, misses included. Recall on the free default is low and model-bound; that's why the model lane is <em>yours</em> to raise.</p>
+        <div class="redlines">
+          <p class="rl"><b>Not</b> a SaaS you rent, and not "free CodeRabbit." It runs in your repo, on your runner, with your model.</p>
+          <p class="rl"><b>Not</b> a static analyzer in an AI costume. Determinism is an optional grounder — never the product.</p>
+          <p class="rl"><b>Not</b> "no key required." A reviewer needs a brain; bring one. That's the honest deal.</p>
+          <p class="rl"><b>Not</b> chasing adopters before it's earned trust. It dogfoods on real PRs before it asks you to.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SAFETY (trust asset for the privacy ICP) -->
+  <section id="safe">
+    <div class="wrap">
+      <p class="eyebrow">Your secrets never meet a stranger's code</p>
+      <h2>Two phases, one hard boundary.</h2>
+      <p class="lede">Running an AI reviewer means putting secrets near code you didn't write. Squarewright splits the job in two so they're never in the same room — the trust boundary is the architecture, not a footnote.</p>
+      <div class="phases reg">
+        <div class="phase untrusted">
+          <p class="pk"><span class="ic"></span>Gather · untrusted</p>
+          <p class="pd">Runs inside the PR's own context — even a fork. No secrets, read-only. It collects the diff and metadata as plain data and hands off an artifact. A malicious PR can't steal what was never in the room.</p>
+        </div>
+        <div class="boundary"><span>trust boundary</span></div>
+        <div class="phase trusted">
+          <p class="pk"><span class="ic"></span>Review · trusted</p>
+          <p class="pd">Fires only after gather finishes. It holds the keys and posts the review — but never checks out or runs the PR's code, and cross-checks the artifact's head-SHA against the trusted event before deciding where to comment. A poisoned diff can't hijack the post.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHAT -->
+  <section id="what">
+    <div class="wrap">
+      <p class="eyebrow">What it does</p>
+      <h2>A reviewer that posts like a careful colleague.</h2>
+      <div class="cards">
+        <div class="cell"><p class="k">Any model</p><h3>You choose the brain.</h3><p>Point it at any of Pi's ~30 providers — free, frontier, hosted, or local. Swap models by editing one lane, not rewiring the harness. A stronger model buys deeper coverage; a free one keeps the bill at $0.</p></div>
+        <div class="cell"><p class="k">Grounded findings</p><h3>Tied to the diff, not a vibe.</h3><p>It reviews real, messy pull requests and reports findings anchored to the changed lines — with optional deterministic grounders and verifiers that check the model's work.</p></div>
+        <div class="cell"><p class="k">Posts cleanly</p><h3>One comment, not a storm.</h3><p>A single sticky summary plus inline notes on the right lines — deduped across re-reviews, hardened against markdown injection hiding in the diff itself.</p></div>
+        <div class="cell"><p class="k">Transparent feedback</p><h3>Gets smarter. Never sneaks past you.</h3><p>👍/👎 and implicit signals tune future reviews. Any change to its own rules is a proposal you ratify — visible and reversible, never applied behind your back.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LADDER -->
+  <section id="ladder">
+    <div class="wrap">
+      <p class="eyebrow">A toolbox, not a black box</p>
+      <h2>Start small. Go as deep as you want.</h2>
+      <p class="lede">Progressive disclosure, not a locked box: start from a preset, end by rewriting the harness. Every rung is optional; every layer is yours to open.</p>
+      <div class="ladder">
+        <div class="rung reg"><span class="n">01</span><div><h3>Beginner</h3><p>Add the Action or run <code>squarewright init</code> (pre-v0.1: build from source today), set one provider key, pick a preset → a decent reviewer.</p></div></div>
+        <div class="rung reg"><span class="n">02</span><div><h3>Provider-focused</h3><p>Keep the harness, swap the brain: OpenRouter, Anthropic, a company key, or a model on your own hardware.</p></div></div>
+        <div class="rung reg"><span class="n">03</span><div><h3>Customizer</h3><p>Edit personas, rules, model lanes, and routing until the reviewer thinks the way your codebase needs.</p></div></div>
+        <div class="rung reg"><span class="n">04</span><div><h3>Power user</h3><p>Override tools, verifiers, grounders, prompts, posting, policy — down to the wiring. Nothing is sealed shut.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SPLIT (demoted: "for the curious") -->
+  <section id="split">
+    <div class="wrap">
+      <p class="eyebrow">For the curious · the architecture</p>
+      <h2>Pi is the engine. Squarewright is the assembly.</h2>
+      <p class="lede">The hard, churny runtime — the agent loop, providers, sessions — is <a class="inline" href={pi}>Pi</a>'s job, and it does it well. Squarewright owns the reviewer <em>product</em> wrapped around it, and hands you every layer.</p>
+      <div class="split">
+        <div class="row head"><div>Pi owns</div><div>Squarewright owns</div></div>
+        <div class="row"><div>Agent loop, tool-calling, sessions, ~30 providers</div><div><code>squarewright init</code> scaffolding</div></div>
+        <div class="row"><div>Provider / auth, native-binary distribution</div><div>The safe two-phase CI: secrets boundary + artifact trust cross-check</div></div>
+        <div class="row"><div>System-prompt override, custom tools, session resume</div><div>Personas + routing, rules memory, model-lane policy</div></div>
+        <div class="row"><div>—</div><div>Posting: sticky + inline, diff-line mapping, dedup, injection safety</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATUS -->
+  <section id="status" style="border-bottom:none;">
+    <div class="wrap">
+      <p class="eyebrow">Where it stands</p>
+      <h2 style="max-width:22ch;">Built in the open. Not oversold.</h2>
+      <div class="status reg">
+        <span class="tag">pre-v0.1</span>
+        <p>The review engine is real, and it's already reviewing this project's own pull requests. What's not ready: a published CLI you can <code>init</code>-and-go — today you assemble Squarewright from source. We'd rather ship the right architecture late than a fragile one on time. <a class="inline" href={gh}>Follow the build</a>, or go read the <a class="inline" href={evalRecord}>eval record</a> yourself.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap"><div class="row">
+      <span class="logo" style="font-size:15px;"><svg class="sq"><use href="#sq"/></svg> Squarewright</span>
+      <span class="mono">Open source · on <a href={gh}>GitHub</a> · built on <a href={pi}>Pi</a> · a truer reviewer</span>
+    </div></div>
+  </footer>
+</body>
+</html>
