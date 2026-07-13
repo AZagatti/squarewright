@@ -518,6 +518,9 @@ async function main() {
         const analysisTexts: string[] = [];
         let workerCost = 0;
         let noSubmit = 0; // passes where the model never called submit_findings (NOT a clean review — a dropped submission)
+        // passes where pass-1 analysis produced NOTHING (provider refusal / non-retryable quota) — a run failure, not
+        // a real 0-findings review. Grading it as a legit clean/miss would falsely lower recall (#158/#163).
+        let analysisFailedPasses = 0;
         if (doPersonas) {
           const selected = applyBatching(
             selectPersonas(DEFAULT_PERSONAS, context.files, {
@@ -552,6 +555,9 @@ async function main() {
               localSpend += passSpend(pr.usage);
               if (!pr.usage?.submitted) {
                 noSubmit += 1;
+              }
+              if (pr.usage?.analysisFailed) {
+                analysisFailedPasses += 1;
               }
               spendGuard();
               if (aborted) {
@@ -589,6 +595,16 @@ async function main() {
           if (!pr.usage?.submitted) {
             noSubmit += 1;
           }
+          if (pr.usage?.analysisFailed) {
+            analysisFailedPasses += 1;
+          }
+        }
+        // A pass-1 analysis failure means the model didn't actually review — exclude the case rather than grade its
+        // empty findings as a real miss (mirrors the production disclosure #158 and the eval's errored-case exclusion).
+        if (analysisFailedPasses > 0) {
+          throw new Error(
+            `analysis failed on ${analysisFailedPasses} pass(es) (provider refusal / non-retryable quota) — excluding from metrics`
+          );
         }
         let confirmed = findings.length;
         let verifyCost = 0;
