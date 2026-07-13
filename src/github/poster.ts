@@ -193,17 +193,23 @@ export function createGhPoster(run: GhRunner): Poster {
 /**
  * A `LookupPullsForCommit` (the trust check's injected dependency) backed by `gh`. Lists OPEN PRs whose head
  * commit is `sha` in `repo`, queried using the trusted repo+sha (auth is ambient via `gh`'s own token).
+ *
+ * The `commits/{sha}/pulls` endpoint returns PRs that have this commit ANYWHERE in their ref history, not only where
+ * it is the current head — so we filter to `head.sha === sha`. Without that, STACKED PRs (PR-B branched off PR-A)
+ * share history and both come back, tripping the trust check's `>1 open PR ⇒ TrustViolation` ambiguity guard and
+ * FALSELY refusing to post an otherwise-valid review. Filtering to the real head also makes a force-pushed PR (its
+ * head moved off the reviewed `sha`) resolve to zero → the benign no-op, which is correct: the reviewed commit is
+ * stale, so there is nothing to post to. `sha` is the trusted `workflow_run.head_sha`, never an artifact claim.
  */
 export function createGhPullLookup(run: GhRunner): LookupPullsForCommit {
   return async (repo, sha) => {
     const endpoint = `repos/${repo}/commits/${sha}/pulls`;
     const stdout = await ghApi(run, [endpoint, "--paginate"]);
-    const pulls = parseJson<{ number: number; state: string }[]>(
-      stdout,
-      endpoint
-    );
+    const pulls = parseJson<
+      { head?: { sha?: string }; number: number; state: string }[]
+    >(stdout, endpoint);
     return pulls
-      .filter((p) => p.state === "open")
+      .filter((p) => p.state === "open" && p.head?.sha === sha)
       .map((p) => ({ number: p.number }));
   };
 }
