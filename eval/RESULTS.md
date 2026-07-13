@@ -1057,7 +1057,12 @@ Vaultwarden (maintainer added the safe check to one function and not its sibling
 commit*) is the thesis in one case: even a human reviewing both side-by-side missed it. Corpus seed = these 9
 cases + a minable ManySStuBs4J slice.
 
-## Scaffold recall impact — now measured NEUTRAL at N=3 (2026-07-13, resolves the open caveat)
+## Scaffold recall impact — measured NEUTRAL at N=3 (2026-07-13) [SUPERSEDED — see the N=6 correction below]
+
+> **⚠️ CORRECTED (2026-07-13, same night):** the "recall-neutral" call below was N=3 and UNDERPOWERED. Extending to
+> N=6 (prompted by a disagree-seeking council on the default-on question) revealed a consistent ~1.5-locus recall
+> COST (median 6→4). The scaffold is a precision/recall TRADEOFF, not a free win. See "N=6 correction" two sections
+> down. Kept here as the record of the premature call.
 
 The CoT-scaffold entry above shipped with "recall impact NOT established" — that's why the scaffold graduated to
 the `.squarewright.yml` flag OFF by default. Resolved now: baseline vs `--cot-scaffold`, glm-5.2, golden, N=3 each
@@ -1073,3 +1078,27 @@ detectable recall cost). This confirms the scaffold is a precision win at ~zero 
 upgrading the earlier "not established" to **recall-neutral (N=3, glm-5.2, loci-level + raw cleanFP)**. Not a
 proof of exactly zero, but no measurable cost. **Makes scaffold-default-ON a strong candidate — a product call
 for the maintainer** (it changes every review's behavior; not flipped autonomously).
+
+## Scaffold recall — N=6 CORRECTION: a small but real recall cost (2026-07-13, don't flip default)
+
+A disagree-seeking council on "flip `cotScaffold` on by default" flagged the N=3 recall-neutral read as underpowered
+(one model, N=3, mean 5.3→5.0 "inside the 4–7 noise band" — no-*detectable*-cost ≠ no-cost). Extended to **N=6**,
+glm-5.2, golden (baseline reps from the divergence + scaffold runs, matched scaffold reps):
+
+| Metric | Baseline (6 reps) | `--cot-scaffold` (6 reps) |
+|---|---|---|
+| Locus recall /11 | 7,5,4,7,6,6 → **median 6, mean 5.8** | 5,6,4,3,4,4 → **median 4, mean 4.3** |
+| Clean FP | 15,14,13,8,15,8 → mean ~12.2 | 3,10,7,5,8,8 → mean ~6.8 (**−44%**) |
+
+**The recall means separated as N grew** (5.8 vs 4.3; medians 6 vs 4 — ranges still overlap, but the direction is
+consistent across all 6 reps and matches the earlier defect-judge hold that "leaned on one judge-hallucination
+exclusion"). So the honest verdict is a **precision/recall TRADEOFF, not a free win**: ~44% fewer false positives
+at the cost of ~1–1.5 loci of recall (~25% of the recall the free model has). The N=3 "neutral" was a small-sample
+fluke.
+
+**Decision: do NOT flip the scaffold on by default.** On a reviewer that already misses most defects, trading ~25%
+of its recall for cleaner output is the wrong *default* per the honesty North Star ("honest about how good it
+actually is"). It stays an **opt-in precision lever** (`cotScaffold` flag) for users who value fewer false alarms
+and accept the recall cost. This is the council mechanism working: N=3 would have justified the flip; the
+skeptic-demanded reps changed the answer. (Ship-path smoke separately confirmed the scaffold renders honestly
+through the real `runReview`/`render.ts` #102 footer — that gap is closed; it just isn't a default-worthy gain.)

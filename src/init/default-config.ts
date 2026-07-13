@@ -24,8 +24,9 @@ function lane(id: string, model: string): ModelLane {
 export function renderDefaultConfig(): string {
   const config = {
     budget: { maxToolCalls: 30 },
-    // Prompted CoT scaffold — cuts false positives (precision), recall impact not established. Off by default;
-    // set true to trade a bit of latency/tokens for fewer false alarms. See eval/RESULTS.md.
+    // Prompted CoT scaffold — a precision/recall TRADEOFF (eval/RESULTS.md, N=6): ~44% fewer false positives at a
+    // cost of ~1–1.5 loci recall. Off by default (recall matters more on a reviewer that already misses most bugs);
+    // set true to trade some recall + latency/tokens for fewer false alarms.
     cotScaffold: false,
     defaultLane: "cheap",
     feedback: { aggregate: false, enabled: true },

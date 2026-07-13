@@ -56,9 +56,10 @@ export const assemblyConfigSchema = z.object({
     .optional(),
   /**
    * Prompted CoT scaffold: appends an UNDERSTAND → FIND → VERIFY(drop false positives) instruction to the analysis
-   * prompt. A PRECISION lever — cuts false positives ~50–60% (non-overlapping on golden AND this repo's own dogfood
-   * PRs, eval/RESULTS.md 2026-07-12/13); recall impact NOT established. Off by default. Distinct from native
-   * reasoning (which doesn't help this classification-shaped task).
+   * prompt. A precision/recall TRADEOFF (eval/RESULTS.md, N=6): ~44% fewer false positives at a cost of ~1–1.5 loci
+   * recall — so it's off by default (recall matters more on a reviewer that already misses most bugs) and stays an
+   * opt-in lever for repos that prefer fewer false alarms. Distinct from native reasoning (which doesn't help this
+   * classification-shaped task).
    */
   cotScaffold: z.boolean().default(false),
   /** default lane id when a persona doesn't specify one */
