@@ -56,6 +56,26 @@ Work through the review in three explicit, ordered steps:
 3. VERIFY — for each candidate, critically decide whether it is a REAL defect that THIS PR's changed lines introduce, or a false positive; keep only the ones you are confident are real and drop the rest.
 Your final review must contain only the issues that survived step 3.`;
 
+// SURVEYOR coverage pass (mirrors SURVEYOR_NOTE in src/pi/worker.ts) — appended when --surveyor is set, so the
+// claude -p path can measure the scaffold×surveyor interaction. Deliberately stacked AFTER the scaffold tail,
+// matching buildAnalysisSystem's order (its "find more" contradicts scaffold's "keep only survivors" — that's
+// the interaction being tested).
+const SURVEYOR_TAIL = `
+
+Before you finish, do a coverage pass: for EACH issue you identified, check EVERY other changed file and hunk in
+this diff for the SAME underlying root cause, and report each additional occurrence as its own finding. A change
+applied in one place but not its siblings is a common defect, so a bug you found once may recur elsewhere in this
+diff. Do this now, in this same response, before concluding.`;
+
+/** Compose the claude -p analysis persona with the opt-in prompt tails (same stacking order as buildAnalysisSystem). */
+function analysisPersona(scaffold: boolean, surveyor: boolean): string {
+  return (
+    PERSONA +
+    (scaffold ? COT_SCAFFOLD_TAIL : "") +
+    (surveyor ? SURVEYOR_TAIL : "")
+  );
+}
+
 interface SubmittedFinding {
   line?: number;
   message: string;
@@ -235,7 +255,8 @@ async function main() {
   const effort = arg("effort");
   const { effortLabel, suffix, thinkOff } = reportLabels(effort);
   const doScaffold = process.argv.includes("--cot-scaffold");
-  const persona = doScaffold ? PERSONA + COT_SCAFFOLD_TAIL : PERSONA;
+  const doSurveyor = process.argv.includes("--surveyor");
+  const persona = analysisPersona(doScaffold, doSurveyor);
   // Structurer pinned to zai:glm-5.2 by default — matches the paid model rank (#94) so scores are comparable.
   const structArg = arg("structurer") ?? "zai:glm-5.2";
   const structLane: ModelLane = {
@@ -314,7 +335,7 @@ async function main() {
   }
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const modelSlug = model.replace(/[^a-z0-9.-]/gi, "_");
-  const reportPath = `${ROOT}eval/reports/cli-${modelSlug}${suffix}${doScaffold ? "-cotscaffold" : ""}-${stamp}.json`;
+  const reportPath = `${ROOT}eval/reports/cli-${modelSlug}${suffix}${doScaffold ? "-cotscaffold" : ""}${doSurveyor ? "-surveyor" : ""}-${stamp}.json`;
   writeFileSync(
     reportPath,
     JSON.stringify(
@@ -324,6 +345,7 @@ async function main() {
           cotScaffold: doScaffold,
           effort: effortLabel,
           structurer: `${structLane.provider}/${structLane.model}`,
+          surveyor: doSurveyor,
           thinkingDisabled: thinkOff,
           totalCostUsd: totalCost,
         },

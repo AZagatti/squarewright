@@ -951,6 +951,41 @@ sharpest objection ("all measurement is famous external repos") is answered. Cav
 noise already low (4–6 total on merged-clean PRs), precision-only (no recall measurable — no known bugs in these),
 mildly self-referential (own eval PRs). Corpus committed at `eval/dogfood/` for reuse.
 
+## Scaffold × SURVEYOR interaction — coexist, surveyor neutralized; no destructive conflict (2026-07-13)
+
+Tested whether the two opt-in analysis-prompt levers destructively conflict: SCAFFOLD ("keep only VERIFY survivors"
+— precision) vs SURVEYOR ("re-scan every file for MORE occurrences" — its standalone effect measured NULL-to-negative,
+#95). 2×2 (base / scaffold / surveyor / both), interleaved, glm-5.2 + minimax-m3 (N=3/arm), sonnet-5 (N=1–2/arm, via
+`eval-cli.ts` — not in `runs.jsonl`). Two red-team councils gated this write-up (they caught a first "safe to stack
+but pointless" overclaim). Both harnesses now persist `surveyor` in the report config so arms are auditable.
+
+**Judge note:** first judged with kimi-k2.6 (deepseek-v3.2 was OpenRouter-credit-blocked) — it graded nearly all
+arms 0/11 (uninformative). RE-JUDGED with free **zai:glm-5.2** (the working default judge; kimi's harsh-0 mode is now
+caught by a new `harshJudgeSuspect` guard in judge.ts). glm-5.2 judge is same-family on the glm row (self-preference
+caveat), cross-family on minimax/sonnet.
+
+| model | clean-FP base/scaf/surv/both | file-recall (NOT defect) | **defect recall** base/scaf/surv/both (glm-5.2 judge) |
+|---|---|---|---|
+| glm-5.2 | 18 / 7 / 19 / 8 | 6 / 5 / 8 / 6 | 3 / 3 / 3.5 / **3.5** |
+| minimax-m3 | 22 / 15 / 22 / 8 | 7 / 6 / 6 / 6 | 3.5 / 2 / 3 / **2** |
+| sonnet-5 (N=1–2, not measured) | 35 / 18 / 32 / 24 | 10 / 8 / 9 / 6 | 3 / 4 / 4.5 / *excl* |
+
+**Verdict — coexist, no destructive conflict; surveyor is neutralized under scaffold.**
+- **Defect recall: `both` ≈ `scaffold`** (glm 3.5≈3; minimax 2=2) — surveyor adds no net defect-recall when stacked
+  and doesn't hurt; the scaffold's VERIFY prune drops surveyor's additions (real and noise). Now measured at the
+  defect level (not the circular file-recall a council flagged).
+- **FP: the scaffold cut survives surveyor on glm-5.2** (`both` 8 separates below base/surveyor 18/19) — but this is
+  **non-significant** (N=3 vs N=3 → best possible p=0.1, below the bar), clean on glm-5.2 only, and **NOT clean on
+  minimax** (`both` FP was {4,8,21} — one of three draws showed no cut). Not "on all 3 models."
+- **sonnet-5 = not measured** (N=1–2, `both` judge-excluded — strictly worse than the N=2 leg the cot-scaffold entry
+  already labels "not measured"). Shown for audit trail only.
+
+**Net:** all arms sit in the noisy ~2–3.5/11 defect band; nothing is significant at N=3. The honest, non-overclaimed
+reading: the two levers **coexist safely and surveyor contributes nothing under scaffold** — but this is a weak,
+one-model-clean, N=3 result, not a proof. Operating point unchanged (scaffold-alone the value pick; SURVEYOR stays
+opt-in/off) — inherited from the individual levers, this test just confirms stacking doesn't break anything.
+(Two of three interaction runs died mid-way to over-parallelism; the tagged reports survived and were re-judged.)
+
 †sonnet-5 ran via `scripts/eval-cli.ts` (`claude -p`), whose reports are gitignored and not in `runs.jsonl` — its
 numbers live only here + in local reports, so it is the least auditable leg (a follow-up should log eval-cli runs to
 `runs.jsonl`). glm-5.2 and minimax-m3 are durably logged.

@@ -98,6 +98,26 @@ export function defectFileViolations(
 }
 
 /**
+ * The MIRROR of the hallucination guard: a systematically UNDER-permissive judge. A pass that scores ZERO defect
+ * matches while findings landed on ≥2 loci's files is suspect — it calls submit_grades (so `ungradedWarning` misses
+ * it) and never violates defect⊆file (so `defectFileViolations` misses it), yet it graded real matches as misses
+ * and its recall is spuriously 0. Observed with kimi-k2.6 on golden (0/11 across arms that glm-5.2/deepseek-v3.2
+ * scored 2–6). Pure so it's testable without a model call. `file` is per-case fileHits, `defect` the judge's matches.
+ */
+export function harshJudgeSuspect(
+  cases: Array<{ defect: number; file: number }>
+): boolean {
+  const totalDefect = cases.reduce((s, c) => s + c.defect, 0);
+  const casesWithFileHits = cases.filter((c) => c.file > 0).length;
+  return totalDefect === 0 && casesWithFileHits >= 2;
+}
+
+/** Warning for suspect-harsh passes — the under-permissive mirror of `hallucinationWarning`. */
+export function harshJudgeWarning(suspect: number, evaluated: number): string {
+  return `⚠️  SUSPECT-HARSH JUDGE: ${suspect}/${evaluated} pass(es) scored 0 defect matches while findings landed on ≥2 loci's files — a systematically under-permissive judge grades real matches as misses, passing both the tool-call and defect⊆file guards undetected, so its recall is spuriously 0. Treat this judge's DEFECT recall as unreliable (kimi-k2.6 does this on golden); cross-check with zai:glm-5.2 or a validated cross-family judge before recording any recall number.`;
+}
+
+/**
  * Sum billable tokens across a session's messages for the spend guard — mirrors `sumTokens` in
  * src/pi/worker.ts, including its `totalTokens - input` fallback for messages that report only a total. Feeds
  * a money-safety cap, so it stays byte-compatible with the worker's accounting.
