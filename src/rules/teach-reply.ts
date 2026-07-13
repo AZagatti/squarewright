@@ -70,10 +70,13 @@ export function gateSuggestion(
   s: RuleSuggestion | null
 ): RuleSuggestion | null {
   if (
-    !s ||
-    s.confidence < CONFIDENCE_FLOOR ||
-    !s.ruleText.trim() ||
-    !s.scope.trim()
+    !(
+      s &&
+      Number.isFinite(s.confidence) &&
+      s.confidence >= CONFIDENCE_FLOOR &&
+      s.ruleText.trim() &&
+      s.scope.trim()
+    )
   ) {
     return null;
   }

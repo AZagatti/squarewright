@@ -58,6 +58,18 @@ test("gateSuggestion drops null, low-confidence, empty-rule, and empty-scope sug
   expect(gateSuggestion(sug({ scope: "   " }))).toBeNull();
 });
 
+test("gateSuggestion drops a NaN / non-numeric confidence (must not bypass the floor via `NaN < FLOOR`)", () => {
+  expect(gateSuggestion(sug({ confidence: Number.NaN }))).toBeNull();
+  expect(
+    gateSuggestion(sug({ confidence: "high" as unknown as number }))
+  ).toBeNull();
+  expect(
+    gateSuggestion(sug({ confidence: Number.POSITIVE_INFINITY }))
+  ).toBeNull();
+  // a real above-floor confidence still passes
+  expect(gateSuggestion(sug({ confidence: 0.9 }))).not.toBeNull();
+});
+
 test("teach trigger is intentionally loose — slash form fires without the keyword", () => {
   // documents nit: the `remember`/`rule` keyword is optional; the interpreter (Part B) is the real filter.
   expect(hasTeachTrigger("/squarewright hey look at this")).toBe(true);
