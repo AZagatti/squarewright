@@ -58,3 +58,32 @@ test("analysisMentionsLocus: the structurer-drop gap it is designed to expose", 
     false
   );
 });
+
+test("analysisMentionsLocus: bare dotfiles are a known false-negative (documented gap)", () => {
+  // The regex needs a word char before the final dot, so a bare dotfile mentioned alone is missed. Harmless for
+  // the corpus (defect loci are real source files) but asserted so the gap is intentional, not an accident.
+  expect(
+    analysisMentionsLocus("check .gitignore for the pattern", ".gitignore")
+  ).toBe(false);
+  // …but a dotfile WITH an extension (the common real case) still matches.
+  expect(analysisMentionsLocus("the leak is in .env.local", ".env.local")).toBe(
+    true
+  );
+});
+
+test("drop vs synth: the per-locus decomposition the eval reports (not a scalar difference)", () => {
+  // The eval scores each locus on two axes and buckets per-locus, because analysis ≥ structured is NOT guaranteed.
+  const prose = "The bug is in src/a.ts.";
+  const locusNamed = "src/a.ts"; // analysis named it
+  const locusSynth = "src/b.ts"; // prose never named it, but a structured finding lands on it
+  const findings = [{ path: "src/b.ts" }]; // structurer surfaced b.ts (paraphrased/inferred)
+  const scored = [locusNamed, locusSynth].map((p) => ({
+    analysis: analysisMentionsLocus(prose, p),
+    structured: findings.some((f) => sameFile(f.path, p)),
+  }));
+  const drop = scored.filter((x) => x.analysis && !x.structured).length;
+  const synth = scored.filter((x) => x.structured && !x.analysis).length;
+  expect(drop).toBe(1); // a.ts: analysis named it, no structured finding → the #78 confound
+  expect(synth).toBe(1); // b.ts: structured finding, prose didn't name it → drop is a floor
+  // a naive scalar (analysisHits − structuredHits) would be 1 − 1 = 0, hiding BOTH — which is why we don't use it.
+});

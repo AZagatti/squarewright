@@ -593,17 +593,27 @@ async function main() {
         // NOTE this is file-level only — it cannot see root-cause/precision; a judge scorer is the real fix).
         // `sameFile` is shared with the miss-map so both score loci by one definition (src/eval/locus-match.ts).
         const lociTotal = c.expect_loci?.length ?? 0;
-        const hitLoci =
-          c.expect_loci?.filter((l) =>
-            findings.some((f) => sameFile(f.path, l.path))
-          ).length ?? 0;
-        // --analysis-recall: score the SAME loci against the raw analysis prose (pre-structurer). A locus the
-        // analysis named but the structurer dropped counts here but not in hitLoci — that gap IS the confound.
+        // Score every locus once on BOTH axes — structured (a pass-2 finding landed on the file) and analysis
+        // (--analysis-recall: the raw pass-1 prose named the file). Both reuse `sameFile`, so the two axes differ
+        // only in WHICH text they scan, not in the match rule (no metric drift).
         const analysisProse = analysisTexts.join("\n");
-        const hitLociAnalysis = doAnalysisRecall
-          ? (c.expect_loci?.filter((l) =>
-              analysisMentionsLocus(analysisProse, l.path)
-            ).length ?? 0)
+        const lociScored = (c.expect_loci ?? []).map((l) => ({
+          analysis:
+            doAnalysisRecall && analysisMentionsLocus(analysisProse, l.path),
+          structured: findings.some((f) => sameFile(f.path, l.path)),
+        }));
+        const hitLoci = lociScored.filter((x) => x.structured).length;
+        const hitLociAnalysis = lociScored.filter((x) => x.analysis).length;
+        // Decompose the two axes PER LOCUS rather than subtracting totals — `ahits ≥ hits` is not an invariant
+        // (the structurer can synthesize a locus-matching path from a vague description the prose never literally
+        // names), so a scalar `ahits − hits` could go negative and mislead. drop = the real #78 confound (analysis
+        // surfaced it, structurer dropped it); synth = structurer landed on a locus the prose never named, so a
+        // nonzero synth means analysis-recall UNDERcounts and `drop` is a floor.
+        const dropLoci = lociScored.filter(
+          (x) => x.analysis && !x.structured
+        ).length;
+        const synthLoci = doAnalysisRecall
+          ? lociScored.filter((x) => x.structured && !x.analysis).length
           : 0;
         const line = `[${c.label === "clean" ? "clean    " : "has-issue"}] ${c.id.padEnd(28)} raw=${findings.length} ${
           verifier ? `confirmed=${confirmed} ` : ""
@@ -612,6 +622,7 @@ async function main() {
         return {
           confirmed,
           costUsd: workerCost + verifyCost,
+          dropLoci,
           findings: findings.map((f) => ({
             line: f.line,
             message: f.message,
@@ -627,6 +638,7 @@ async function main() {
           noSubmit,
           rawFindings: findings.length,
           stack: c.stack,
+          synthLoci,
         };
       } catch (e) {
         // Isolate a per-case failure (e.g. a provider 429 once quota is exhausted) so it can't reject the whole
@@ -662,6 +674,8 @@ async function main() {
     );
     const issueHits = issue.reduce((s, r) => s + r.hitLoci, 0);
     const issueHitsAnalysis = issue.reduce((s, r) => s + r.hitLociAnalysis, 0);
+    const issueDrop = issue.reduce((s, r) => s + r.dropLoci, 0);
+    const issueSynth = issue.reduce((s, r) => s + r.synthLoci, 0);
     const issueTotal = issue.reduce((s, r) => s + r.lociTotal, 0);
     const cost = results.reduce((s, r) => s + r.costUsd, 0);
     const secs = results.reduce((s, r) => s + r.ms, 0) / 1000;
@@ -708,8 +722,13 @@ async function main() {
     );
     if (doAnalysisRecall) {
       console.log(
-        `  analysis-level locus recall (pre-structurer): ${issueHitsAnalysis}/${issueTotal}  ·  structurer drop: ${issueHitsAnalysis - issueHits} loci the analysis named but the structurer dropped`
+        `  analysis-level locus recall (pre-structurer): ${issueHitsAnalysis}/${issueTotal}  ·  structurer drop: ${issueDrop} loci the analysis named but no structured finding landed on`
       );
+      if (issueSynth > 0) {
+        console.log(
+          `  ⚠ ${issueSynth} locus/loci had a structured finding but were not named in the prose (structurer paraphrased a path, or the matcher missed the form) — treat the drop as a floor`
+        );
+      }
     }
     if (totalNoSubmit) {
       console.log(
@@ -740,8 +759,10 @@ async function main() {
           cleanFP,
           config,
           cost,
+          issueDrop: doAnalysisRecall ? issueDrop : undefined,
           issueHits,
           issueHitsAnalysis: doAnalysisRecall ? issueHitsAnalysis : undefined,
+          issueSynth: doAnalysisRecall ? issueSynth : undefined,
           issueTotal,
           results,
           totalNoSubmit,
@@ -759,8 +780,10 @@ async function main() {
         cleanCases: clean.length,
         cleanFP,
         issueCases: issue.length,
+        issueDrop: doAnalysisRecall ? issueDrop : undefined,
         issueHits,
         issueHitsAnalysis: doAnalysisRecall ? issueHitsAnalysis : undefined,
+        issueSynth: doAnalysisRecall ? issueSynth : undefined,
         issueTotal,
         modelSeconds: Number(secs.toFixed(0)),
         realCostUsd: realCost === null ? null : Number(realCost.toFixed(4)),
