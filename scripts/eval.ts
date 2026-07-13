@@ -722,11 +722,14 @@ async function main() {
     );
     if (doAnalysisRecall) {
       console.log(
-        `  analysis-level locus recall (pre-structurer): ${issueHitsAnalysis}/${issueTotal}  ·  structurer drop: ${issueDrop} loci the analysis named but no structured finding landed on`
+        `  analysis-level locus recall (pre-structurer): ${issueHitsAnalysis}/${issueTotal}  ·  structurer drop ≤ ${issueDrop} loci (UPPER BOUND — analysis NAMED the file but no structured finding landed on it)`
+      );
+      console.log(
+        "    ↳ file-level caveat: 'named' includes the analysis mentioning a file while concluding it CLEAN, so drop overcounts — confirm real drops per-case (rich analysis + raw=0 = a true structurer drop; see eval/golden/README.md)"
       );
       if (issueSynth > 0) {
         console.log(
-          `  ⚠ ${issueSynth} locus/loci had a structured finding but were not named in the prose (structurer paraphrased a path, or the matcher missed the form) — treat the drop as a floor`
+          `  ⚠ ${issueSynth} locus/loci had a structured finding but were not named in the prose (structurer paraphrased a path, or the matcher missed the form) — so on that side the bound is a floor`
         );
       }
     }
