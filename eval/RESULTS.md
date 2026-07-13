@@ -1308,9 +1308,16 @@ so any recall gap is the structurer alone, with pass-1 non-determinism held out.
 - **This CORRECTS the earlier "structurer drop ~6" lead** (analysis-recall section above): that number was mostly
   (a) file-level clean-mention false signals and (b) single-run analysis variance, NOT real structurer drops. The
   true structurer drop is ≈0 — which vindicates shipping `drop` as an explicit UPPER BOUND (#121).
-- **Lever implication:** the recall lever is on pass-1 — self-consistency sampling (union across analysis samples
-  ≈6/11 here vs single-sample ~4/11) or a stronger/more-consistent analysis MODEL — not the structurer. Consistent
-  with the standing memory (recall is model-liftable *analysis* reachability) and the `--samples` recall direction.
+- **Lever implication — points at pass-1, but NOT at sampling (reconciled with the prior null).** The variance
+  lives in the analysis. A naive read says "union the samples" — and the FILE-level union here looks like ~6/11 vs
+  single ~4/11. BUT that contradicts the earlier judged result ("Self-consistency (`--samples 3`) does NOT fix
+  glm-5.2 recall", 2026-07-10): with a cross-family deepseek judge at DEFECT level, `--samples 3` gave no lift
+  (median 3→~2). The reconciliation is the metric gap: file-level union rises because extra sampled findings land
+  on the right FILE, but they don't name the right ROOT CAUSE, so DEFECT-level recall (the real target) doesn't
+  move — the file-level ≈6/11 is largely a judge-illusory gain. Net: the pass-1 misses are **model-ceiling**
+  (fundamental reasoning gaps on that sample), so the recall lever is a **stronger / more-consistent analysis
+  MODEL**, not the structurer and not sampling. Consistent with the standing memory (recall is model-liftable
+  *analysis* reachability) and the prior `--samples` null.
 - Honest edge: both structurers are glm-family; a cross-family extractor is untested. But the 11/24 empty-analysis
   samples cap ANY structurer's ceiling (nothing to extract), so the "structurer model isn't the primary lever"
   conclusion is robust to that.
