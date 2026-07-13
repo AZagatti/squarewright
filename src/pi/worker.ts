@@ -583,21 +583,28 @@ export async function structureAnalysis(
     analysisText.length > 0
       ? analysisText
       : "(the reviewer produced no analysis text)";
-  await s2.prompt(
-    "Extract the findings from this code-review analysis into submit_findings " +
-      `(empty findings array if it reports no issues):\n\n${analysisForStructuring}`
-  );
-  let nudges = 0;
-  while (captured === undefined && nudges < 2) {
-    nudges += 1;
-    // biome-ignore lint/performance/noAwaitInLoops: each nudge is only sent if the previous one failed to elicit submit_findings — inherently sequential/dependent
+  let costUsd: number;
+  let structTokens: { input: number; output: number };
+  try {
     await s2.prompt(
-      "Call submit_findings now, exactly once, with the findings from the analysis (empty array if none)."
+      "Extract the findings from this code-review analysis into submit_findings " +
+        `(empty findings array if it reports no issues):\n\n${analysisForStructuring}`
     );
+    let nudges = 0;
+    while (captured === undefined && nudges < 2) {
+      nudges += 1;
+      // biome-ignore lint/performance/noAwaitInLoops: each nudge is only sent if the previous one failed to elicit submit_findings — inherently sequential/dependent
+      await s2.prompt(
+        "Call submit_findings now, exactly once, with the findings from the analysis (empty array if none)."
+      );
+    }
+    costUsd = sumCost(s2.messages);
+    structTokens = sumTokens(s2.messages);
+  } finally {
+    // Always dispose — a model error/timeout on any prompt must not leak the session (dispose() is the only path
+    // that aborts retry/compaction/bash and frees session resources). Mirrors src/pi/verifier.ts's try/finally.
+    s2.dispose();
   }
-  const costUsd = sumCost(s2.messages);
-  const structTokens = sumTokens(s2.messages);
-  s2.dispose();
 
   // biome-ignore lint/suspicious/noUnnecessaryConditions: runtime guard — the model may still not have called submit_findings after the nudge loop exhausts its retries; Biome's flow analysis can't see that the while loop can exit with `captured` still undefined
   const submitted = captured?.findings ?? [];
@@ -661,11 +668,18 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
           toolCalls += 1;
         }
       });
-      await s1.prompt(renderAnalysisPrompt(request.context, request.acCheck));
-      const analysisText = extractAssistantText(s1.messages);
-      costUsd += sumCost(s1.messages);
-      const analysisTokens = sumTokens(s1.messages);
-      s1.dispose();
+      let analysisText: string;
+      let analysisTokens: { input: number; output: number };
+      try {
+        await s1.prompt(renderAnalysisPrompt(request.context, request.acCheck));
+        analysisText = extractAssistantText(s1.messages);
+        costUsd += sumCost(s1.messages);
+        analysisTokens = sumTokens(s1.messages);
+      } finally {
+        // Always dispose — a model error/timeout must not leak the pass-1 session (dispose() is the only path that
+        // aborts retry/compaction/bash and frees session resources). Mirrors src/pi/verifier.ts's try/finally.
+        s1.dispose();
+      }
 
       // ── Pass 2: structure (fixed reliable extractor, no reasoning) — delegated to structureAnalysis so the
       // fixed-analysis structurer A/B drives the identical pass-2 (no drift between production and measurement).
