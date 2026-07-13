@@ -14,6 +14,16 @@ const HEADER = `# Squarewright — reviewer assembly config, written by \`square
 # Review lanes use z.ai's free glm-5.2 (reasoning-off); the structurer uses free glm-5-turbo. Set the
 # ZAI_API_KEY secret and you have a working reviewer. Point "strong" at a frontier model for deeper
 # correctness/security review. See docs/adr/0001, docs/ROADMAP.md.
+#
+# OPT-IN: AC-conformance. To also check a PR against the acceptance criteria of the issue it Closes (flags a
+# criterion silently left unmet), add an auditor persona and point it at a genuinely strong model — a free/small
+# model is unreliable at the silent-vs-justified judgment (eval/RESULTS.md 2026-07-13). It runs only on PRs that
+# link an issue. e.g. add to personas:
+#   - id: auditor
+#     label: Acceptance criteria
+#     acCheck: true
+#     lane: strong            # point "strong" at e.g. a Claude/GPT lane, not the free default
+#     prompt: "You audit whether the PR satisfies the linked issue's acceptance criteria."
 `;
 
 function lane(id: string, model: string): ModelLane {
