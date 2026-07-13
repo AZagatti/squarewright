@@ -116,6 +116,24 @@ describe("isAuthorizedTeachActor", () => {
       false
     );
   });
+  test("author-exclusion is case-insensitive (GitHub logins are)", () => {
+    // "Contributor" and "contributor" are the same GitHub account — a case-only difference between the two
+    // payloads must not let the PR author teach on their own PR.
+    expect(
+      isAuthorizedTeachActor({
+        ...ok,
+        actorLogin: "Contributor",
+        prAuthorLogin: "contributor",
+      })
+    ).toBe(false);
+    expect(
+      isAuthorizedTeachActor({
+        ...ok,
+        actorLogin: "contributor",
+        prAuthorLogin: "CONTRIBUTOR",
+      })
+    ).toBe(false);
+  });
   test("fails closed when actor or PR-author login is missing (lookup failure)", () => {
     // an unknown PR author (e.g. the workflow's author lookup failed) must NOT silently disable the exclusion
     expect(isAuthorizedTeachActor({ ...ok, prAuthorLogin: "" })).toBe(false);
