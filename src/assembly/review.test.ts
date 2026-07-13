@@ -496,6 +496,52 @@ describe("runReview", () => {
     expect(gen?.acCheck).toBeFalsy();
   });
 
+  test("an AC pass that THROWS is isolated — persona findings survive and the AC lens is disclosed", async () => {
+    const errSpy = spyOn(console, "error").mockImplementation(() => {
+      // silence + capture the logged cause
+    });
+    const config: AssemblyConfig = {
+      grounders: [],
+      lanes: [
+        { id: "cheap", model: "glm-5-turbo", provider: "zai" },
+        { id: "strong", model: "big", provider: "openrouter" },
+      ],
+      personas: [
+        { id: "gen", lane: "cheap", prompt: "review it", when: ["always"] },
+        {
+          acCheck: true,
+          id: "auditor",
+          label: "AC",
+          lane: "strong",
+          prompt: "check ACs",
+        },
+      ],
+    };
+    // the AC pass (acCheck:true) throws; the defect persona succeeds with a real finding
+    const worker: PiWorker = {
+      run: (req) =>
+        req.acCheck
+          ? Promise.reject(new Error("AC provider 500"))
+          : Promise.resolve({
+              findings: [finding(1)],
+              usage: { submitted: true, toolCalls: 1 },
+            }),
+    };
+    const withIssue: ReviewContext = {
+      ...CONTEXT,
+      linkedIssue: { body: "AC: do X", number: 5, title: "T" },
+    };
+    const out = await runReview(withIssue, config, worker);
+
+    // the defect persona's finding survived the AC pass's error
+    expect(out.findings).toHaveLength(1);
+    // the AC lens is disclosed as errored (never silently dropped) and its cause is logged
+    expect(out.sticky).toContain("Review error");
+    expect(out.sticky).toContain("AC");
+    expect(errSpy.mock.calls[0]?.[0]).toContain("AC provider 500");
+    errSpy.mockRestore();
+  });
+
   test("docs-only PR selects no personas and never calls the worker", async () => {
     let calls = 0;
     const worker: PiWorker = {
