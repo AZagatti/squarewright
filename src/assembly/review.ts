@@ -29,6 +29,16 @@ import type { AssemblyConfig } from "./config.js";
 /** Max review lenses per change-set — keeps cost and attention bounded. */
 const MAX_PERSONAS = 4;
 
+/**
+ * Cost-visibility threshold (in the spirit of the money-guard, though not the paid-spend hard rule itself): the
+ * trusted `.review-rules` + `contextDocs` preamble is re-injected into EVERY persona pass, so its size is paid once
+ * per pass. Above this we WARN (never truncate — it's trusted maintainer-authored content; silently cutting a rule
+ * could invert its meaning) so a maintainer whose docs/rules grew large notices the per-review cost. Heuristic:
+ * being off by some chars only shifts when the harmless warning fires. ~24k chars ≈ 6k tokens, well above a normal
+ * curated rules+docs set.
+ */
+const LARGE_PREAMBLE_CHARS = 24_000;
+
 export interface ReviewOutput {
   /** the deduplicated findings behind the output (for the feedback/data loop) */
   findings: AggregatedFinding[];
@@ -269,6 +279,13 @@ export async function runReview(
       )
     );
     preamble = rules + docs;
+    if (preamble.length > LARGE_PREAMBLE_CHARS) {
+      console.warn(
+        `⚠️  Project review context (.review-rules + contextDocs) is ${preamble.length} chars and is injected into ` +
+          `each of ${passes.length} review pass(es) (~${preamble.length * passes.length} chars of prompt overhead ` +
+          "this review). Trim the rules/docs or scope their globs more tightly to cut per-review cost."
+      );
+    }
   }
 
   // A finding's `source` is its PASS id; attribute it to the pass's persona label(s) for the review output.
