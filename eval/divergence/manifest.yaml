@@ -1,0 +1,167 @@
+# Divergence corpus — real-world cases where a change introduced a security/correctness bug by
+# diverging from a sibling pattern the same codebase already established elsewhere. Seeded from
+# eval/divergence-cases.md (9 live-verified candidates); this is the measurement substrate for the
+# planned file-aware divergence-detection lens (#45 follow-on) — mirrors eval/golden/ in shape.
+#
+# Every case below points at the INTRODUCING commit/PR (the one that added the divergence), not the
+# fix, so the corpus question is "would a reviewer of THIS diff have caught it?" — same framing as
+# eval/golden/manifest.yaml.
+#
+# sibling_scope (new field vs. golden, carried over from divergence-cases.md):
+#   same-diff  — the sibling (the pattern the changed code should have matched) is visible as
+#                context/unchanged lines in the SAME frozen diff. No repo grounding needed; a
+#                diff-only reviewer has everything required.
+#   same-file  — the sibling lives in the same file but in a hunk the introducing diff didn't touch,
+#                so it is NOT visible in the frozen .diff. A file-aware reviewer needs the full file.
+#   cross-file — the sibling lives in a file the introducing change never touched. Needs full-repo
+#                retrieval, not just one file.
+#
+# HARNESS GAP (flagging, not fixing here): scripts/eval.ts's Case.pr is required (number) and
+# ghRepoReader()/headSha() resolve grounding via `gh pr view <pr>` — i.e. --verify/grounded runs are
+# PR-only today. The 3 cases below sourced from a direct commit (no PR) — div-goshs-e3c3d37,
+# div-vaultwarden-c555f7d, div-zsh-hlgroup-52783 — freeze fine (diffs are pre-frozen, so `freeze()`'s
+# existsSync guard short-circuits) and score fine on ungrounded (diff-only) runs, but grounded/
+# --verify runs against them will break until eval.ts grows a commit-SHA grounding path. Each such
+# case carries a `commit:` field (the SHA `gh api repos/<repo>/commits/<sha>` resolves) instead of
+# `pr:`. Follow-up, not done here: teach ghRepoReader to accept a raw ref (PR head SHA or commit SHA)
+# instead of only a PR number.
+#
+# Freeze diffs with:  bun run scripts/eval.ts --manifest eval/divergence/manifest.yaml --freeze
+# (all 6 are already frozen below; freeze is a no-op unless a diff file goes missing)
+
+cases:
+  # ── same-diff (diff-only; no grounding needed) ─────────────────────────────
+  - id: div-pulumi-21112
+    repo: pulumi/pulumi
+    pr: 21112
+    stack: go
+    kind: security
+    size: "+53/-15"
+    label: has-issue
+    sibling_scope: same-diff
+    note: >-
+      cloudJournaler.Close() is made idempotent with an early `if j.closed { return nil }` guard
+      inserted right after `j.m.Lock()` — but the return happens BEFORE the matching `j.m.Unlock()`
+      three lines below, so the second (and every later) call to Close() returns while still holding
+      j.m, permanently deadlocking anything that calls Close() again or takes the same lock. The
+      established sibling pattern is the function's own pre-existing Lock/Unlock pairing (and
+      AddJournalEntry's defer-based Unlock just above) in the SAME diff — the fix is simply an
+      Unlock() before the early return.
+    evidence: "PR #21112 merged 2025-12-02 ('Add comments, support multiple Close()'); the deadlock was caught and fixed 5 days later in pulumi/pulumi#21117 ('we forgot to unlock')."
+    expect_loci:
+      - path: pkg/backend/httpstate/journal/snapshot.go
+        about: "cloudJournaler.Close(): `if j.closed { return nil }` added directly after j.m.Lock(), before the j.m.Unlock() 3 lines below — the idempotent early-return skips the unlock and deadlocks all subsequent Close()/lock callers."
+
+  - id: div-goshs-e3c3d37
+    repo: patrickhener/goshs
+    commit: e3c3d37dc9a08eddd3cd0d7cea4a3f0a49e2b521
+    stack: go
+    kind: security
+    size: "+35/-4 (Go only; also touches JS/HTML/templates for the token plumbing)"
+    label: has-issue
+    sibling_scope: same-diff
+    note: >-
+      Adds a checkCSRF() guard and calls it from POST upload() in httpserver/updown.go, but the
+      sibling PUT put() handler (defined immediately above upload() in the same file/diff, ~10 lines
+      up — visible as unchanged context in the same hunk) is left uncovered, so PUT-based file
+      writes stay CSRF-forgeable even after this commit adds CSRF protection everywhere else
+      (delete, mkdir, upload).
+    evidence: "Commit e3c3d37dc9 fixed GHSA-jrq5-hg6x-j6g3 by adding CSRF tokens, but missed put(); the gap was later reported as its own advisory GHSA-rhf7-wvw3-vjvm and fixed by commit 0e715b94e1, which adds the identical `if !fs.checkCSRF(w, req) { return }` guard to put()."
+    expect_loci:
+      - path: httpserver/updown.go
+        about: "put() (PUT upload handler, just above upload() in the same file) never receives the checkCSRF() guard that upload() gets in this same commit — no diff lines touch put() at all, which is itself the tell."
+
+  - id: div-vaultwarden-c555f7d
+    repo: dani-garcia/vaultwarden
+    commit: c555f7d1980c8ab3ac8d64b0297e47c621590368
+    stack: rust
+    kind: security
+    size: "+7/-0 net on the relevant hunk (commit as a whole: +~30/-~230, mostly dead-route removal)"
+    label: has-issue
+    sibling_scope: same-diff
+    note: >-
+      In the same commit, get_org_collections (src/api/core/organizations.rs) gains a new
+      `if !headers.membership.has_full_access() { err_code!(...) }` guard restricting the endpoint
+      to full-access members — but its sibling get_org_collections_details, ~15 lines below in the
+      SAME file and SAME commit, gets no equivalent guard, so it keeps returning per-collection
+      access details (including which collections a caller can manage) to any org member regardless
+      of full-access status.
+    evidence: "CVE-2026-33420 / GHSA-jjxg-p3v6-52ww. get_org_collections_details' weaker check next to a same-commit sibling that got the stronger check is the strongest single datapoint in the corpus: a human reviewing both functions side by side in the same diff still let it through."
+    expect_loci:
+      - path: src/api/core/organizations.rs
+        about: "get_org_collections_details lacks the has_full_access() guard that its sibling get_org_collections gained 15 lines above, in this same commit — leaks per-collection manage/access details to any org member."
+
+  - id: div-gitea-issueconfig-20956
+    repo: go-gitea/gitea
+    pr: 20956
+    stack: go
+    kind: security
+    size: "+673/-0 total PR (routing change is 2 lines: routers/api/v1/api.go +2)"
+    label: has-issue
+    sibling_scope: same-diff
+    note: >-
+      Adds the `/issue_config` and `/issue_config/validate` GET routes right above the pre-existing
+      `/languages` route in routers/api/v1/api.go — `/languages` already carries
+      `reqRepoReader(unit.TypeCode)` (visible as an unchanged context line in the same hunk,
+      immediately below the two new routes) but the two new routes are registered with only
+      `context.ReferencesGitRepo()`, no repo-reader permission check, so a repo's issue templates/
+      config become readable by anyone regardless of Code-unit read access.
+    evidence: >-
+      CVE-2026-27783; fixed 2+ years later by go-gitea/gitea#37769 ('fix(permissions): Fix reading
+      permission'), which adds `reqRepoReader(unit.TypeCode)` to /issue_templates, /issue_config and
+      /issue_config/validate to match /languages and /licenses — /issue_templates itself was
+      introduced even earlier without the check (PR #11450, also diff-visible against the same
+      /languages sibling); #20956 is used here because it lands 2 of the 3 vulnerable routes in one
+      self-contained diff against the guarded sibling.
+    expect_loci:
+      - path: routers/api/v1/api.go
+        about: "/issue_config and /issue_config/validate registered with only context.ReferencesGitRepo() — missing the reqRepoReader(unit.TypeCode) the very next line's /languages route already has."
+
+  - id: div-immich-11824
+    repo: immich-app/immich
+    pr: 11824
+    stack: ts
+    kind: security
+    size: "trimmed to 3 relevant files (full PR is +/-2269 across mobile/openapi/web codegen noise); real diff is ~90 lines"
+    label: has-issue
+    sibling_scope: same-diff
+    note: >-
+      Introduces per-key granular permissions. ApiKeyService.create() gets a new
+      `isGranted({ requested: dto.permissions, current: auth.apiKey.permissions })` check so an API
+      key can't grant itself permissions its own key doesn't have — but the sibling update() method,
+      ~10 lines below in the SAME file/SAME commit, updates `permissions` with no equivalent check,
+      so an existing API key can PATCH itself into a strictly more-privileged key (privilege
+      escalation), even though the file this diff touches makes clear the author knew the check
+      belonged on both write paths.
+    evidence: "CVE-2026-23896 / GHSA-237r-x578-h5mv; fixed by commit b123beae38, which adds the identical isGranted(...) check (word-for-word) to update()."
+    expect_loci:
+      - path: server/src/services/api-key.service.ts
+        about: "update() omits the isGranted(...) permission-escalation guard that create() gains ~10 lines above it, in this same commit — lets an API key grant itself broader permissions than it currently holds."
+
+  # ── same-file (sibling not in the frozen diff — needs full-file grounding) ─
+  - id: div-zsh-hlgroup-52783
+    repo: zsh-users/zsh
+    commit: 7139d3b286bba5874548eb6faca25cf9bb90f7be
+    stack: c
+    kind: security
+    size: "+2/-1"
+    label: has-issue
+    sibling_scope: same-file
+    note: >-
+      Adds a `PM_UNSET` guard to getgroup() in Src/Modules/hlgroup.c so it won't dereference an
+      unset hash element. scangroup() in the SAME FILE (~20 lines below, added in the module's
+      original commit 14c230dc3 and unmodified here) does the structurally identical iteration over
+      hash-group nodes and needed the identical guard, but this commit only touches getgroup() — the
+      frozen diff does NOT show scangroup() at all (0 lines changed there), so a diff-only reviewer
+      has no way to know it exists. Grading this case fairly requires giving the reviewer the full
+      hlgroup.c file (or at minimum the scangroup() function body) as grounding context, not just
+      this diff — a genuinely file-aware check, not a diff-only one.
+    evidence: >-
+      Commit message says 'allow for unset hash element' (workers/52783). The gap was caught 14
+      months later and fixed by commit 6dfaf678ad ('54555: fix in 52783 was incomplete, add same
+      check in scangroup()'), which adds the byte-for-byte-equivalent `if (((Param) hn)->node.flags &
+      PM_UNSET) continue;` check to scangroup()'s loop — segfault (GHSA not yet assigned at time of
+      writing per divergence-cases.md; tracked via zsh-workers 52783/54555).
+    expect_loci:
+      - path: Src/Modules/hlgroup.c
+        about: "scangroup(), unmodified by this commit, has the identical hash-node-iteration shape as getgroup() (which this commit hardens) but is never given the matching PM_UNSET check — not visible in the diff itself, only in the full file."

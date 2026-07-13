@@ -1102,3 +1102,32 @@ actually is"). It stays an **opt-in precision lever** (`cotScaffold` flag) for u
 and accept the recall cost. This is the council mechanism working: N=3 would have justified the flip; the
 skeptic-demanded reps changed the answer. (Ship-path smoke separately confirmed the scaffold renders honestly
 through the real `runReview`/`render.ts` #102 footer — that gap is closed; it just isn't a default-worthy gain.)
+
+## Divergence corpus — the lens catches FEWER real divergences than baseline (2026-07-13, B → no-go)
+
+Built a 6-case divergence corpus (`eval/divergence/`, 5 same-diff + 1 same-file, from the 9 verified cases; 3
+off-diff/cross-file cases deferred as not cleanly buildable). Ran baseline vs the eval-only `--divergence` note,
+glm-5.2, ungrounded (diff-only), N=2 — the recall-on-real-divergences measurement the golden/dogfood runs couldn't do.
+
+| Arm | Recall (N=2) | Per-case (baseline r1 → divergence r1) |
+|---|---|---|
+| Baseline | **4/6, 4/6** | hits: vaultwarden, goshs, immich, zsh |
+| `--divergence` | **2/6, 2/6** | hits: vaultwarden, immich — LOST goshs + zsh |
+
+**The `--divergence` instruction is net-NEGATIVE even on divergence bugs** (4→2, replicated): its heavy narrowing
+("flag ONLY security/correctness; you MUST cite the sibling; else don't raise it") suppresses real catches. And
+**baseline already catches ~4/6 with NO divergence lens** — because a same-diff divergence (one path guarded, its
+sibling in the same diff not) is just a normal correctness/security bug the `sentinel`/`warden` personas flag.
+
+Caveats (honest): loci scoring is file-level, so baseline's 4/6 OVERSTATES true divergence-catches — e.g. `zsh`'s
+"hit" is a same-file coincidence (the diverging sibling `scangroup` isn't in the diff at all; baseline flagged the
+changed `getgroup` instead). And the corpus is biased toward same-diff (the harder off-diff cases were deferred),
+so **file-aware's off-diff value stays UNTESTED here**, not disproven.
+
+**Decision (B): do NOT build the file-aware divergence lens now.** The evidence: (a) the divergence *instruction*
+backfires; (b) the catchable (same-diff) subset is already handled by the base personas — a lens adds nothing;
+(c) the only value left is off-diff reach, which needs grounding (measured to collapse precision here), is thin
+(1 corpus case), and prior art rates naive at ~80% noise. Not cost-justified on current evidence. The class is
+real (falsifiability passed) but chasing it with a dedicated lens doesn't earn its place. Corpus kept for the
+record + any future retest. This is the measure-before-build discipline returning a clean NO-GO — the same one
+that corrected the scaffold flip.
