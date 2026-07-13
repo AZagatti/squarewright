@@ -405,6 +405,24 @@ describe("runReview", () => {
     expect(out.sticky).toContain("gen");
   });
 
+  test("a pass whose ANALYSIS failed (analysisFailed) is disclosed as errored, not a clean review", async () => {
+    // The exact shape worker.run returns when pass-1 produced no prose (a provider refusal / non-retryable quota
+    // error): empty findings + submitted:true (the structurer "succeeded" on a placeholder) + analysisFailed:true.
+    // Without the guard this ships as an indistinguishable "nothing found" — a false clean bill on a quota cap.
+    const worker = stubWorker({
+      findings: [],
+      usage: { analysisFailed: true, submitted: true, toolCalls: 0 },
+    });
+    const out = await runReview(CONTEXT, CONFIG, worker);
+
+    expect(out.findings).toHaveLength(0);
+    // disclosed as a review error (a provider failure), never a clean verdict
+    expect(out.sticky).toContain("Review error");
+    expect(out.sticky).toContain("gen");
+    // and NOT mislabeled as merely "incomplete" (that's the structurer-didn't-submit case)
+    expect(out.sticky).not.toContain("Incomplete review");
+  });
+
   test("a pass that THROWS is isolated — other lenses' findings survive and it's disclosed", async () => {
     // A transient provider error on one lens must NOT abort the whole review and lose the others' real findings.
     const errSpy = spyOn(console, "error").mockImplementation(() => {

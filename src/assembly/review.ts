@@ -137,7 +137,8 @@ async function runAcPass(
       systemPrompt: acPersona.prompt,
     });
     return {
-      errored: false,
+      // a failed pass-1 analysis (refusal / non-retryable quota) is a run failure, not a clean AC check
+      errored: result.usage?.analysisFailed ?? false,
       findings: result.findings,
       incomplete: result.usage?.submitted === false,
       lens,
@@ -223,9 +224,14 @@ async function runPersonaPasses(
       continue;
     }
     findings.push(...result.findings);
-    // A defined-and-false `submitted` means the structurer never submitted for this pass (undefined = no signal,
-    // e.g. a stub without usage — don't warn on that). Never treat a failed submission as a clean pass.
-    if (result.usage && result.usage.submitted === false) {
+    // Pass-1 analysis failed (provider refusal / non-retryable quota error) — the empty findings are a FAILURE,
+    // not a clean review, and it didn't throw, so disclose it as errored (a provider failure) rather than let it
+    // ship as "nothing found". Checked before `submitted` because on this path `submitted` is a misleading true.
+    if (result.usage?.analysisFailed) {
+      erroredPassIds.add(pass.id);
+    } else if (result.usage && result.usage.submitted === false) {
+      // A defined-and-false `submitted` means the structurer never submitted for this pass (undefined = no signal,
+      // e.g. a stub without usage — don't warn on that). Never treat a failed submission as a clean pass.
       incompletePassIds.add(pass.id);
     }
     if (result.usage?.summary?.trim()) {

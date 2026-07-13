@@ -739,9 +739,23 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
       toolCalls += structured.toolCalls;
       costUsd += structured.costUsd;
 
+      // Pass-1 produced no prose → the analysis turn failed (a provider refusal/content-filter, or a NON-retryable
+      // quota/billing error — Pi doesn't retry those and `prompt()` doesn't throw). The analysis prompt REQUIRES
+      // prose (even "no issues found"), so empty text is unambiguous failure. Surfaced so the caller discloses it
+      // instead of shipping the structurer's zero findings as a clean review.
+      const analysisFailed = analysisText.trim().length === 0;
+      if (analysisFailed) {
+        console.error(
+          `Analysis pass produced no output for persona "${request.persona ?? "persona:general"}" ` +
+            `on ${request.lane.provider}/${request.lane.model} — treating the pass as failed (likely a provider ` +
+            "refusal or a non-retryable quota/billing error). This lens did NOT review the change."
+        );
+      }
+
       return {
         findings: structured.findings,
         usage: {
+          analysisFailed,
           analysisText,
           analysisTokens,
           costUsd,
