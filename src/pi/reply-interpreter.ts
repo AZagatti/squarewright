@@ -93,6 +93,10 @@ Call submit_rule exactly once:
   ruleText to "" and confidence to 0. Do not invent a rule that isn't there.`;
 
 const ruleSchema = Type.Object({
+  // The [0,1] bounds are a BEST-EFFORT hint to the model: `execute` casts the tool params without a runtime
+  // `Value.Check`, and not every provider does constrained JSON-schema decoding, so a model could still return an
+  // out-of-range value. The real backstop is `gateSuggestion`'s `confidence >= CONFIDENCE_FLOOR` floor downstream;
+  // an over-reported confidence is harmless (the gate has no upper bound — being MORE sure never bypasses it).
   confidence: Type.Number({
     description:
       "0..1: how sure you are the reply expresses a durable, generalizable, reusable rule. 0 if it carries none.",
