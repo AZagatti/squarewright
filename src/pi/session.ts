@@ -22,6 +22,16 @@ export interface RepoReader {
 }
 
 export interface WorkerRequest {
+  /**
+   * Enable the AC-conformance check for THIS pass (eval/RESULTS.md 2026-07-13: viable with a stronger-model check
+   * pass — sonnet-5 3/3 where free glm-5.2 seesawed). When true AND `context.linkedIssue` is present, the analysis
+   * prompt appends the linked issue's acceptance criteria (as UNTRUSTED user-turn reference data) and the pass's
+   * job becomes: flag criteria that are SILENTLY unmet — not met, and not explicitly acknowledged/deferred in the
+   * PR. Scoped to the AC persona's pass only, so issue text never leaks into the defect personas' context (the
+   * measured intent-confound). Best paired with a strong lane. Off by default; not yet wired into production
+   * routing (the gather-side issue fetch + issues:read scope is a separate reviewed change).
+   */
+  acCheck?: boolean;
   budget?: { maxToolCalls?: number; maxTokens?: number };
   context: ReviewContext;
   /**
