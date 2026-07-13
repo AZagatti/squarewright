@@ -53,3 +53,40 @@ test("distinct issues are not merged", () => {
   ]);
   expect(out).toHaveLength(2);
 });
+
+test("crossSourceOnly: two nearby overlapping findings from the SAME source are kept (no data loss)", () => {
+  // one persona pass reporting two distinct-but-similar bugs at adjacent lines — the model's own distinct output
+  const out = aggregateFindings(
+    [
+      f({ line: 10, message: "missing null check on user.profile.avatar" }),
+      f({ line: 12, message: "missing null check on user.profile.bio" }),
+    ],
+    { crossSourceOnly: true }
+  );
+  expect(out).toHaveLength(2); // both kept; neither silently dropped
+});
+
+test("crossSourceOnly: genuine cross-persona agreement STILL collapses with consensus 2", () => {
+  const out = aggregateFindings(
+    [f({ source: "persona:a" }), f({ line: 11, source: "persona:b" })],
+    { crossSourceOnly: true }
+  );
+  expect(out).toHaveLength(1);
+  expect(out[0]?.consensus).toBe(2);
+  expect(out[0]?.sources).toEqual(["persona:a", "persona:b"]);
+});
+
+test("line-less (PR-level) findings do not merge on text overlap alone", () => {
+  // AC-conformance-style findings have no line anchor; Math.abs(NaN) > 3 is false, which used to let them merge.
+  const out = aggregateFindings([
+    f({
+      line: undefined as unknown as number,
+      message: "criterion A unmet: ships without the gate",
+    }),
+    f({
+      line: undefined as unknown as number,
+      message: "criterion B unmet: ships without the docs",
+    }),
+  ]);
+  expect(out).toHaveLength(2);
+});

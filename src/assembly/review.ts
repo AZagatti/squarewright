@@ -239,7 +239,10 @@ export async function runReview(
     lenses.push(ac.lens); // attribute AC findings + list it in the honesty footer roster
   }
 
-  const findings = aggregateFindings(all);
+  // crossSourceOnly: on the production path each persona runs exactly one pass, so only genuine cross-persona
+  // agreement should collapse — never two distinct findings from the same pass (that drops one). The eval's
+  // --samples path deliberately leaves this off so re-sampled duplicates of one persona still union.
+  const findings = aggregateFindings(all, { crossSourceOnly: true });
   const { inline, unplaceable } = mapToInlineComments(findings, context.files, {
     labelFor,
   });
