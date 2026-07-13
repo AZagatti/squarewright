@@ -1,0 +1,14 @@
+{
+  // Deploys the built Astro docs site as Cloudflare Workers static assets (the current replacement for Pages).
+  // The Worker name must MATCH the Worker created in the dashboard when connecting the repo to Workers Builds,
+  // or the build fails (see site/DEPLOY.md).
+  "name": "squarewright-docs",
+  "compatibility_date": "2025-09-09",
+  "assets": {
+    // Relative to this file (the `site/` root directory). Astro builds the static site into `site/dist`; its
+    // CONTENTS are served at the domain root — the folder names (`site`, `dist`) never appear in the URL.
+    "directory": "./dist",
+    // Astro/Starlight emit a real 404.html; serve it for unmatched paths (this is a multi-page site, not an SPA).
+    "not_found_handling": "404-page"
+  }
+}

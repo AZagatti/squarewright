@@ -4,10 +4,10 @@ import { defineConfig } from "astro/config";
 
 // https://astro.build/config
 export default defineConfig({
-  // Deploy target is the project page https://azagatti.github.io/squarewright/, so `base` must be the repo path or
-  // every asset/link resolves at the domain root and 404s. (Change both if a custom domain is set up later.)
-  site: "https://azagatti.github.io",
-  base: "/squarewright",
+  // Deployed to Cloudflare Workers static assets (see site/wrangler.jsonc), which serves at the ROOT — no base
+  // path. Update `site` to the real Worker URL (squarewright-docs.<subdomain>.workers.dev) or a custom domain once
+  // known; it only affects sitemap/canonical absolute URLs.
+  site: "https://squarewright-docs.workers.dev",
   integrations: [
     starlight({
       title: "Squarewright",
