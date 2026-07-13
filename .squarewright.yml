@@ -6,6 +6,7 @@
 
 budget:
   maxToolCalls: 30
+cotScaffold: false
 defaultLane: cheap
 feedback:
   aggregate: false
