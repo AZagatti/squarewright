@@ -1185,3 +1185,28 @@ status as INFORMATIONAL (not a hard finding a maintainer must triage), (3) highe
 measure-before-build discipline self-correcting a premature verdict — the same pattern as the scaffold N=3→N=6 fix.
 The one durable win stands regardless: squarewright's OWN PR #80 shipped a silently-unmet ship-gate that no review
 caught — the failure mode is real even if the auto-detector isn't reliable yet.
+
+## AC-conformance — sonnet-5 cross-check: VIABLE with a stronger model (2026-07-13, C resolved)
+
+The correction above showed glm-5.2 can't reliably thread silent-substitution vs justified-deviation (the gold catch
+flips with prompt strictness). Cross-checked the 3 decisive cases on **sonnet-5** (`claude -p`, subscription), strict
+prompt, PR body included:
+
+| Case | Expected | glm-5.2 (free) | sonnet-5 |
+|---|---|---|---|
+| ac-sw-70 (gold: silent gate-miss) | flag | seesawed (prompt-sensitive) | **caught (2)** |
+| ac-sw-39 (disclosed reversal) | don't flag | strict → false-flagged | **clean (0)** |
+| ac-sw-71 (disclosed gap) | don't flag | strict → false-flagged | **clean (0)** |
+
+**sonnet-5 is 3/3 on the exact cases that broke the free model** — it catches the genuinely-silent gate-miss AND
+correctly passes both explicitly-disclosed deviations, with one strict prompt (no seesaw). So the corrected finding is:
+**C is FREE-MODEL-LIMITED, not fundamentally hard.** The silent-vs-justified judgment needs a stronger model; on it,
+AC-conformance works.
+
+**Synthesized C verdict (progressive, non-contradictory): value REAL + achievable with a stronger model for the AC
+pass.** This mirrors the campaign meta-finding (free model = judgment ceiling; stronger models unlock specific
+capabilities — Fugu ~2× recall, sonnet the AC-nuance). It makes C the **first of the three new dimensions (A opt-in /
+B no-go / C) with a clean viable path.** Build path: opt-in AC-conformance persona whose check pass runs on a STRONG
+lane (the config already supports per-persona lanes), gated on issue-fetch + untrusted-issue-text plumbing +
+diff-truncation handling + higher N/external validation. N is small (3 decisive cases, sonnet N=1) — a strong lead,
+not a settled proof, but a clean 3/3 on the failure cases. Cost: ~$0.03 notional subscription quota for the check.
