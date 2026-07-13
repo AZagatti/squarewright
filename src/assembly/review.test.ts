@@ -266,6 +266,61 @@ describe("runReview", () => {
     expect(received?.proposeRuleDrift).toBe(true);
   });
 
+  test("warns (does not truncate) when the trusted rules+docs preamble is very large (cost visibility)", async () => {
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {
+      // silence + capture
+    });
+    const worker = stubWorker({
+      findings: [],
+      usage: { submitted: true, toolCalls: 0 },
+    });
+    // a single rule file well over the ~24k-char threshold
+    const huge = "x".repeat(30_000);
+    const bigReader: RepoReader = {
+      listDir: (path) =>
+        Promise.resolve(path === ".review-rules" ? ["- big.md"] : null),
+      readFile: (path) =>
+        Promise.resolve(
+          path === ".review-rules/big.md"
+            ? `---\nglobs: ["src/**"]\n---\n\n${huge}`
+            : null
+        ),
+    };
+    const out = await runReview(CONTEXT, CONFIG, worker, {
+      repoReader: bigReader,
+    });
+
+    // warned about the oversized context…
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.[0]).toContain("Project review context");
+    // …but did NOT truncate — the full trusted rule text still reaches the prompt
+    expect(out.sticky).toBeDefined();
+    warnSpy.mockRestore();
+  });
+
+  test("a normal-sized preamble does not warn", async () => {
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {
+      // silence
+    });
+    const worker = stubWorker({
+      findings: [],
+      usage: { submitted: true, toolCalls: 0 },
+    });
+    const reader: RepoReader = {
+      listDir: (path) =>
+        Promise.resolve(path === ".review-rules" ? ["- ts.md"] : null),
+      readFile: (path) =>
+        Promise.resolve(
+          path === ".review-rules/ts.md"
+            ? '---\nglobs: ["src/**"]\n---\n\nTS RULE: no default exports.'
+            : null
+        ),
+    };
+    await runReview(CONTEXT, CONFIG, worker, { repoReader: reader });
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   test("injects Tier-B contextDocs as background, ordered after Tier-A rules", async () => {
     let received: WorkerRequest | undefined;
     const worker: PiWorker = {
