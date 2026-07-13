@@ -52,6 +52,25 @@ test("mapToInlineComments: places on commentable lines, flags the rest", () => {
   expect(unplaceable.map((f) => f.line).sort((a, b) => a - b)).toEqual([1, 99]);
 });
 
+test("mapToInlineComments: findings past the cap fold into unplaceable, never dropped", () => {
+  // one file whose new side is 50 commentable added lines
+  const patch = `@@ -0,0 +1,50 @@\n${Array.from({ length: 50 }, () => "+x").join("\n")}`;
+  const files: ChangedFile[] = [{ patch, path: "big.ts", status: "modified" }];
+  const findings: Finding[] = Array.from({ length: 45 }, (_, i) => ({
+    line: i + 1,
+    message: `finding ${i}`,
+    path: "big.ts",
+    rule: "r",
+    severity: "warning" as const,
+  }));
+  const { inline, unplaceable } = mapToInlineComments(findings, files, {
+    cap: 40,
+  });
+  expect(inline).toHaveLength(40); // inline comments capped
+  expect(unplaceable).toHaveLength(5); // the 5 overflow findings are preserved, not silently dropped
+  expect(inline.length + unplaceable.length).toBe(findings.length); // total conserved
+});
+
 test("mapToInlineComments: neutralizes markdown injection in the finding body", () => {
   const files: ChangedFile[] = [
     { patch: PATCH, path: "foo.ts", status: "modified" },

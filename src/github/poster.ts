@@ -32,9 +32,10 @@ export interface Poster {
     body: string
   ) => Promise<void>;
   /**
-   * Make the PR's inline review reflect exactly `inline`: delete our prior inline comments (so a re-review
-   * replaces, never accumulates), then post the current set as one atomic review. Clears even when `inline` is
-   * empty, so a now-clean PR drops its stale inline comments.
+   * Make the PR's inline review reflect exactly `inline`: post the current set as one atomic review, then delete
+   * our prior inline comments (so a re-review replaces, never accumulates). Posting BEFORE deleting means a failed
+   * post never leaves the PR with zero of our comments. Clears even when `inline` is empty, so a now-clean PR drops
+   * its stale inline comments.
    */
   postReview: (
     target: VerifiedTarget,
@@ -82,20 +83,35 @@ async function findStickyId(
   return found ? found.id : null;
 }
 
-/** Delete our prior inline comments (the ones carrying `INLINE_MARKER`), leaving any human/other comments. */
-async function clearPriorInline(
+/** The ids of our prior inline comments (the ones carrying `INLINE_MARKER`), captured BEFORE we post the new set. */
+async function priorInlineIds(
   run: GhRunner,
   target: VerifiedTarget
-): Promise<void> {
+): Promise<number[]> {
   const endpoint = `repos/${target.repo}/pulls/${target.prNumber}/comments`;
   const stdout = await ghApi(run, [endpoint, "--paginate"]);
   const comments = parseJson<{ body: string; id: number }[]>(stdout, endpoint);
   // startsWith (not includes): a human "Quote reply" prefixes the quoted marker with `> `, so it won't match
-  const ours = comments.filter((c) => c.body.startsWith(INLINE_MARKER));
-  await Promise.all(
-    ours.map((c) =>
+  return comments
+    .filter((c) => c.body.startsWith(INLINE_MARKER))
+    .map((c) => c.id);
+}
+
+/**
+ * Delete the given prior inline comments by id, best-effort. `allSettled` (not `all`) so one failed delete — a
+ * comment a human already removed, a transient 5xx — doesn't abort the rest, and a leftover stale comment (the
+ * worst case here) is cosmetic, never data loss. Deleting by CAPTURED ids (not a re-list) is what lets us post the
+ * new review first: the new comments carry the same marker, so a re-list would match and delete them too.
+ */
+async function deleteInlineByIds(
+  run: GhRunner,
+  target: VerifiedTarget,
+  ids: number[]
+): Promise<void> {
+  await Promise.allSettled(
+    ids.map((id) =>
       ghApi(run, [
-        `repos/${target.repo}/pulls/comments/${c.id}`,
+        `repos/${target.repo}/pulls/comments/${id}`,
         "--method",
         "DELETE",
       ])
@@ -121,32 +137,36 @@ export function createGhPoster(run: GhRunner): Poster {
       );
     },
     postReview: async (target, inline) => {
-      // replace, never accumulate: drop our prior inline comments before posting the current set
-      await clearPriorInline(run, target);
-      if (inline.length === 0) {
-        return;
+      // Replace, never accumulate — but POST the new review BEFORE deleting the old comments, so a failure never
+      // leaves the PR with zero of our comments (worse than stale ones). We capture the prior ids first (the new
+      // comments carry the same marker, so we couldn't tell them apart afterward), post, then best-effort delete
+      // the captured old ids. Order: capture → post → delete. A post failure leaves the old set intact (stale but
+      // present); a delete failure leaves a duplicate (recoverable) — neither is data loss.
+      const priorIds = await priorInlineIds(run, target);
+      if (inline.length > 0) {
+        const payload = JSON.stringify({
+          comments: inline.map((c) => ({
+            body: c.body,
+            line: c.line,
+            path: c.path,
+            side: "RIGHT",
+          })),
+          commit_id: target.commitSha,
+          event: "COMMENT",
+        });
+        await ghApi(
+          run,
+          [
+            `repos/${target.repo}/pulls/${target.prNumber}/reviews`,
+            "--method",
+            "POST",
+            "--input",
+            "-",
+          ],
+          payload
+        );
       }
-      const payload = JSON.stringify({
-        comments: inline.map((c) => ({
-          body: c.body,
-          line: c.line,
-          path: c.path,
-          side: "RIGHT",
-        })),
-        commit_id: target.commitSha,
-        event: "COMMENT",
-      });
-      await ghApi(
-        run,
-        [
-          `repos/${target.repo}/pulls/${target.prNumber}/reviews`,
-          "--method",
-          "POST",
-          "--input",
-          "-",
-        ],
-        payload
-      );
+      await deleteInlineByIds(run, target, priorIds);
     },
     upsertSticky: async (target, body) => {
       const payload = JSON.stringify({ body });

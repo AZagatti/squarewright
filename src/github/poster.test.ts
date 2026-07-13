@@ -143,6 +143,32 @@ describe("createGhPoster.postReview", () => {
     ).toBe(false);
   });
 
+  test("a FAILED review POST does not delete the prior comments (never leaves the PR with zero of ours)", async () => {
+    const prior = JSON.stringify([{ body: marked("old finding"), id: 55 }]);
+    const { run, calls } = fakeRunner((args) => {
+      if (isInlineList(args)) {
+        return { stdout: prior };
+      }
+      if (args.includes("repos/o/r/pulls/7/reviews")) {
+        return { code: 1, stderr: "500 server error" }; // the new review POST fails
+      }
+      return { stdout: "{}" };
+    });
+
+    await expect(
+      createGhPoster(run).postReview(TARGET, [
+        { body: marked("b"), line: 1, path: "a.ts" },
+      ])
+    ).rejects.toThrow();
+
+    // post is attempted BEFORE any delete, so a post failure leaves the prior comment (55) intact — stale, but
+    // present — instead of deleting it first and ending with zero of our comments on the PR.
+    expect(calls.some((c) => c.args.includes("DELETE"))).toBe(false);
+    expect(
+      calls.some((c) => c.args.includes("repos/o/r/pulls/comments/55"))
+    ).toBe(false);
+  });
+
   test("surfaces a non-zero exit as a thrown error", async () => {
     const { run } = fakeRunner((args) =>
       isInlineList(args)
