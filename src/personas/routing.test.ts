@@ -1,6 +1,41 @@
 import { describe, expect, test } from "bun:test";
 import type { ChangedFile, Persona } from "../core/types.js";
-import { selectPersonas, selectPersonasWithDrops } from "./routing.js";
+import {
+  matchGlob,
+  selectPersonas,
+  selectPersonasWithDrops,
+} from "./routing.js";
+
+describe("matchGlob: **/X matches whole segments only, not partial filenames", () => {
+  test("**/X matches X at any depth (including root), NOT names merely ending in X", () => {
+    expect(matchGlob("**/package.json", "package.json")).toBe(true);
+    expect(matchGlob("**/package.json", "src/package.json")).toBe(true);
+    // the bug: these used to match because **/ collapsed to `.*`
+    expect(matchGlob("**/package.json", "notapackage.json")).toBe(false);
+    expect(matchGlob("**/package.json", "vendor-package.json")).toBe(false);
+    expect(matchGlob("**/foo", "barfoo")).toBe(false);
+    expect(matchGlob("**/Dockerfile", "notDockerfile")).toBe(false);
+  });
+
+  test("a/**/b requires b to be a whole segment", () => {
+    expect(matchGlob("a/**/b", "a/b")).toBe(true);
+    expect(matchGlob("a/**/b", "a/x/b")).toBe(true);
+    expect(matchGlob("a/**/b", "a/config.rb")).toBe(false);
+  });
+
+  test("**/*.ts still matches root and nested files", () => {
+    expect(matchGlob("**/*.ts", "a.ts")).toBe(true);
+    expect(matchGlob("**/*.ts", "src/deep/a.ts")).toBe(true);
+    expect(matchGlob("**/*.ts", "a.tsx")).toBe(false);
+  });
+
+  test("single * stays within a segment; ? is one non-slash char", () => {
+    expect(matchGlob("src/*.ts", "src/a.ts")).toBe(true);
+    expect(matchGlob("src/*.ts", "src/deep/a.ts")).toBe(false);
+    expect(matchGlob("a?.ts", "ab.ts")).toBe(true);
+    expect(matchGlob("a?.ts", "a/.ts")).toBe(false);
+  });
+});
 
 const FILES: ChangedFile[] = [
   { patch: "@@ -1,1 +1,2 @@\n a\n+b\n", path: "src/a.ts", status: "modified" },
