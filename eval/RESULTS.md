@@ -1321,3 +1321,37 @@ so any recall gap is the structurer alone, with pass-1 non-determinism held out.
 - Honest edge: both structurers are glm-family; a cross-family extractor is untested. But the 11/24 empty-analysis
   samples cap ANY structurer's ceiling (nothing to extract), so the "structurer model isn't the primary lever"
   conclusion is robust to that.
+
+## similar-files project-pattern alignment does NOT lift free-model recall (2026-07-13, #132, council pilot)
+
+The recall council's (advocate + skeptic) measure-first pilot on the maintainer's alignment hypothesis.
+`--similar-files` = DETERMINISTIC same-dir/same-ext sibling injection as a reference preamble (no agentic
+grounding, no model repo-read tools). zai/glm-5.2, N=3 consecutive, full golden (10 clean + 8 has-issue):
+
+| arm | clean-FP (raw), 3 reps | file-level recall /11, 3 reps |
+|---|---|---|
+| baseline      | 19, 9, 10 (mean 12.7) | 6, 7, 8 (mean 7.0) |
+| similar-files | 9, 8, 9 (mean 8.7)    | 6, 5, 4 (mean 5.0) |
+
+- **Recall did NOT lift — it DROPPED** (mean 7.0 → 5.0). The hypothesis required a lift; we see the opposite.
+  This mirrors the divergence-note suppression pattern (the skeptic's prediction): a "judge whether the diff
+  aligns with these conventions" instruction makes the weak model MORE CONSERVATIVE, suppressing real catches.
+- **Precision did NOT collapse** — clean-FP actually improved (12.7 → 8.7). The deterministic, bounded,
+  no-agentic-tools design AVOIDED the precision collapse naive grounding caused (0→7/9 FP). That design choice
+  was validated even though the recall hypothesis failed. (As a precision lever it's still dominated by the
+  scaffold: ~30% FP cut for ~2 recall here vs the scaffold's ~60% FP cut for ~1.5 recall — a worse trade.)
+- **Metric-robust:** defect-level recall ≤ file-level, so a file-level DROP cannot be a defect-level LIFT — the
+  "no recall lift" conclusion holds without the judge pass (which would only refine the null's magnitude). N=3
+  consecutive (not interleaved) is a limitation, but the direction (drop, not lift) is clear and metric-robust.
+
+**Verdict: REFUTED for the free model. Do NOT ship to production** (it hurts recall). `--similar-files` stays
+eval-only, documenting the null (like `--divergence`). The model-ceiling finding STANDS: free-model recall is
+pass-1-reasoning-bound; auto-selected convention-context makes it more conservative, not more capable.
+
+**Reconciling with the maintainer's LaunchPotato experience (why alignment worked there, not here):** alignment
+likely helps a CAPABLE model (which can reason about the conventions and catch divergences from them) but not a
+weak one (which just gets more cautious); and/or his alignment was CURATED (real `.review-rules` / same-intention
+files he chose) vs this pilot's auto-selected siblings. So the path to alignment-driven quality is a stronger
+analysis model OR curated project rules (`.review-rules`/`contextDocs`, which already exist) — NOT auto-sibling
+injection on the free model. This is the third "more context, differently packaged" null on this model (after
+naive grounding and diff-scoped divergence), all converging on: the free model's limit is reasoning, not context.
