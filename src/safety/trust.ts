@@ -50,14 +50,18 @@ export class TrustViolation extends Error {
 
 /**
  * Resolve the one posting target the review is allowed to write to. Throws `TrustViolation` — refusing to post —
- * on any mismatch between the untrusted artifact and the trusted run, or when the commit does not resolve to
- * exactly one open PR. The returned target is composed entirely from trusted inputs.
+ * on any real mismatch between the untrusted artifact and the trusted run (SHA, repo, or a disagreeing PR number),
+ * or on the ambiguous case of MORE than one open PR sharing the head commit. Returns `null` for the BENIGN case of
+ * ZERO open PRs: the PR was merged or closed between gather and review (a common race when the review posts
+ * asynchronously) — there is nothing to post to and nothing suspicious about it (an attacker cannot benefit from
+ * posting nowhere), so the caller no-ops and exits cleanly rather than reporting a failure. The returned target is
+ * composed entirely from trusted inputs.
  */
 export async function verifyPostingTarget(
   claimed: ClaimedTarget,
   trusted: TrustedRunSignal,
   lookupPullsForCommit: LookupPullsForCommit
-): Promise<VerifiedTarget> {
+): Promise<VerifiedTarget | null> {
   if (claimed.headSha !== trusted.headSha) {
     throw new TrustViolation(
       `Artifact head SHA (${claimed.headSha}) does not match the workflow_run head SHA (${trusted.headSha}). Refusing to post.`
@@ -70,17 +74,20 @@ export async function verifyPostingTarget(
   }
 
   const pulls = await lookupPullsForCommit(trusted.baseRepo, trusted.headSha);
-  if (pulls.length !== 1) {
+  if (pulls.length === 0) {
+    // Benign: no open PR for this commit — merged/closed before the review ran. Not a violation; nothing to post.
+    return null;
+  }
+  if (pulls.length > 1) {
     throw new TrustViolation(
-      `Expected exactly one open PR for ${trusted.baseRepo}@${trusted.headSha}, found ${pulls.length}. Refusing to post.`
+      `Expected at most one open PR for ${trusted.baseRepo}@${trusted.headSha}, found ${pulls.length}. Refusing to post.`
     );
   }
 
   const [pr] = pulls;
   if (!pr) {
-    throw new TrustViolation(
-      `No open PR resolved for ${trusted.baseRepo}@${trusted.headSha}. Refusing to post.`
-    );
+    // Defensive: length === 1 guarantees a member, but narrow it explicitly rather than assert.
+    return null;
   }
   if (pr.number !== claimed.prNumber) {
     throw new TrustViolation(

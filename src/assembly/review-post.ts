@@ -143,6 +143,8 @@ interface ReviewCommandResult {
   json?: string;
   /** the target posted to (present when posting succeeded) */
   posted?: VerifiedTarget;
+  /** benign no-op: posting was requested but the commit has no open PR (merged/closed before the review ran) */
+  skipped?: "no-open-pr";
 }
 
 /**
@@ -162,7 +164,13 @@ export async function runReviewCommand(
   let target: VerifiedTarget | undefined;
   if (opts.post) {
     const trusted = readTrustedRunSignal(deps.env);
-    target = await verifyPostingTarget(context, trusted, deps.lookup);
+    const verified = await verifyPostingTarget(context, trusted, deps.lookup);
+    if (verified === null) {
+      // The commit has no open PR (merged/closed before this async review ran) — nothing to post to. Return the
+      // benign no-op BEFORE the model runs, so we neither post nor spend on a review that has nowhere to go.
+      return { skipped: "no-open-pr" };
+    }
+    target = verified;
   }
 
   const output = await deps.review(config, context);

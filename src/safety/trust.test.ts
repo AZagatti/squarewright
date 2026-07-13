@@ -63,16 +63,14 @@ describe("verifyPostingTarget", () => {
     expect(calls).toEqual([]);
   });
 
-  test("refuses when the commit resolves to zero open PRs", async () => {
+  test("returns null (benign no-op, NOT a violation) when the commit has zero open PRs", async () => {
+    // The PR was merged/closed between gather and review — nothing to post, nothing suspicious. Must resolve to
+    // null (the caller no-ops and exits clean), NOT throw a TrustViolation (which would paint the workflow red).
     const { fn } = lookupReturning([]);
-
-    // assert both the type and the count-specific branch (0 and >1 both throw TrustViolation)
-    const { rejects } = expect(verifyPostingTarget(CLAIMED, TRUSTED, fn));
-    await rejects.toThrow(TrustViolation);
-    await rejects.toThrow("found 0");
+    await expect(verifyPostingTarget(CLAIMED, TRUSTED, fn)).resolves.toBeNull();
   });
 
-  test("refuses when the commit resolves to more than one open PR", async () => {
+  test("still refuses (TrustViolation) when the commit resolves to more than one open PR", async () => {
     const { fn } = lookupReturning([7, 8]);
 
     const { rejects } = expect(verifyPostingTarget(CLAIMED, TRUSTED, fn));
