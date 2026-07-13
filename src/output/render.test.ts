@@ -184,6 +184,21 @@ test("renderSticky: a failed lens is disclosed as incomplete, not hidden behind 
   expect(out).toContain("not** reviewed");
 });
 
+test("renderSticky: an errored lens is disclosed as a review error, not a clean verdict", () => {
+  const out = renderSticky({
+    erroredLenses: [{ id: "sentinel", label: "Correctness" }],
+    findings: [],
+    lenses: [{ id: "sentinel", label: "Correctness" }],
+    summary: "",
+  });
+  // a lens lost to a mid-run error is called out prominently and explicitly denied a clean reading
+  expect(out).toContain("Review error");
+  expect(out).toContain("Correctness");
+  expect(out).toContain("not** reviewed");
+  // distinct wording from the structurer-didn't-submit case
+  expect(out).not.toContain("Incomplete review");
+});
+
 test("renderSticky: cap-dropped lenses are disclosed as capped coverage", () => {
   const out = renderSticky({
     droppedLenses: [{ id: "marshal", label: "CI" }],
