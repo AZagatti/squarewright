@@ -13,6 +13,9 @@ on:
 
 permissions:
   contents: read
+  # read-only; lets the gather phase fetch the acceptance criteria of an issue the PR says it Closes, for the
+  # opt-in AC-conformance auditor. Harmless if unused — no auditor persona means the fetched file is ignored.
+  issues: read
   pull-requests: read
 
 concurrency:
@@ -44,6 +47,29 @@ jobs:
           gh api "repos/$REPO/pulls/$PR" \
             --jq '{number:.number,title:.title,author:.user.login,base_sha:.base.sha,head_sha:.head.sha,repo:.base.repo.full_name,body:.body}' \
             > artifacts/pr-meta.json
+
+      - name: Fetch linked issue for the AC-conformance check (read-only, best-effort)
+        env:
+          # PR body is untrusted → handled as DATA only; the extracted issue number is validated numeric before it
+          # ever reaches a gh api URL (no shell interpolation of PR-controlled strings).
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # First "Closes/Fixes/Resolves #N" in the PR body. \b guards against "discloses"/"prefixes".
+          # NOTE: an independent bash copy of src/github/issue-refs.ts's parseIssueRefs (bash can't import the TS).
+          # It may diverge on synthetic edges (e.g. no trailing-\b), but artifact.ts re-validates the number against
+          # parseIssueRefs, so any divergence is harmless — at worst one wasted read.
+          N=$(jq -r '.body // ""' artifacts/pr-meta.json \
+            | grep -oiE '\b(close[sd]?|fix(es|ed)?|resolve[sd]?)[[:space:]]*:?[[:space:]]+#[0-9]+' \
+            | grep -oE '[0-9]+' | head -1 || true)
+          if printf '%s' "$N" | grep -qE '^[0-9]+$'; then
+            # issues API returns issues AND PRs; skip PRs so we only check against real issue ACs.
+            gh api "repos/$REPO/issues/$N" \
+              --jq 'if .pull_request then empty else {number:.number,title:.title,body:.body} end' \
+              > artifacts/linked-issue.json 2>/dev/null || true
+            # drop an empty file so the reader's optional-read cleanly sees "no linked issue"
+            [ -s artifacts/linked-issue.json ] || rm -f artifacts/linked-issue.json
+          fi
 
       - name: Upload gather artifact
         uses: actions/upload-artifact@v4
