@@ -25,10 +25,10 @@ export interface WorkerRequest {
   budget?: { maxToolCalls?: number; maxTokens?: number };
   context: ReviewContext;
   /**
-   * Enable the prompted CoT scaffold (PRECISION lever — cuts false positives ~50–60%; recall impact NOT
-   * established): forces an explain → find → self-critique sequence in the analysis prompt. Distinct from native
-   * reasoning tokens (which don't help a classification-shaped task like review). Opt-in via the `.squarewright.yml`
-   * `cotScaffold` flag (graduated in PR #101) or `--cot-scaffold`/`eval-cli` in the harness.
+   * Enable the prompted CoT scaffold (precision/recall TRADEOFF — ~44% fewer false positives at a cost of ~1–1.5
+   * loci recall, eval/RESULTS.md N=6): forces an explain → find → self-critique sequence in the analysis prompt.
+   * Off by default (recall-costly); opt-in via the `.squarewright.yml` `cotScaffold` flag (graduated in PR #101) or
+   * `--cot-scaffold`/`eval-cli` in the harness. Distinct from native reasoning (which doesn't help review).
    */
   cotScaffold?: boolean;
   /**
