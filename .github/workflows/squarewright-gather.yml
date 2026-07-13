@@ -56,6 +56,9 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           # First "Closes/Fixes/Resolves #N" in the PR body. \b guards against "discloses"/"prefixes".
+          # NOTE: an independent bash copy of src/github/issue-refs.ts's parseIssueRefs (bash can't import the TS).
+          # It may diverge on synthetic edges (e.g. no trailing-\b), but artifact.ts re-validates the number against
+          # parseIssueRefs, so any divergence is harmless — at worst one wasted read.
           N=$(jq -r '.body // ""' artifacts/pr-meta.json \
             | grep -oiE '\b(close[sd]?|fix(es|ed)?|resolve[sd]?)[[:space:]]*:?[[:space:]]+#[0-9]+' \
             | grep -oE '[0-9]+' | head -1 || true)
