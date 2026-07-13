@@ -1,0 +1,99 @@
+diff --git a/server/src/dtos/api-key.dto.ts b/server/src/dtos/api-key.dto.ts
+index 1f4f85521670f..7e81ce8c608d1 100644
+--- a/server/src/dtos/api-key.dto.ts
++++ b/server/src/dtos/api-key.dto.ts
+@@ -1,10 +1,17 @@
+-import { IsNotEmpty, IsString } from 'class-validator';
++import { ApiProperty } from '@nestjs/swagger';
++import { ArrayMinSize, IsEnum, IsNotEmpty, IsString } from 'class-validator';
++import { Permission } from 'src/enum';
+ import { Optional } from 'src/validation';
+ export class APIKeyCreateDto {
+   @IsString()
+   @IsNotEmpty()
+   @Optional()
+   name?: string;
++
++  @IsEnum(Permission, { each: true })
++  @ApiProperty({ enum: Permission, enumName: 'Permission', isArray: true })
++  @ArrayMinSize(1)
++  permissions!: Permission[];
+ }
+
+ export class APIKeyUpdateDto {
+@@ -23,4 +30,6 @@ export class APIKeyResponseDto {
+   name!: string;
+   createdAt!: Date;
+   updatedAt!: Date;
++  @ApiProperty({ enum: Permission, enumName: 'Permission', isArray: true })
++  permissions!: Permission[];
+ }
+diff --git a/server/src/services/api-key.service.ts b/server/src/services/api-key.service.ts
+index 24a57d3651261..7dd1ed5c268ba 100644
+--- a/server/src/services/api-key.service.ts
++++ b/server/src/services/api-key.service.ts
+@@ -1,9 +1,10 @@
+ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+-import { APIKeyCreateDto, APIKeyCreateResponseDto, APIKeyResponseDto } from 'src/dtos/api-key.dto';
++import { APIKeyCreateDto, APIKeyCreateResponseDto, APIKeyResponseDto, APIKeyUpdateDto } from 'src/dtos/api-key.dto';
+ import { AuthDto } from 'src/dtos/auth.dto';
+ import { APIKeyEntity } from 'src/entities/api-key.entity';
+ import { IKeyRepository } from 'src/interfaces/api-key.interface';
+ import { ICryptoRepository } from 'src/interfaces/crypto.interface';
++import { isGranted } from 'src/utils/access';
+
+ @Injectable()
+ export class APIKeyService {
+@@ -14,16 +15,22 @@ export class APIKeyService {
+
+   async create(auth: AuthDto, dto: APIKeyCreateDto): Promise<APIKeyCreateResponseDto> {
+     const secret = this.crypto.newPassword(32);
++
++    if (auth.apiKey && !isGranted({ requested: dto.permissions, current: auth.apiKey.permissions })) {
++      throw new BadRequestException('Cannot grant permissions you do not have');
++    }
++
+     const entity = await this.repository.create({
+       key: this.crypto.hashSha256(secret),
+       name: dto.name || 'API Key',
+       userId: auth.user.id,
++      permissions: dto.permissions,
+     });
+
+     return { secret, apiKey: this.map(entity) };
+   }
+
+-  async update(auth: AuthDto, id: string, dto: APIKeyCreateDto): Promise<APIKeyResponseDto> {
++  async update(auth: AuthDto, id: string, dto: APIKeyUpdateDto): Promise<APIKeyResponseDto> {
+     const exists = await this.repository.getById(auth.user.id, id);
+     if (!exists) {
+       throw new BadRequestException('API Key not found');
+@@ -62,6 +69,7 @@ export class APIKeyService {
+       name: entity.name,
+       createdAt: entity.createdAt,
+       updatedAt: entity.updatedAt,
++      permissions: entity.permissions,
+     };
+   }
+ }
+diff --git a/server/src/utils/access.ts b/server/src/utils/access.ts
+new file mode 100644
+index 0000000000000..cd24087d9bd2b
+--- /dev/null
++++ b/server/src/utils/access.ts
+@@ -0,0 +1,15 @@
++import { Permission } from 'src/enum';
++import { setIsSuperset } from 'src/utils/set';
++
++export type GrantedRequest = {
++  requested: Permission[];
++  current: Permission[];
++};
++
++export const isGranted = ({ requested, current }: GrantedRequest) => {
++  if (current.includes(Permission.ALL)) {
++    return true;
++  }
++
++  return setIsSuperset(new Set(current), new Set(requested));
++};

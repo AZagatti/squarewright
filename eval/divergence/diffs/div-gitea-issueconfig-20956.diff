@@ -1,0 +1,673 @@
+diff --git a/docs/content/doc/usage/issue-pull-request-templates.en-us.md b/docs/content/doc/usage/issue-pull-request-templates.en-us.md
+index 0cf63625b60d3..f36037956a5cb 100644
+--- a/docs/content/doc/usage/issue-pull-request-templates.en-us.md
++++ b/docs/content/doc/usage/issue-pull-request-templates.en-us.md
+@@ -50,6 +50,17 @@ Possible file names for issue templates:
+ - `.github/issue_template.yaml`
+ - `.github/issue_template.yml`
+ 
++Possible file names for issue config:
++
++- `.gitea/ISSUE_TEMPLATE/config.yaml`
++- `.gitea/ISSUE_TEMPLATE/config.yml`
++- `.gitea/issue_template/config.yaml`
++- `.gitea/issue_template/config.yml`
++- `.github/ISSUE_TEMPLATE/config.yaml`
++- `.github/ISSUE_TEMPLATE/config.yml`
++- `.github/issue_template/config.yaml`
++- `.github/issue_template/config.yml`
++
+ Possible file names for PR templates:
+ 
+ - `PULL_REQUEST_TEMPLATE.md`
+@@ -267,3 +278,30 @@ For each value in the options array, you can set the following keys.
+ |----------|------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|---------|---------|
+ | label    | The identifier for the option, which is displayed in the form. Markdown is supported for bold or italic text formatting, and hyperlinks. | Required | String  | -       | -       |
+ | required | Prevents form submission until element is completed.                                                                                     | Optional | Boolean | false   | -       |
++
++## Syntax for issue config
++
++This is a example for a issue config file
++
++```yaml
++blank_issues_enabled: true
++contact_links:
++  - name: Gitea
++    url: https://gitea.io
++    about: Visit the Gitea Website
++```
++
++### Possible Options
++
++| Key                  | Description                                                                                           | Type               | Default        |
++|----------------------|-------------------------------------------------------------------------------------------------------|--------------------|----------------|
++| blank_issues_enabled | If set to false, the User is forced to use a Template                                                 | Boolean            | true           |
++| contact_links        | Custom Links to show in the Choose Box                                                                | Contact Link Array | Empty Array    |
++
++### Contact Link
++
++| Key                  | Description                                                                                           | Type    | Required |
++|----------------------|-------------------------------------------------------------------------------------------------------|---------|----------|
++| name  | the name of your link                                                                                                | String  | true     |
++| url   | The URL of your Link                                                                                                 | String  | true     |
++| about | A short description of your Link                                                                                     | String  | true     |
+diff --git a/modules/context/repo.go b/modules/context/repo.go
+index b83caf4e4b529..820e756fbdb11 100644
+--- a/modules/context/repo.go
++++ b/modules/context/repo.go
+@@ -8,6 +8,7 @@ import (
+ 	"context"
+ 	"fmt"
+ 	"html"
++	"io"
+ 	"net/http"
+ 	"net/url"
+ 	"path"
+@@ -33,6 +34,7 @@ import (
+ 	asymkey_service "code.gitea.io/gitea/services/asymkey"
+ 
+ 	"github.com/editorconfig/editorconfig-core-go/v2"
++	"gopkg.in/yaml.v3"
+ )
+ 
+ // IssueTemplateDirCandidates issue templates directory
+@@ -47,6 +49,13 @@ var IssueTemplateDirCandidates = []string{
+ 	".gitlab/issue_template",
+ }
+ 
++var IssueConfigCandidates = []string{
++	".gitea/ISSUE_TEMPLATE/config",
++	".gitea/issue_template/config",
++	".github/ISSUE_TEMPLATE/config",
++	".github/issue_template/config",
++}
++
+ // PullRequest contains information to make a pull request
+ type PullRequest struct {
+ 	BaseRepo       *repo_model.Repository
+@@ -1088,3 +1097,108 @@ func (ctx *Context) IssueTemplatesErrorsFromDefaultBranch() ([]*api.IssueTemplat
+ 	}
+ 	return issueTemplates, invalidFiles
+ }
++
++func GetDefaultIssueConfig() api.IssueConfig {
++	return api.IssueConfig{
++		BlankIssuesEnabled: true,
++		ContactLinks:       make([]api.IssueConfigContactLink, 0),
++	}
++}
++
++// GetIssueConfig loads the given issue config file.
++// It never returns a nil config.
++func (r *Repository) GetIssueConfig(path string, commit *git.Commit) (api.IssueConfig, error) {
++	if r.GitRepo == nil {
++		return GetDefaultIssueConfig(), nil
++	}
++
++	var err error
++
++	treeEntry, err := commit.GetTreeEntryByPath(path)
++	if err != nil {
++		return GetDefaultIssueConfig(), err
++	}
++
++	reader, err := treeEntry.Blob().DataAsync()
++	if err != nil {
++		log.Debug("DataAsync: %v", err)
++		return GetDefaultIssueConfig(), nil
++	}
++
++	defer reader.Close()
++
++	configContent, err := io.ReadAll(reader)
++	if err != nil {
++		return GetDefaultIssueConfig(), err
++	}
++
++	issueConfig := api.IssueConfig{}
++	if err := yaml.Unmarshal(configContent, &issueConfig); err != nil {
++		return GetDefaultIssueConfig(), err
++	}
++
++	for pos, link := range issueConfig.ContactLinks {
++		if link.Name == "" {
++			return GetDefaultIssueConfig(), fmt.Errorf("contact_link at position %d is missing name key", pos+1)
++		}
++
++		if link.URL == "" {
++			return GetDefaultIssueConfig(), fmt.Errorf("contact_link at position %d is missing url key", pos+1)
++		}
++
++		if link.About == "" {
++			return GetDefaultIssueConfig(), fmt.Errorf("contact_link at position %d is missing about key", pos+1)
++		}
++
++		_, err = url.ParseRequestURI(link.URL)
++		if err != nil {
++			return GetDefaultIssueConfig(), fmt.Errorf("%s is not a valid URL", link.URL)
++		}
++	}
++
++	return issueConfig, nil
++}
++
++// IssueConfigFromDefaultBranch returns the issue config for this repo.
++// It never returns a nil config.
++func (ctx *Context) IssueConfigFromDefaultBranch() (api.IssueConfig, error) {
++	if ctx.Repo.Repository.IsEmpty {
++		return GetDefaultIssueConfig(), nil
++	}
++
++	commit, err := ctx.Repo.GitRepo.GetBranchCommit(ctx.Repo.Repository.DefaultBranch)
++	if err != nil {
++		return GetDefaultIssueConfig(), err
++	}
++
++	for _, configName := range IssueConfigCandidates {
++		if _, err := commit.GetTreeEntryByPath(configName + ".yaml"); err == nil {
++			return ctx.Repo.GetIssueConfig(configName+".yaml", commit)
++		}
++
++		if _, err := commit.GetTreeEntryByPath(configName + ".yml"); err == nil {
++			return ctx.Repo.GetIssueConfig(configName+".yml", commit)
++		}
++	}
++
++	return GetDefaultIssueConfig(), nil
++}
++
++// IsIssueConfig returns if the given path is a issue config file.
++func (r *Repository) IsIssueConfig(path string) bool {
++	for _, configName := range IssueConfigCandidates {
++		if path == configName+".yaml" || path == configName+".yml" {
++			return true
++		}
++	}
++	return false
++}
++
++func (ctx *Context) HasIssueTemplatesOrContactLinks() bool {
++	if len(ctx.IssueTemplatesFromDefaultBranch()) > 0 {
++		return true
++	}
++
++	issueConfig, _ := ctx.IssueConfigFromDefaultBranch()
++	return len(issueConfig.ContactLinks) > 0
++}
+diff --git a/modules/structs/issue.go b/modules/structs/issue.go
+index 1d1de9ee5eca6..04e169df84197 100644
+--- a/modules/structs/issue.go
++++ b/modules/structs/issue.go
+@@ -190,6 +190,22 @@ func (l *IssueTemplateLabels) UnmarshalYAML(value *yaml.Node) error {
+ 	return fmt.Errorf("line %d: cannot unmarshal %s into IssueTemplateLabels", value.Line, value.ShortTag())
+ }
+ 
++type IssueConfigContactLink struct {
++	Name  string `json:"name" yaml:"name"`
++	URL   string `json:"url" yaml:"url"`
++	About string `json:"about" yaml:"about"`
++}
++
++type IssueConfig struct {
++	BlankIssuesEnabled bool                     `json:"blank_issues_enabled" yaml:"blank_issues_enabled"`
++	ContactLinks       []IssueConfigContactLink `json:"contact_links" yaml:"contact_links"`
++}
++
++type IssueConfigValidation struct {
++	Valid   bool   `json:"valid"`
++	Message string `json:"message"`
++}
++
+ // IssueTemplateType defines issue template type
+ type IssueTemplateType string
+ 
+diff --git a/options/locale/locale_en-US.ini b/options/locale/locale_en-US.ini
+index 4e5838b5ee482..edf6c86df8728 100644
+--- a/options/locale/locale_en-US.ini
++++ b/options/locale/locale_en-US.ini
+@@ -1272,10 +1272,12 @@ issues.new.no_assignees = No Assignees
+ issues.new.no_reviewers = No reviewers
+ issues.new.add_reviewer_title = Request review
+ issues.choose.get_started = Get Started
++issues.choose.open_external_link = Open
+ issues.choose.blank = Default
+ issues.choose.blank_about = Create an issue from default template.
+ issues.choose.ignore_invalid_templates = Invalid templates have been ignored
+ issues.choose.invalid_templates = %v invalid template(s) found
++issues.choose.invalid_config = The issue config contains errors:
+ issues.no_ref = No Branch/Tag Specified
+ issues.create = Create Issue
+ issues.new_label = New Label
+diff --git a/routers/api/v1/api.go b/routers/api/v1/api.go
+index 7d1980baeb91e..8b13f5492c148 100644
+--- a/routers/api/v1/api.go
++++ b/routers/api/v1/api.go
+@@ -1169,6 +1169,8 @@ func Routes(ctx gocontext.Context) *web.Route {
+ 					}, reqAdmin())
+ 				}, reqAnyRepoReader())
+ 				m.Get("/issue_templates", context.ReferencesGitRepo(), repo.GetIssueTemplates)
++				m.Get("/issue_config", context.ReferencesGitRepo(), repo.GetIssueConfig)
++				m.Get("/issue_config/validate", context.ReferencesGitRepo(), repo.ValidateIssueConfig)
+ 				m.Get("/languages", reqRepoReader(unit.TypeCode), repo.GetLanguages)
+ 			}, repoAssignment())
+ 		})
+diff --git a/routers/api/v1/repo/repo.go b/routers/api/v1/repo/repo.go
+index 4f43b10259726..60e71495e87b8 100644
+--- a/routers/api/v1/repo/repo.go
++++ b/routers/api/v1/repo/repo.go
+@@ -1144,3 +1144,58 @@ func GetIssueTemplates(ctx *context.APIContext) {
+ 
+ 	ctx.JSON(http.StatusOK, ctx.IssueTemplatesFromDefaultBranch())
+ }
++
++// GetIssueConfig returns the issue config for a repo
++func GetIssueConfig(ctx *context.APIContext) {
++	// swagger:operation GET /repos/{owner}/{repo}/issue_config repository repoGetIssueConfig
++	// ---
++	// summary: Returns the issue config for a repo
++	// produces:
++	// - application/json
++	// parameters:
++	// - name: owner
++	//   in: path
++	//   description: owner of the repo
++	//   type: string
++	//   required: true
++	// - name: repo
++	//   in: path
++	//   description: name of the repo
++	//   type: string
++	//   required: true
++	// responses:
++	//   "200":
++	//     "$ref": "#/responses/RepoIssueConfig"
++	issueConfig, _ := ctx.IssueConfigFromDefaultBranch()
++	ctx.JSON(http.StatusOK, issueConfig)
++}
++
++// ValidateIssueConfig returns validation errors for the issue config
++func ValidateIssueConfig(ctx *context.APIContext) {
++	// swagger:operation GET /repos/{owner}/{repo}/issue_config/validate repository repoValidateIssueConfig
++	// ---
++	// summary: Returns the validation information for a issue config
++	// produces:
++	// - application/json
++	// parameters:
++	// - name: owner
++	//   in: path
++	//   description: owner of the repo
++	//   type: string
++	//   required: true
++	// - name: repo
++	//   in: path
++	//   description: name of the repo
++	//   type: string
++	//   required: true
++	// responses:
++	//   "200":
++	//     "$ref": "#/responses/RepoIssueConfigValidation"
++	_, err := ctx.IssueConfigFromDefaultBranch()
++
++	if err == nil {
++		ctx.JSON(http.StatusOK, api.IssueConfigValidation{Valid: true, Message: ""})
++	} else {
++		ctx.JSON(http.StatusOK, api.IssueConfigValidation{Valid: false, Message: err.Error()})
++	}
++}
+diff --git a/routers/api/v1/swagger/repo.go b/routers/api/v1/swagger/repo.go
+index bd867213a62da..e0418e99dc44f 100644
+--- a/routers/api/v1/swagger/repo.go
++++ b/routers/api/v1/swagger/repo.go
+@@ -386,3 +386,17 @@ type swaggerRepoCollaboratorPermission struct {
+ 	// in:body
+ 	Body api.RepoCollaboratorPermission `json:"body"`
+ }
++
++// RepoIssueConfig
++// swagger:response RepoIssueConfig
++type swaggerRepoIssueConfig struct {
++	// in:body
++	Body api.IssueConfig `json:"body"`
++}
++
++// RepoIssueConfigValidation
++// swagger:response RepoIssueConfigValidation
++type swaggerRepoIssueConfigValidation struct {
++	// in:body
++	Body api.IssueConfigValidation `json:"body"`
++}
+diff --git a/routers/web/repo/issue.go b/routers/web/repo/issue.go
+index 00551a88486fb..612222598f2fa 100644
+--- a/routers/web/repo/issue.go
++++ b/routers/web/repo/issue.go
+@@ -435,7 +435,7 @@ func Issues(ctx *context.Context) {
+ 		}
+ 		ctx.Data["Title"] = ctx.Tr("repo.issues")
+ 		ctx.Data["PageIsIssueList"] = true
+-		ctx.Data["NewIssueChooseTemplate"] = len(ctx.IssueTemplatesFromDefaultBranch()) > 0
++		ctx.Data["NewIssueChooseTemplate"] = ctx.HasIssueTemplatesOrContactLinks()
+ 	}
+ 
+ 	issues(ctx, ctx.FormInt64("milestone"), ctx.FormInt64("project"), util.OptionalBoolOf(isPullList))
+@@ -848,7 +848,7 @@ func setTemplateIfExists(ctx *context.Context, ctxDataKey string, possibleFiles
+ func NewIssue(ctx *context.Context) {
+ 	ctx.Data["Title"] = ctx.Tr("repo.issues.new")
+ 	ctx.Data["PageIsIssueList"] = true
+-	ctx.Data["NewIssueChooseTemplate"] = len(ctx.IssueTemplatesFromDefaultBranch()) > 0
++	ctx.Data["NewIssueChooseTemplate"] = ctx.HasIssueTemplatesOrContactLinks()
+ 	ctx.Data["RequireTribute"] = true
+ 	ctx.Data["PullRequestWorkInProgressPrefixes"] = setting.Repository.PullRequest.WorkInProgressPrefixes
+ 	title := ctx.FormString("title")
+@@ -946,12 +946,16 @@ func NewIssueChooseTemplate(ctx *context.Context) {
+ 		ctx.Flash.Warning(renderErrorOfTemplates(ctx, errs), true)
+ 	}
+ 
+-	if len(issueTemplates) == 0 {
++	if !ctx.HasIssueTemplatesOrContactLinks() {
+ 		// The "issues/new" and "issues/new/choose" share the same query parameters "project" and "milestone", if no template here, just redirect to the "issues/new" page with these parameters.
+ 		ctx.Redirect(fmt.Sprintf("%s/issues/new?%s", ctx.Repo.Repository.Link(), ctx.Req.URL.RawQuery), http.StatusSeeOther)
+ 		return
+ 	}
+ 
++	issueConfig, err := ctx.IssueConfigFromDefaultBranch()
++	ctx.Data["IssueConfig"] = issueConfig
++	ctx.Data["IssueConfigError"] = err // ctx.Flash.Err makes problems here
++
+ 	ctx.Data["milestone"] = ctx.FormInt64("milestone")
+ 	ctx.Data["project"] = ctx.FormInt64("project")
+ 
+@@ -1086,7 +1090,7 @@ func NewIssuePost(ctx *context.Context) {
+ 	form := web.GetForm(ctx).(*forms.CreateIssueForm)
+ 	ctx.Data["Title"] = ctx.Tr("repo.issues.new")
+ 	ctx.Data["PageIsIssueList"] = true
+-	ctx.Data["NewIssueChooseTemplate"] = len(ctx.IssueTemplatesFromDefaultBranch()) > 0
++	ctx.Data["NewIssueChooseTemplate"] = ctx.HasIssueTemplatesOrContactLinks()
+ 	ctx.Data["PullRequestWorkInProgressPrefixes"] = setting.Repository.PullRequest.WorkInProgressPrefixes
+ 	ctx.Data["IsAttachmentEnabled"] = setting.Attachment.Enabled
+ 	upload.AddUploadContext(ctx, "comment")
+@@ -1280,7 +1284,7 @@ func ViewIssue(ctx *context.Context) {
+ 			return
+ 		}
+ 		ctx.Data["PageIsIssueList"] = true
+-		ctx.Data["NewIssueChooseTemplate"] = len(ctx.IssueTemplatesFromDefaultBranch()) > 0
++		ctx.Data["NewIssueChooseTemplate"] = ctx.HasIssueTemplatesOrContactLinks()
+ 	}
+ 
+ 	if issue.IsPull && !ctx.Repo.CanRead(unit.TypeIssues) {
+diff --git a/routers/web/repo/view.go b/routers/web/repo/view.go
+index 4d49ab6359522..ce60d91150281 100644
+--- a/routers/web/repo/view.go
++++ b/routers/web/repo/view.go
+@@ -348,6 +348,9 @@ func renderFile(ctx *context.Context, entry *git.TreeEntry, treeLink, rawLink st
+ 	if ctx.Repo.TreePath == ".editorconfig" {
+ 		_, editorconfigErr := ctx.Repo.GetEditorconfig(ctx.Repo.Commit)
+ 		ctx.Data["FileError"] = editorconfigErr
++	} else if ctx.Repo.IsIssueConfig(ctx.Repo.TreePath) {
++		_, issueConfigErr := ctx.Repo.GetIssueConfig(ctx.Repo.TreePath, ctx.Repo.Commit)
++		ctx.Data["FileError"] = issueConfigErr
+ 	}
+ 
+ 	isDisplayingSource := ctx.FormString("display") == "source"
+diff --git a/templates/repo/issue/choose.tmpl b/templates/repo/issue/choose.tmpl
+index 688e98bfc6ed2..b5316454ba1e1 100644
+--- a/templates/repo/issue/choose.tmpl
++++ b/templates/repo/issue/choose.tmpl
+@@ -20,17 +20,40 @@
+ 				</div>
+ 			</div>
+ 		{{end}}
+-		<div class="ui attached segment">
+-			<div class="ui two column grid">
+-				<div class="column left aligned">
+-					<strong>{{.locale.Tr "repo.issues.choose.blank"}}</strong>
+-					<br>{{.locale.Tr "repo.issues.choose.blank_about"}}
++		{{range .IssueConfig.ContactLinks}}
++			<div class="ui attached segment">
++				<div class="ui two column grid">
++					<div class="column left aligned">
++						<strong>{{.Name | RenderEmojiPlain}}</strong>
++						<br>{{.About | RenderEmojiPlain}}
++					</div>
++					<div class="column right aligned">
++						<a href="{{.URL}}" class="ui green button">{{svg "octicon-link-external"}} {{$.locale.Tr "repo.issues.choose.open_external_link"}}</a>
++					</div>
+ 				</div>
+-				<div class="column right aligned">
+-					<a href="{{.RepoLink}}/issues/new?{{if .milestone}}&milestone={{.milestone}}{{end}}{{if $.project}}&project={{$.project}}{{end}}" class="ui green button">{{$.locale.Tr "repo.issues.choose.get_started"}}</a>
++			</div>
++		{{end}}
++		{{if .IssueConfig.BlankIssuesEnabled}}
++			<div class="ui attached segment">
++				<div class="ui two column grid">
++					<div class="column left aligned">
++						<strong>{{.locale.Tr "repo.issues.choose.blank"}}</strong>
++						<br/>{{.locale.Tr "repo.issues.choose.blank_about"}}
++					</div>
++					<div class="column right aligned">
++						<a href="{{.RepoLink}}/issues/new?{{if .milestone}}&milestone={{.milestone}}{{end}}{{if $.project}}&project={{$.project}}{{end}}" class="ui green button">{{$.locale.Tr "repo.issues.choose.get_started"}}</a>
++					</div>
+ 				</div>
+ 			</div>
+-		</div>
++		{{end}}
++		{{- if .IssueConfigError}}{{/* normal warning flash makes problems here*/}}
++			<div class="ui warning message">
++				<div class="text left">
++					<div>{{.locale.Tr "repo.issues.choose.invalid_config"}}</div>
++					<diy>{{.IssueConfigError}}</div>
++				</div>
++			</div>
++		{{end}}
+ 	</div>
+ </div>
+ {{template "base/footer" .}}
+diff --git a/templates/swagger/v1_json.tmpl b/templates/swagger/v1_json.tmpl
+index 2401b5d15e754..fe3f31b13d5d6 100644
+--- a/templates/swagger/v1_json.tmpl
++++ b/templates/swagger/v1_json.tmpl
+@@ -5013,6 +5013,72 @@
+         }
+       }
+     },
++    "/repos/{owner}/{repo}/issue_config": {
++      "get": {
++        "produces": [
++          "application/json"
++        ],
++        "tags": [
++          "repository"
++        ],
++        "summary": "Returns the issue config for a repo",
++        "operationId": "repoGetIssueConfig",
++        "parameters": [
++          {
++            "type": "string",
++            "description": "owner of the repo",
++            "name": "owner",
++            "in": "path",
++            "required": true
++          },
++          {
++            "type": "string",
++            "description": "name of the repo",
++            "name": "repo",
++            "in": "path",
++            "required": true
++          }
++        ],
++        "responses": {
++          "200": {
++            "$ref": "#/responses/RepoIssueConfig"
++          }
++        }
++      }
++    },
++    "/repos/{owner}/{repo}/issue_config/validate": {
++      "get": {
++        "produces": [
++          "application/json"
++        ],
++        "tags": [
++          "repository"
++        ],
++        "summary": "Returns the validation information for a issue config",
++        "operationId": "repoValidateIssueConfig",
++        "parameters": [
++          {
++            "type": "string",
++            "description": "owner of the repo",
++            "name": "owner",
++            "in": "path",
++            "required": true
++          },
++          {
++            "type": "string",
++            "description": "name of the repo",
++            "name": "repo",
++            "in": "path",
++            "required": true
++          }
++        ],
++        "responses": {
++          "200": {
++            "$ref": "#/responses/RepoIssueConfigValidation"
++          }
++        }
++      }
++    },
+     "/repos/{owner}/{repo}/issue_templates": {
+       "get": {
+         "produces": [
+@@ -18165,6 +18231,55 @@
+       },
+       "x-go-package": "code.gitea.io/gitea/modules/structs"
+     },
++    "IssueConfig": {
++      "type": "object",
++      "properties": {
++        "blank_issues_enabled": {
++          "type": "boolean",
++          "x-go-name": "BlankIssuesEnabled"
++        },
++        "contact_links": {
++          "type": "array",
++          "items": {
++            "$ref": "#/definitions/IssueConfigContactLink"
++          },
++          "x-go-name": "ContactLinks"
++        }
++      },
++      "x-go-package": "code.gitea.io/gitea/modules/structs"
++    },
++    "IssueConfigContactLink": {
++      "type": "object",
++      "properties": {
++        "about": {
++          "type": "string",
++          "x-go-name": "About"
++        },
++        "name": {
++          "type": "string",
++          "x-go-name": "Name"
++        },
++        "url": {
++          "type": "string",
++          "x-go-name": "URL"
++        }
++      },
++      "x-go-package": "code.gitea.io/gitea/modules/structs"
++    },
++    "IssueConfigValidation": {
++      "type": "object",
++      "properties": {
++        "message": {
++          "type": "string",
++          "x-go-name": "Message"
++        },
++        "valid": {
++          "type": "boolean",
++          "x-go-name": "Valid"
++        }
++      },
++      "x-go-package": "code.gitea.io/gitea/modules/structs"
++    },
+     "IssueDeadline": {
+       "description": "IssueDeadline represents an issue deadline",
+       "type": "object",
+@@ -21444,6 +21559,18 @@
+         "$ref": "#/definitions/RepoCollaboratorPermission"
+       }
+     },
++    "RepoIssueConfig": {
++      "description": "RepoIssueConfig",
++      "schema": {
++        "$ref": "#/definitions/IssueConfig"
++      }
++    },
++    "RepoIssueConfigValidation": {
++      "description": "RepoIssueConfigValidation",
++      "schema": {
++        "$ref": "#/definitions/IssueConfigValidation"
++      }
++    },
+     "Repository": {
+       "description": "Repository",
+       "schema": {
+diff --git a/tests/integration/api_issue_config_test.go b/tests/integration/api_issue_config_test.go
+new file mode 100644
+index 0000000000000..b9b3765c4e565
+--- /dev/null
++++ b/tests/integration/api_issue_config_test.go
+@@ -0,0 +1,52 @@
++// Copyright 2023 The Gitea Authors. All rights reserved.
++// SPDX-License-Identifier: MIT
++
++package integration
++
++import (
++	"fmt"
++	"net/http"
++	"testing"
++
++	repo_model "code.gitea.io/gitea/models/repo"
++	"code.gitea.io/gitea/models/unittest"
++	user_model "code.gitea.io/gitea/models/user"
++	api "code.gitea.io/gitea/modules/structs"
++	"code.gitea.io/gitea/tests"
++
++	"github.com/stretchr/testify/assert"
++)
++
++func TestAPIReposGetDefaultIssueConfig(t *testing.T) {
++	defer tests.PrepareTestEnv(t)()
++
++	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1})
++	owner := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: repo.OwnerID})
++
++	urlStr := fmt.Sprintf("/api/v1/repos/%s/%s/issue_config", owner.Name, repo.Name)
++	req := NewRequest(t, "GET", urlStr)
++	resp := MakeRequest(t, req, http.StatusOK)
++
++	var issueConfig api.IssueConfig
++	DecodeJSON(t, resp, &issueConfig)
++
++	assert.True(t, issueConfig.BlankIssuesEnabled)
++	assert.Equal(t, issueConfig.ContactLinks, make([]api.IssueConfigContactLink, 0))
++}
++
++func TestAPIReposValidateDefaultIssueConfig(t *testing.T) {
++	defer tests.PrepareTestEnv(t)()
++
++	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1})
++	owner := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: repo.OwnerID})
++
++	urlStr := fmt.Sprintf("/api/v1/repos/%s/%s/issue_config/validate", owner.Name, repo.Name)
++	req := NewRequest(t, "GET", urlStr)
++	resp := MakeRequest(t, req, http.StatusOK)
++
++	var issueConfigValidation api.IssueConfigValidation
++	DecodeJSON(t, resp, &issueConfigValidation)
++
++	assert.True(t, issueConfigValidation.Valid)
++	assert.Equal(t, issueConfigValidation.Message, "")
++}
