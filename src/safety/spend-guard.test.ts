@@ -4,6 +4,7 @@ import {
   estimatePassSpend,
   makeSpendGuard,
   parseMaxSpend,
+  parseOrPricing,
 } from "./spend-guard.js";
 
 test("parseMaxSpend: uses the fallback when the flag is absent", () => {
@@ -61,6 +62,28 @@ test("makeSpendGuard trips only once accumulated spend exceeds the cap", () => {
 
   guard.add(0.0001);
   expect(guard.tripped()).toBe(true);
+});
+
+test("parseOrPricing: a genuinely-free model ($0 price) parses to a real 0, not blind", () => {
+  // "0" is a real price the guard can trust — must NOT collapse to the null/blind case.
+  expect(parseOrPricing({ completion: "0", prompt: "0" })).toEqual({
+    in: 0,
+    out: 0,
+  });
+});
+
+test("parseOrPricing: valid numeric-string prices parse through", () => {
+  expect(
+    parseOrPricing({ completion: "0.000002", prompt: "0.000001" })
+  ).toEqual({ in: 0.000_001, out: 0.000_002 });
+});
+
+test("parseOrPricing: absent or malformed pricing is null (guard is blind, not free)", () => {
+  expect(parseOrPricing(undefined)).toBeNull();
+  expect(parseOrPricing({})).toBeNull(); // both fields missing
+  expect(parseOrPricing({ prompt: "0.001" })).toBeNull(); // completion missing
+  expect(parseOrPricing({ completion: "0.001" })).toBeNull(); // prompt missing
+  expect(parseOrPricing({ completion: "x", prompt: "0.001" })).toBeNull(); // non-numeric
 });
 
 test("classifyReasoningRisk: no reasoning metadata is safe", () => {

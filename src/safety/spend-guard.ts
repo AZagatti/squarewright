@@ -51,6 +51,23 @@ function orModels(): Array<{
  * unknown model means the token-based spend guard is effectively BLIND (every pass estimates $0, so the circuit
  * breaker can never trip), so we `console.warn` to stderr — the operator must see the guard has no teeth this run.
  */
+/**
+ * Parse an OpenRouter model's `pricing` block into per-token prices — the pure core, split out for testing. Returns
+ * `null` when EITHER field is absent or non-numeric: a `"0"` genuinely-free price parses to a finite 0 (a real
+ * price), but `undefined`/malformed parses to `NaN`, which must not be silently coerced to a $0 that blinds the
+ * spend guard. The caller turns `null` into a loud warn + $0 fallback (the fail-open-but-visible contract).
+ */
+export function parseOrPricing(
+  pricing: { completion?: string; prompt?: string } | undefined
+): TokenPrice | null {
+  const inPrice = Number(pricing?.prompt);
+  const outPrice = Number(pricing?.completion);
+  if (!(Number.isFinite(inPrice) && Number.isFinite(outPrice))) {
+    return null;
+  }
+  return { in: inPrice, out: outPrice };
+}
+
 export function openrouterPrice(model: string): TokenPrice {
   try {
     const m = orModels().find((x) => x.id === model);
@@ -58,11 +75,16 @@ export function openrouterPrice(model: string): TokenPrice {
       console.warn(
         `⚠️  OpenRouter model "${model}" not in catalog — price defaulting to $0; the spend guard is BLIND for this model (its token cost estimates as $0, so --max-spend can't trip).`
       );
+      return { in: 0, out: 0 };
     }
-    return {
-      in: Number(m?.pricing?.prompt) || 0,
-      out: Number(m?.pricing?.completion) || 0,
-    };
+    const parsed = parseOrPricing(m.pricing);
+    if (!parsed) {
+      console.warn(
+        `⚠️  OpenRouter model "${model}" has no parseable pricing (prompt=${m.pricing?.prompt}, completion=${m.pricing?.completion}) — price defaulting to $0; the spend guard is BLIND for this model (--max-spend can't trip on a $0 estimate).`
+      );
+      return { in: 0, out: 0 };
+    }
+    return parsed;
   } catch (e) {
     console.warn(
       `⚠️  OpenRouter price lookup for "${model}" failed (${e instanceof Error ? e.message : String(e)}) — price defaulting to $0; the spend guard is BLIND this run (token costs estimate as $0, so --max-spend can't trip). Watch the OpenRouter credits readout instead.`
