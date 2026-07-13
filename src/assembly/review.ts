@@ -92,6 +92,7 @@ async function runAcPass(
   context: ReviewContext,
   worker: PiWorker
 ): Promise<{
+  errored: boolean;
   findings: Finding[];
   incomplete: boolean;
   lens: { id: string; label: string };
@@ -104,6 +105,7 @@ async function runAcPass(
   }
   const base = config.lanes.find((l) => l.id === acPersona.lane);
   if (!base) {
+    // Deterministic config error (undefined lane) — fail loud, never swallowed as a transient (mirrors laneForPass).
     const known = config.lanes.map((l) => l.id).join(", ");
     throw new Error(
       `AC persona "${acPersona.id}" references lane "${acPersona.lane}", which is not defined. Known lanes: [${known}].`
@@ -113,22 +115,114 @@ async function runAcPass(
     ...base,
     thinking: acPersona.thinking ?? base.thinking,
   };
-  const result = await worker.run({
-    acCheck: true,
-    budget: config.budget,
-    context,
-    lane,
-    persona: acPersona.id,
-    // no rules preamble / rule-drift: the AC pass checks the linked issue's criteria, not project rules.
-    systemPrompt: acPersona.prompt,
-  });
-  return {
-    findings: result.findings,
-    incomplete: result.usage?.submitted === false,
-    lens: { id: acPersona.id, label: acPersona.label ?? acPersona.id },
-    model: lane.model,
-    summary: result.usage?.summary?.trim() || undefined,
-  };
+  const lens = { id: acPersona.id, label: acPersona.label ?? acPersona.id };
+  try {
+    const result = await worker.run({
+      acCheck: true,
+      budget: config.budget,
+      context,
+      lane,
+      persona: acPersona.id,
+      // no rules preamble / rule-drift: the AC pass checks the linked issue's criteria, not project rules.
+      systemPrompt: acPersona.prompt,
+    });
+    return {
+      errored: false,
+      findings: result.findings,
+      incomplete: result.usage?.submitted === false,
+      lens,
+      model: lane.model,
+      summary: result.usage?.summary?.trim() || undefined,
+    };
+  } catch (e) {
+    // Isolate an AC model-run error like the persona loop's: don't let it drop the main passes' findings.
+    console.error(
+      `AC-conformance pass failed: ${e instanceof Error ? e.message : String(e)}`
+    );
+    return {
+      errored: true,
+      findings: [],
+      incomplete: false,
+      lens,
+      model: lane.model,
+    };
+  }
+}
+
+/** Accumulated results of running every persona pass — merged with the AC pass in `runReview`. */
+interface PersonaPassResults {
+  /** passes that threw mid-run (isolated per-pass); disclosed in the sticky, never silently swallowed */
+  erroredPassIds: Set<string>;
+  findings: Finding[];
+  /** passes whose structurer never submitted (`usage.submitted === false`) — ran but failed */
+  incompletePassIds: Set<string>;
+  modelsUsed: Set<string>;
+  summaries: string[];
+}
+
+/**
+ * Run every persona pass sequentially, ISOLATING each so one lens's mid-run error (e.g. a provider outage that
+ * outlived Pi's retries) can't drop the others' real findings. A config error from `laneForPass` (unresolvable
+ * lane) is a deterministic misconfig and stays UNCAUGHT — we isolate model-run errors, not setup bugs. Errored and
+ * structurer-didn't-submit passes are recorded (not silently dropped) for the sticky's honesty disclosures.
+ */
+async function runPersonaPasses(
+  passes: ReviewPass[],
+  personas: AssemblyConfig["personas"],
+  config: AssemblyConfig,
+  context: ReviewContext,
+  worker: PiWorker,
+  preamble: string
+): Promise<PersonaPassResults> {
+  const findings: Finding[] = [];
+  const summaries: string[] = [];
+  const modelsUsed = new Set<string>();
+  const incompletePassIds = new Set<string>();
+  const erroredPassIds = new Set<string>();
+  for (const pass of passes) {
+    const lane: ModelLane = {
+      ...laneForPass(pass, personas, config),
+      thinking: pass.thinking,
+    };
+    modelsUsed.add(lane.model);
+    let result: Awaited<ReturnType<PiWorker["run"]>>;
+    try {
+      // biome-ignore lint/performance/noAwaitInLoops: passes run sequentially by design — bounded (≤MAX_PERSONAS) and keeps provider concurrency low
+      result = await worker.run({
+        // budget flows to the worker so a future enforcer can honor it; today it's ADVISORY — the worker doesn't
+        // read it, because a hard mid-run tool-call/token cap needs an abort primitive Pi doesn't expose.
+        budget: config.budget,
+        context,
+        // Prompted CoT scaffold (precision lever) — off unless the repo opts in via `.squarewright.yml`.
+        cotScaffold: config.cotScaffold,
+        lane,
+        persona: pass.id,
+        // Rule-drift proposals (ADR-0005 §2) only when the repo has adopted the rules/docs system — a non-empty
+        // preamble means Tier-A rules and/or Tier-B docs were loaded, so "propose a rule the loaded set misses" is
+        // meaningful. Repos that opted out never see drift-noise.
+        proposeRuleDrift: preamble.length > 0,
+        systemPrompt: preamble + pass.prompt,
+      });
+    } catch (e) {
+      // A per-pass failure must not abort the whole review — record it for an honest sticky disclosure and log the
+      // cause for CI, then continue with the remaining lenses (whose findings would otherwise be lost).
+      erroredPassIds.add(pass.id);
+      console.error(
+        `Review pass "${pass.id}" failed: ${e instanceof Error ? e.message : String(e)}`
+      );
+      continue;
+    }
+    findings.push(...result.findings);
+    // A defined-and-false `submitted` means the structurer never submitted for this pass (undefined = no signal,
+    // e.g. a stub without usage — don't warn on that). Never treat a failed submission as a clean pass.
+    if (result.usage && result.usage.submitted === false) {
+      incompletePassIds.add(pass.id);
+    }
+    if (result.usage?.summary?.trim()) {
+      summaries.push(result.usage.summary.trim());
+    }
+  }
+  return { erroredPassIds, findings, incompletePassIds, modelsUsed, summaries };
 }
 
 /**
@@ -187,56 +281,36 @@ export async function runReview(
   const labelFor = (source: string) =>
     lenses.find((l) => l.id === source)?.label ?? source;
 
-  const all: Finding[] = [];
-  const summaries: string[] = [];
-  const modelsUsed = new Set<string>();
-  // Passes whose structurer never called submit_findings (`usage.submitted === false`): they ran but FAILED,
-  // so empty findings from them is a failure, not a clean verdict — disclosed in the sticky (claim B honesty fix).
-  const incompletePassIds = new Set<string>();
-  for (const pass of passes) {
-    const lane: ModelLane = {
-      ...laneForPass(pass, personas, config),
-      thinking: pass.thinking,
-    };
-    modelsUsed.add(lane.model);
-    // biome-ignore lint/performance/noAwaitInLoops: passes run sequentially by design — bounded (≤MAX_PERSONAS) and keeps provider concurrency low
-    const result = await worker.run({
-      // budget flows to the worker so a future enforcer can honor it; today it's ADVISORY — the worker doesn't
-      // read it, because a hard mid-run tool-call/token cap needs an abort primitive Pi doesn't expose.
-      budget: config.budget,
-      context,
-      // Prompted CoT scaffold (precision lever) — off unless the repo opts in via `.squarewright.yml`.
-      cotScaffold: config.cotScaffold,
-      lane,
-      persona: pass.id,
-      // Rule-drift proposals (ADR-0005 §2) only when the repo has adopted the rules/docs system — a non-empty
-      // preamble means Tier-A rules and/or Tier-B docs were loaded, so "propose a rule the loaded set misses" is
-      // meaningful. Repos that opted out never see drift-noise.
-      proposeRuleDrift: preamble.length > 0,
-      systemPrompt: preamble + pass.prompt,
-    });
-    all.push(...result.findings);
-    // A defined-and-false `submitted` means the structurer never submitted for this pass (undefined = no signal,
-    // e.g. a stub without usage — don't warn on that). Never treat a failed submission as a clean pass.
-    if (result.usage && result.usage.submitted === false) {
-      incompletePassIds.add(pass.id);
-    }
-    if (result.usage?.summary?.trim()) {
-      summaries.push(result.usage.summary.trim());
-    }
-  }
+  const {
+    findings: all,
+    summaries,
+    modelsUsed,
+    incompletePassIds,
+    erroredPassIds,
+  } = await runPersonaPasses(
+    passes,
+    personas,
+    config,
+    context,
+    worker,
+    preamble
+  );
 
   const ac = await runAcPass(personas, config, context, worker);
   if (ac) {
-    all.push(...ac.findings);
-    if (ac.incomplete) {
-      incompletePassIds.add(ac.lens.id);
-    }
-    if (ac.summary) {
-      summaries.push(ac.summary);
-    }
     modelsUsed.add(ac.model);
     lenses.push(ac.lens); // attribute AC findings + list it in the honesty footer roster
+    if (ac.errored) {
+      erroredPassIds.add(ac.lens.id);
+    } else {
+      all.push(...ac.findings);
+      if (ac.incomplete) {
+        incompletePassIds.add(ac.lens.id);
+      }
+      if (ac.summary) {
+        summaries.push(ac.summary);
+      }
+    }
   }
 
   // crossSourceOnly: on the production path each persona runs exactly one pass, so only genuine cross-persona
@@ -249,6 +323,8 @@ export async function runReview(
   const sticky = renderSticky({
     // matched-but-capped personas: disclose so a truncated review doesn't imply full coverage.
     droppedLenses: dropped.map((p) => ({ id: p.id, label: p.label ?? p.id })),
+    // passes that threw mid-run: disclose so a lens lost to a transient error doesn't read as "nothing found".
+    erroredLenses: lenses.filter((l) => erroredPassIds.has(l.id)),
     findings,
     // passes whose structurer failed to submit: disclose so a failed lens doesn't read as "nothing found".
     incompleteLenses: lenses.filter((l) => incompletePassIds.has(l.id)),

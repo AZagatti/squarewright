@@ -82,6 +82,13 @@ export interface StickyInput {
    * so a capped review never implies it covered a lens it silently dropped. Absent/empty = full coverage.
    */
   droppedLenses?: Lens[];
+  /**
+   * Lenses that threw an ERROR mid-run (e.g. a provider failure that outlived Pi's retries) and so never produced
+   * any result. Like `incompleteLenses` these ran-but-failed, but the cause differs (a raised exception, not a
+   * missing structurer submission), so they get their own disclosure. Absent/empty = every lens completed without
+   * error. Isolated per-pass in `runReview` so one lens's transient error can't drop the others' real findings.
+   */
+  erroredLenses?: Lens[];
   findings: AggregatedFinding[];
   /**
    * Lenses whose analysis never produced structured findings (the structurer never called submit_findings —
@@ -125,9 +132,17 @@ function provenance(
  */
 function coverageWarnings(
   droppedLenses: Lens[],
-  incompleteLenses: Lens[]
+  incompleteLenses: Lens[],
+  erroredLenses: Lens[]
 ): string[] {
   const lines: string[] = [];
+  if (erroredLenses.length > 0) {
+    const who = mdSafe(erroredLenses.map((l) => l.label).join(", "));
+    lines.push(
+      `> ⚠️ **Review error** — ${who} failed to run (an error occurred, e.g. a provider outage). ` +
+        "That part of the change was **not** reviewed; the absence of findings from it is a failure, not a clean bill."
+    );
+  }
   if (incompleteLenses.length > 0) {
     const who = mdSafe(incompleteLenses.map((l) => l.label).join(", "));
     lines.push(
@@ -170,6 +185,7 @@ export function renderSticky(input: StickyInput): string {
     model,
     droppedLenses = [],
     incompleteLenses = [],
+    erroredLenses = [],
   } = input;
   const labelFor = labelResolver(lenses);
   const lines: string[] = [STICKY_MARKER, "", "## Squarewright review", ""];
@@ -180,7 +196,9 @@ export function renderSticky(input: StickyInput): string {
 
   // Disclose incomplete/capped coverage prominently, before the verdict body — so it qualifies a "nothing found"
   // clean message and a findings list alike (a review that couldn't cover everything must say so).
-  lines.push(...coverageWarnings(droppedLenses, incompleteLenses));
+  lines.push(
+    ...coverageWarnings(droppedLenses, incompleteLenses, erroredLenses)
+  );
 
   if (findings.length === 0) {
     const roster =

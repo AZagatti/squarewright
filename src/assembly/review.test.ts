@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { Finding, ReviewContext } from "../core/types.js";
 import { STICKY_MARKER } from "../output/render.js";
 import type {
@@ -343,6 +343,71 @@ describe("runReview", () => {
     expect(out.sticky).toContain("Incomplete review");
     // the failing lens is named (falls back to its id, here "gen")
     expect(out.sticky).toContain("gen");
+  });
+
+  test("a pass that THROWS is isolated — other lenses' findings survive and it's disclosed", async () => {
+    // A transient provider error on one lens must NOT abort the whole review and lose the others' real findings.
+    const errSpy = spyOn(console, "error").mockImplementation(() => {
+      // silence + capture the logged cause
+    });
+    // solo personas → each runs as its own pass (non-solo personas batch into one "baseline" pass, which
+    // wouldn't exercise cross-pass isolation), so an error on pass "a" leaves pass "b" free to succeed.
+    const config: AssemblyConfig = {
+      grounders: [],
+      lanes: [{ id: "cheap", model: "glm-5-turbo", provider: "zai" }],
+      personas: [
+        {
+          id: "a",
+          label: "L-a",
+          lane: "cheap",
+          prompt: "a",
+          solo: true,
+          when: ["always"],
+        },
+        {
+          id: "b",
+          label: "L-b",
+          lane: "cheap",
+          prompt: "b",
+          solo: true,
+          when: ["always"],
+        },
+      ],
+    };
+    const worker: PiWorker = {
+      run: (req) =>
+        req.persona === "a"
+          ? Promise.reject(new Error("provider 503"))
+          : Promise.resolve({
+              findings: [finding(1)],
+              usage: { submitted: true, toolCalls: 1 },
+            }),
+    };
+    const out = await runReview(CONTEXT, config, worker);
+
+    // b's real finding survived even though a threw
+    expect(out.findings).toHaveLength(1);
+    // the errored lens is disclosed (not silently dropped) and the cause is logged for CI
+    expect(out.sticky).toContain("Review error");
+    expect(out.sticky).toContain("L-a");
+    expect(errSpy).toHaveBeenCalledTimes(1);
+    expect(errSpy.mock.calls[0]?.[0]).toContain("provider 503");
+    errSpy.mockRestore();
+  });
+
+  test("when every pass throws, the review still ships an all-errored sticky rather than crashing", async () => {
+    const errSpy = spyOn(console, "error").mockImplementation(() => {
+      // silence expected error logs
+    });
+    const worker: PiWorker = {
+      run: () => Promise.reject(new Error("boom")),
+    };
+    const out = await runReview(CONTEXT, CONFIG, worker);
+
+    expect(out.findings).toHaveLength(0);
+    expect(out.sticky).toContain("Review error");
+    expect(out.sticky).toContain("gen");
+    errSpy.mockRestore();
   });
 
   test("a normal clean pass (submitted=true) carries no incomplete disclosure", async () => {
