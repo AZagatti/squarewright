@@ -45,13 +45,6 @@ function orModels(): Array<{
 }
 
 /**
- * Per-token price for an OpenRouter model. Returns `{in:0,out:0}` for a model not found or on any error — a
- * price lookup failure must not block a run, so it fails open on price (the cap still applies once real prices
- * are known; a genuinely-free model is $0 anyway). Fail-open is deliberate but NOT silent: a fetch failure or an
- * unknown model means the token-based spend guard is effectively BLIND (every pass estimates $0, so the circuit
- * breaker can never trip), so we `console.warn` to stderr — the operator must see the guard has no teeth this run.
- */
-/**
  * Parse an OpenRouter model's `pricing` block into per-token prices — the pure core, split out for testing. Returns
  * `null` when EITHER field is absent or non-numeric: a `"0"` genuinely-free price parses to a finite 0 (a real
  * price), but `undefined`/malformed parses to `NaN`, which must not be silently coerced to a $0 that blinds the
@@ -68,6 +61,14 @@ export function parseOrPricing(
   return { in: inPrice, out: outPrice };
 }
 
+/**
+ * Per-token price for an OpenRouter model. Returns `{in:0,out:0}` for a model not found or on any error — a
+ * price lookup failure must not block a run, so it fails open on price (the cap still applies once real prices
+ * are known; a genuinely-free model is $0 anyway). Fail-open is deliberate but NOT silent: a fetch failure, an
+ * unknown model, or a found model with malformed pricing means the token-based spend guard is effectively BLIND
+ * (every pass estimates $0, so the circuit breaker can never trip), so we `console.warn` to stderr — the operator
+ * must see the guard has no teeth this run.
+ */
 export function openrouterPrice(model: string): TokenPrice {
   try {
     const m = orModels().find((x) => x.id === model);
