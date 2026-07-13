@@ -82,6 +82,28 @@ globs:
     expect(rules[0]?.globs).toEqual(["src/**", "test/**"]);
   });
 
+  test("a SCALAR globs string is coerced to a one-element list (not silently promoted to unscoped)", async () => {
+    // `globs: "src/payments/**"` (bare string) is valid YAML and the obvious way to scope a rule; dropping it to
+    // [] would inject this rule into EVERY PR (empty globs = unscoped), possibly suppressing findings repo-wide.
+    const scalar = `---
+description: Payments
+globs: "src/payments/**"
+---
+
+Extra scrutiny for money-moving code.`;
+    const reader = fakeReader(
+      { ".review-rules": ["- pay.md"] },
+      { ".review-rules/pay.md": scalar }
+    );
+    const rules = await loadReviewRules(reader);
+    expect(rules[0]?.globs).toEqual(["src/payments/**"]);
+    // and it stays SCOPED: it selects for a payments file, not an unrelated one
+    expect(selectReviewRules(rules, ["src/payments/charge.ts"])).toHaveLength(
+      1
+    );
+    expect(selectReviewRules(rules, ["src/ui/button.tsx"])).toHaveLength(0);
+  });
+
   test("a rule with no globs frontmatter loads with an empty globs list", async () => {
     const reader = fakeReader(
       { ".review-rules": ["- always.md"] },
