@@ -91,4 +91,51 @@ describe("readGatherArtifact", () => {
     );
     expect(readGatherArtifact(dir).linkedIssue).toBeUndefined();
   });
+
+  // --- validation of the UNTRUSTED artifact (a forged/malformed gather output must fail cleanly here,
+  // not crash later inside prompt assembly: ctx.body.trim(), files.map(...), defangIssueFence) ---
+
+  test("wrong-typed pr-meta field (numeric body) fails with a clear error, not a later crash", () => {
+    const dir = fixtureDir([], {
+      base_sha: "b",
+      body: 12_345, // attacker-controlled: a number would crash ctx.body.trim()
+      head_sha: "h",
+      number: 7,
+      repo: "o/r",
+      title: "t",
+    });
+    expect(() => readGatherArtifact(dir)).toThrow("Malformed gather artifact");
+  });
+
+  test("pr-files.json that isn't an array fails in readJson, not in .map()", () => {
+    const dir = fixtureDir({ not: "an array" }, META("body"));
+    expect(() => readGatherArtifact(dir)).toThrow("Malformed gather artifact");
+  });
+
+  test("a file entry missing required fields fails validation", () => {
+    const dir = fixtureDir([{ status: "modified" }], META("body")); // no filename
+    expect(() => readGatherArtifact(dir)).toThrow("Malformed gather artifact");
+  });
+
+  test("malformed linked-issue.json (wrong-typed title) is dropped, never crashes", () => {
+    const dir = fixtureDir([], META("Fixes #42"));
+    writeFileSync(
+      join(dir, "linked-issue.json"),
+      JSON.stringify({ body: "x", number: 42, title: { evil: true } })
+    );
+    expect(readGatherArtifact(dir).linkedIssue).toBeUndefined();
+  });
+
+  test("linked-issue.json with a nullish body/title populates with safe empty strings", () => {
+    const dir = fixtureDir([], META("Fixes #42"));
+    writeFileSync(
+      join(dir, "linked-issue.json"),
+      JSON.stringify({ number: 42 }) // body + title omitted
+    );
+    expect(readGatherArtifact(dir).linkedIssue).toEqual({
+      body: "",
+      number: 42,
+      title: "",
+    });
+  });
 });

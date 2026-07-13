@@ -1,29 +1,39 @@
 /**
  * Read the gather-phase artifact into a `ReviewContext` for the trusted review phase. The gather workflow
  * (untrusted, no secrets) writes the PR's diff + metadata as JSON; this reads it as **data only** — never
- * executed. Shape is fixed by `templates/workflows/squarewright-gather.yml`:
+ * executed. Because a forged/malformed artifact is attacker-controlled, every field is VALIDATED with zod before
+ * use — a wrong-typed value (e.g. a numeric `body`, or `pr-files.json` that isn't an array) must fail here with a
+ * clear error, not crash later inside prompt assembly (`ctx.body.trim()`, `files.map(...)`, `defangIssueFence`).
+ * Shape is fixed by `templates/workflows/squarewright-gather.yml`:
  *   pr-files.json — the GitHub "list PR files" API array ({ filename, status, patch? })
  *   pr-meta.json  — { number, title, base_sha, head_sha, repo, body }
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import type { ChangedFile, ReviewContext } from "../core/types.js";
 import { parseIssueRefs } from "../github/issue-refs.js";
 
-interface GhFile {
-  filename: string;
-  patch?: string;
-  status: string;
-}
+const ghFileSchema = z.object({
+  filename: z.string(),
+  patch: z.string().optional(),
+  status: z.string(),
+});
 
-interface GhMeta {
-  base_sha: string;
-  body: string | null;
-  head_sha: string;
-  number: number;
-  repo: string;
-  title: string;
-}
+const ghMetaSchema = z.object({
+  base_sha: z.string(),
+  body: z.string().nullish(),
+  head_sha: z.string(),
+  number: z.number(),
+  repo: z.string(),
+  title: z.string(),
+});
+
+const ghIssueSchema = z.object({
+  body: z.string().nullish(),
+  number: z.number(),
+  title: z.string().nullish(),
+});
 
 /** GitHub file statuses that don't map 1:1 (changed/copied/unchanged) collapse to "modified". */
 function mapStatus(status: string): ChangedFile["status"] {
@@ -33,9 +43,14 @@ function mapStatus(status: string): ChangedFile["status"] {
   return "modified";
 }
 
-function readJson<T>(path: string): T {
+/**
+ * Read + VALIDATE a REQUIRED gather-artifact file. A missing/unreadable file, invalid JSON, OR a value that
+ * doesn't match `schema` all raise the same friendly error — never a raw crash deep in the review path.
+ */
+function readJson<T>(path: string, schema: z.ZodType<T>): T {
+  let raw: unknown;
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as T;
+    raw = JSON.parse(readFileSync(path, "utf8"));
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
     throw new Error(
@@ -43,35 +58,39 @@ function readJson<T>(path: string): T {
       { cause: e }
     );
   }
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(
+      `Malformed gather artifact "${path}": ${parsed.error.message}. Run the gather phase first.`
+    );
+  }
+  return parsed.data;
 }
 
-/** Read an OPTIONAL gather-artifact file: returns null if it doesn't exist (vs `readJson`, which requires it). */
-function readJsonOptional<T>(path: string): T | null {
+/** Read + VALIDATE an OPTIONAL gather-artifact file: null if it's absent, unreadable, or fails the schema. */
+function readJsonOptional<T>(path: string, schema: z.ZodType<T>): T | null {
+  let raw: unknown;
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as T;
+    raw = JSON.parse(readFileSync(path, "utf8"));
   } catch {
     return null;
   }
-}
-
-interface GhIssue {
-  body?: string | null;
-  number: number;
-  title?: string | null;
+  const parsed = schema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
 }
 
 /**
  * The linked issue for the AC-conformance check, if the gather phase fetched one. UNTRUSTED like the rest of the
  * artifact. As a consistency guard we require the fetched issue number to actually be referenced by a closing
- * keyword in the (trusted-shape) PR body — `parseIssueRefs` — so a stray/mismatched `linked-issue.json` can't
- * silently inject an unrelated issue's text into the review. Returns undefined when absent or unreferenced.
+ * keyword in the PR body — `parseIssueRefs` — so a stray/mismatched `linked-issue.json` can't silently inject an
+ * unrelated issue's text into the review. Returns undefined when absent, unreferenced, or malformed.
  */
 function readLinkedIssue(
   dir: string,
   prBody: string
 ): ReviewContext["linkedIssue"] {
-  const iss = readJsonOptional<GhIssue>(join(dir, "linked-issue.json"));
-  if (!iss || typeof iss.number !== "number") {
+  const iss = readJsonOptional(join(dir, "linked-issue.json"), ghIssueSchema);
+  if (!iss) {
     return;
   }
   if (!parseIssueRefs(prBody).includes(iss.number)) {
@@ -82,9 +101,10 @@ function readLinkedIssue(
 
 /** Build a `ReviewContext` from a gather-artifact directory. */
 export function readGatherArtifact(dir: string): ReviewContext {
-  const meta = readJson<GhMeta>(join(dir, "pr-meta.json"));
-  const files: ChangedFile[] = readJson<GhFile[]>(
-    join(dir, "pr-files.json")
+  const meta = readJson(join(dir, "pr-meta.json"), ghMetaSchema);
+  const files: ChangedFile[] = readJson(
+    join(dir, "pr-files.json"),
+    z.array(ghFileSchema)
   ).map((f) => ({
     patch: f.patch,
     path: f.filename,
