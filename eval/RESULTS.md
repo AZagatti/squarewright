@@ -1210,3 +1210,33 @@ B no-go / C) with a clean viable path.** Build path: opt-in AC-conformance perso
 lane (the config already supports per-persona lanes), gated on issue-fetch + untrusted-issue-text plumbing +
 diff-truncation handling + higher N/external validation. N is small (3 decisive cases, sonnet N=1) — a strong lead,
 not a settled proof, but a clean 3/3 on the failure cases. Cost: ~$0.03 notional subscription quota for the check.
+
+## Fugu recall retest — ~2× defect recall reconfirmed, + better precision (2026-07-13, #45 AC2, Fugu window)
+
+Maintainer asked to re-test Sakana Fugu before its access expires (2026-07-29). Fresh golden run, `sakana/fugu`
+paired with the FREE `zai:glm-5-turbo` structurer (deliberately avoiding the credit-blocked OpenRouter deepseek
+structurer the prior Fugu run used):
+
+| golden, free glm-5-turbo structurer | glm-5.2 (free default) | Fugu |
+|---|---|---|
+| Locus recall /11 | ~6 (median, N=6) | 6/11 |
+| Clean false positives | ~12 (mean) | **6** |
+| **Defect recall /11** (zai:glm-5.2 judge) | **~3** (documented median) | **6/11** (judge pass 1) |
+
+**Fugu ~DOUBLES defect recall (6 vs ~3) AND roughly HALVES false positives (6 vs ~12)** vs the free default — the
+first model to clearly beat glm-5.2 on the honest (defect) metric, reconfirmed. Notably the ~2× holds with the
+FREE structurer, so the deepseek structurer the earlier run used was NOT essential to the lift. Loci-level recall
+*ties* glm (6 vs 6) — that's the over-crediting file-level metric masking the defect-level gap (glm's ~3 defect
+inflates to ~6 loci).
+
+Caveats (honest): the defect judge is effectively N=1 clean pass — pass 2 hallucinated (`rust-tokio` defect=2 >
+file=1, caught by the defect⊆file invariant guard and excluded) and a 280s timeout cut the 3-pass spread. But
+6/11 is consistent with the prior independent Fugu run (5–6 defect). Cost stays the known trap: reasoning is
+MANDATORY (no off), 36–591s/case (rust-tokio alone 591s), quota-heavy, sub expires 2026-07-29.
+
+**Recommendation (answers #45 AC2 "how much would a stronger model buy"): offer Fugu as an OPT-IN strong recall
+lane, not a default.** The config already supports per-persona lanes — a user points `strong` at `sakana/fugu`
+(provider in `~/.pi/agent/models.json`) for ~2× recall + better precision, accepting the latency + quota/paid
+dependency + the 2026-07-29 expiry. Free glm-5.2 stays the default (recall is model-bound; this is the paid lever,
+and it's real). This is the honest recall path, since tonight's divergence no-go closed the free deterministic-
+Grounder lever.
