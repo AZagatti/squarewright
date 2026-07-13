@@ -662,6 +662,12 @@ async function main() {
           rawFindings: findings.length,
           stack: c.stack,
           synthLoci,
+          // Persist the raw pass-1 prose ONLY in --analysis-recall mode (the diagnostic; keeps normal reports
+          // small). The hit/drop COUNTS can't distinguish (B) model-ceiling — the prose never surfaced the locus —
+          // from (C) structurer-drop — the prose flagged it and the extractor lost it; `analysisMentionsLocus`
+          // only checks the file is NAMED, not that a defect was flagged there. Retaining the prose lets a re-run
+          // adjudicate B vs C by reading it — the crux of #45 the current data can't answer.
+          ...(doAnalysisRecall ? { analysisProse } : {}),
         };
       } catch (e) {
         // Isolate a per-case failure (e.g. a provider 429 once quota is exhausted) so it can't reject the whole
