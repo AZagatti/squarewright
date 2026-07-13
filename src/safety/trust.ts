@@ -10,11 +10,15 @@
  */
 import type { ReviewContext } from "../core/types.js";
 
-/** The artifact's self-reported identity — untrusted; used only to cross-check, never as a source of truth. */
-export type ClaimedTarget = Pick<
-  ReviewContext,
-  "headSha" | "prNumber" | "repo"
->;
+/**
+ * The artifact's self-reported identity — untrusted; used only to cross-check, never as a source of truth. Its
+ * `prNumber` is spelled out as a REQUIRED `number` rather than picked from `ReviewContext` (where it is optional for
+ * the offline commit-case eval): a claimed posting target must always name a PR to cross-check against, and keeping
+ * the guarantee at the type level means the trust boundary never has to treat "no PR" as a valid claim.
+ */
+export type ClaimedTarget = Pick<ReviewContext, "headSha" | "repo"> & {
+  prNumber: number;
+};
 
 /** Signals GitHub sets on the `workflow_run` event; trusted because the review workflow runs from the base repo. */
 export interface TrustedRunSignal {

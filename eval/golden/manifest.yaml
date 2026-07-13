@@ -1,4 +1,4 @@
-# Golden corpus — see README.md. 19 real cases (18 PRs + 1 direct-to-main commit) across 9 stacks; 9 clean + 10 has-issue.
+# Golden corpus — see README.md. 19 real cases (18 PRs + 1 direct-to-main commit) across 9 stacks; 10 clean + 9 has-issue.
 # Every has-issue case is evidence-backed (a revert PR or a documented follow-up regression).
 # Freeze diffs with:  bun run scripts/eval.ts --freeze
 cases:
@@ -170,11 +170,9 @@ cases:
     label: clean
     note: "The PR wires in an external reusable review workflow whose EXTERNAL definition requests `id-token: write` (disallowed by policy). Within THIS diff the local id-token line is commented out and the code only references the external workflow — there is no diff-visible defect, so a correct reviewer flags nothing here."
     evidence: "Reverted same day by moby/moby#53006: 'the workflow is requesting id-token: write... https://github.com/docker/docker-agent-action/pull/40 should fix this' — i.e. the fix is in the external action repo, not moby."
-  # First has-issue CI case (added 2026-07-13, #46). Before this, every CI case was `label: clean`, so the CI
-  # persona lane's has-issue DETECTION was unvalidated. Keyed off a bare COMMIT (direct push to main, no PR) via the
-  # `commit:` field — see scripts/eval.ts. Ground-truth churn: has-issue set 9 → 10 (prior runs.jsonl issueTotal
-  # rows are no longer like-for-like comparators). Council-vetted (verifier + disagree-seeker): defect is fully
-  # diff-visible and self-contained (no ci-moby-style external-file trap).
+  # The corpus's only has-issue CI case — it validates that the CI persona lane detects a real CI defect (the other
+  # CI cases are clean). Keyed off a bare COMMIT (direct push to main, no PR) via the `commit:` field — see
+  # scripts/eval.ts. The defect is fully diff-visible and self-contained (no external-file dependency).
   - id: ci-spotipy-pwnrequest
     repo: spotipy-dev/spotipy
     commit: 4f5759dbfb4506c7b6280572a4db1aabc1ac778d

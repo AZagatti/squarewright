@@ -23,6 +23,16 @@ function ctx(files: ReviewContext["files"]): ReviewContext {
   };
 }
 
+test("renderPrompt: labels the PR number when present, omits 'PR #' when absent (commit-only eval case)", () => {
+  const files: ReviewContext["files"] = [
+    { patch: "@@ -1 +1 @@\n-a\n+b\n", path: "src/a.ts", status: "modified" },
+  ];
+  expect(renderPrompt(finding, ctx(files))).toContain("on PR #1");
+  // a bare-commit recall-eval context has no PR; never fabricate "PR #undefined"/"PR #0"
+  const noPr = { ...ctx(files), prNumber: undefined };
+  expect(renderPrompt(finding, noPr)).not.toContain("PR #");
+});
+
 test("renderPrompt: a normal small diff is included in full, untruncated", () => {
   const p = renderPrompt(
     finding,
