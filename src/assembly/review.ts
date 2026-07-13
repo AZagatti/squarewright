@@ -30,9 +30,10 @@ import type { AssemblyConfig } from "./config.js";
 const MAX_PERSONAS = 4;
 
 /**
- * Cost-visibility threshold (AGENTS.md §4): the trusted `.review-rules` + `contextDocs` preamble is re-injected
- * into EVERY persona pass, so its size is paid once per pass. Above this we WARN (never truncate — it's trusted
- * maintainer-authored content) so a maintainer whose docs/rules grew large notices the per-review cost. Heuristic:
+ * Cost-visibility threshold (in the spirit of the money-guard, though not the paid-spend hard rule itself): the
+ * trusted `.review-rules` + `contextDocs` preamble is re-injected into EVERY persona pass, so its size is paid once
+ * per pass. Above this we WARN (never truncate — it's trusted maintainer-authored content; silently cutting a rule
+ * could invert its meaning) so a maintainer whose docs/rules grew large notices the per-review cost. Heuristic:
  * being off by some chars only shifts when the harmless warning fires. ~24k chars ≈ 6k tokens, well above a normal
  * curated rules+docs set.
  */

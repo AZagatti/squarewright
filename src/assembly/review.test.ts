@@ -270,10 +270,17 @@ describe("runReview", () => {
     const warnSpy = spyOn(console, "warn").mockImplementation(() => {
       // silence + capture
     });
-    const worker = stubWorker({
-      findings: [],
-      usage: { submitted: true, toolCalls: 0 },
-    });
+    // capture the request so we can assert the FULL trusted rule text reached the prompt (not truncated)
+    let received: WorkerRequest | undefined;
+    const worker: PiWorker = {
+      run: (req) => {
+        received = req;
+        return Promise.resolve({
+          findings: [],
+          usage: { submitted: true, toolCalls: 0 },
+        });
+      },
+    };
     // a single rule file well over the ~24k-char threshold
     const huge = "x".repeat(30_000);
     const bigReader: RepoReader = {
@@ -286,15 +293,13 @@ describe("runReview", () => {
             : null
         ),
     };
-    const out = await runReview(CONTEXT, CONFIG, worker, {
-      repoReader: bigReader,
-    });
+    await runReview(CONTEXT, CONFIG, worker, { repoReader: bigReader });
 
     // warned about the oversized context…
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls[0]?.[0]).toContain("Project review context");
-    // …but did NOT truncate — the full trusted rule text still reaches the prompt
-    expect(out.sticky).toBeDefined();
+    // …but did NOT truncate — the full 30k-char trusted rule body still reaches the prompt intact
+    expect(received?.systemPrompt).toContain(huge);
     warnSpy.mockRestore();
   });
 
