@@ -115,6 +115,12 @@ program
         if (result.posted) {
           const { repo, prNumber, commitSha } = result.posted;
           console.error(`Posted review to ${repo}#${prNumber} @ ${commitSha}.`);
+        } else if (result.skipped === "no-open-pr") {
+          // Benign no-op, not a failure: the PR was merged/closed before this async review ran. Exit 0 so the
+          // workflow stays green — a red "review failed" for a merged PR is noise that erodes trust in the signal.
+          console.error(
+            "No open PR for this commit (merged or closed before the review ran) — nothing to post. Skipping."
+          );
         } else if (result.json) {
           process.stdout.write(result.json);
         }

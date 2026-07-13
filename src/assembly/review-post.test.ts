@@ -350,12 +350,26 @@ describe("runReviewCommand", () => {
     expect(seen.reviewCalls).toBe(0);
   });
 
-  test("--post with an untrusted target fails closed before the model runs, posting nothing", async () => {
+  test("--post with no open PR (merged/closed before review ran) is a benign no-op: no spend, no post, no throw", async () => {
     const { deps, seen } = harness({ lookup: () => Promise.resolve([]) });
+
+    const result = await runReviewCommand({ ...OPTS, post: true }, deps);
+
+    expect(result.skipped).toBe("no-open-pr");
+    expect(result.posted).toBeUndefined();
+    expect(seen.reviewCalls).toBe(0); // fail cheap — no model call when there's nowhere to post
+    expect(seen.order).toEqual([]); // nothing posted
+  });
+
+  test("--post with a genuine trust mismatch STILL fails closed (throws) before the model runs", async () => {
+    // a derived PR number disagreeing with the artifact's claim is a real violation, not a benign no-target
+    const { deps, seen } = harness({
+      lookup: () => Promise.resolve([{ number: 999 }]),
+    });
 
     await expect(
       runReviewCommand({ ...OPTS, post: true }, deps)
-    ).rejects.toThrow("found 0");
+    ).rejects.toThrow("disagrees");
     expect(seen.reviewCalls).toBe(0);
     expect(seen.order).toEqual([]);
   });
