@@ -3,6 +3,10 @@
 const gh = "https://github.com/AZagatti/squarewright";
 const evalRecord = "https://github.com/AZagatti/squarewright/blob/main/eval/RESULTS.md";
 const pi = "https://github.com/earendil-works/pi";
+// Prefix internal links with the deploy base so they resolve under /squarewright/ (project page), not the domain
+// root. BASE_URL has no guaranteed trailing slash (it's "/squarewright" in prod, "/" in dev), so strip a trailing
+// slash and add one explicitly at each use site — avoids both "/squarewrightfavicon.svg" and "//favicon.svg".
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
 <!doctype html>
@@ -10,7 +14,7 @@ const pi = "https://github.com/earendil-works/pi";
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href={`${base}/favicon.svg`} type="image/svg+xml" />
   <title>Squarewright — a code reviewer you own, on the model you choose</title>
   <meta name="description" content="Open-source toolbox that turns any model into a PR reviewer running on your own infra — with a real trust boundary, and honest about exactly how good it is." />
   <style>
@@ -163,7 +167,7 @@ const pi = "https://github.com/earendil-works/pi";
       <nav>
         <a class="hideable" href="#honest">Honesty</a>
         <a class="hideable" href="#safe">Safety</a>
-        <a class="hideable" href="/start/introduction">Docs</a>
+        <a class="hideable" href={`${base}/start/introduction`}>Docs</a>
         <a href={gh}>GitHub ↗</a>
       </nav>
     </div>

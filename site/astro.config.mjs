@@ -4,8 +4,10 @@ import { defineConfig } from "astro/config";
 
 // https://astro.build/config
 export default defineConfig({
-  // Update `site` (and add `base` if project-pages) when the deploy target is fixed.
+  // Deploy target is the project page https://azagatti.github.io/squarewright/, so `base` must be the repo path or
+  // every asset/link resolves at the domain root and 404s. (Change both if a custom domain is set up later.)
   site: "https://azagatti.github.io",
+  base: "/squarewright",
   integrations: [
     starlight({
       title: "Squarewright",
