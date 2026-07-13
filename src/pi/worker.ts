@@ -500,6 +500,31 @@ function extractAssistantText(messages: unknown[]): string {
   return parts.join("\n").trim();
 }
 
+/**
+ * Best-effort error reason from the terminal assistant message when pass-1 failed. Pi leaves a `stopReason:"error"`
+ * + `errorMessage` on the message (e.g. a provider content-filter or quota error) rather than throwing. Defensive:
+ * returns undefined when no such signal is present, so the caller falls back to a generic message.
+ */
+function extractErrorReason(messages: unknown[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const m = messages[i] as {
+      role?: string;
+      stopReason?: string;
+      errorMessage?: string;
+    };
+    if (m.role !== "assistant") {
+      continue;
+    }
+    if (m.errorMessage) {
+      return m.errorMessage;
+    }
+    if (m.stopReason && m.stopReason !== "stop") {
+      return `stopReason: ${m.stopReason}`;
+    }
+    return; // only inspect the most recent assistant message
+  }
+}
+
 function sumCost(messages: unknown[]): number {
   let c = 0;
   for (const m of messages as Array<{
@@ -739,9 +764,26 @@ export function createPiWorker(options: PiWorkerOptions): PiWorker {
       toolCalls += structured.toolCalls;
       costUsd += structured.costUsd;
 
+      // Pass-1 produced no prose → the analysis turn failed (a provider refusal/content-filter, or a NON-retryable
+      // quota/billing error — Pi doesn't retry those and `prompt()` doesn't throw). The analysis prompt REQUIRES
+      // prose (even "no issues found"), so empty text is unambiguous failure. Surfaced so the caller discloses it
+      // instead of shipping the structurer's zero findings as a clean review.
+      const analysisFailed = analysisText.trim().length === 0;
+      if (analysisFailed) {
+        const reason =
+          extractErrorReason(s1.messages) ??
+          "likely a provider refusal or a non-retryable quota/billing error";
+        console.error(
+          `Analysis pass produced no output for persona "${request.persona ?? "persona:general"}" ` +
+            `on ${request.lane.provider}/${request.lane.model} — ${reason}. Treating the pass as failed; ` +
+            "this lens did NOT review the change."
+        );
+      }
+
       return {
         findings: structured.findings,
         usage: {
+          analysisFailed,
           analysisText,
           analysisTokens,
           costUsd,

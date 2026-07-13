@@ -405,6 +405,24 @@ describe("runReview", () => {
     expect(out.sticky).toContain("gen");
   });
 
+  test("a pass whose ANALYSIS failed (analysisFailed) is disclosed as errored, not a clean review", async () => {
+    // The exact shape worker.run returns when pass-1 produced no prose (a provider refusal / non-retryable quota
+    // error): empty findings + submitted:true (the structurer "succeeded" on a placeholder) + analysisFailed:true.
+    // Without the guard this ships as an indistinguishable "nothing found" — a false clean bill on a quota cap.
+    const worker = stubWorker({
+      findings: [],
+      usage: { analysisFailed: true, submitted: true, toolCalls: 0 },
+    });
+    const out = await runReview(CONTEXT, CONFIG, worker);
+
+    expect(out.findings).toHaveLength(0);
+    // disclosed as a review error (a provider failure), never a clean verdict
+    expect(out.sticky).toContain("Review error");
+    expect(out.sticky).toContain("gen");
+    // and NOT mislabeled as merely "incomplete" (that's the structurer-didn't-submit case)
+    expect(out.sticky).not.toContain("Incomplete review");
+  });
+
   test("a pass that THROWS is isolated — other lenses' findings survive and it's disclosed", async () => {
     // A transient provider error on one lens must NOT abort the whole review and lose the others' real findings.
     const errSpy = spyOn(console, "error").mockImplementation(() => {
@@ -600,6 +618,51 @@ describe("runReview", () => {
     expect(out.sticky).toContain("AC");
     expect(errSpy.mock.calls[0]?.[0]).toContain("AC provider 500");
     errSpy.mockRestore();
+  });
+
+  test("an AC pass whose ANALYSIS failed is disclosed as errored, not a clean AC check", async () => {
+    // The AC pass usually runs on the strong/paid lane — the one most likely to hit a real quota cap. A quota/
+    // refusal returns findings:[] + submitted:true + analysisFailed:true; it must NOT read as a passed AC check.
+    const config: AssemblyConfig = {
+      grounders: [],
+      lanes: [
+        { id: "cheap", model: "glm-5-turbo", provider: "zai" },
+        { id: "strong", model: "big", provider: "openrouter" },
+      ],
+      personas: [
+        { id: "gen", lane: "cheap", prompt: "review it", when: ["always"] },
+        {
+          acCheck: true,
+          id: "auditor",
+          label: "AC",
+          lane: "strong",
+          prompt: "check ACs",
+        },
+      ],
+    };
+    // the AC pass's analysis failed; the defect persona succeeds with a real finding
+    const worker: PiWorker = {
+      run: (req) =>
+        req.acCheck
+          ? Promise.resolve({
+              findings: [],
+              usage: { analysisFailed: true, submitted: true, toolCalls: 0 },
+            })
+          : Promise.resolve({
+              findings: [finding(1)],
+              usage: { submitted: true, toolCalls: 1 },
+            }),
+    };
+    const withIssue: ReviewContext = {
+      ...CONTEXT,
+      linkedIssue: { body: "AC: do X", number: 5, title: "T" },
+    };
+    const out = await runReview(withIssue, config, worker);
+
+    // the defect persona's finding survived; the AC lens is disclosed as errored, not a silent clean AC pass
+    expect(out.findings).toHaveLength(1);
+    expect(out.sticky).toContain("Review error");
+    expect(out.sticky).toContain("AC");
   });
 
   test("docs-only PR selects no personas and never calls the worker", async () => {

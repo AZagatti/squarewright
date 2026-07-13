@@ -100,6 +100,14 @@ export interface WorkerResult {
      * submitted (NOT because the change is clean) — the caller must not treat that as a clean review.
      */
     submitted: boolean;
+    /**
+     * Did PASS-1 (analysis) fail to produce any prose? `true` when the analysis turn ended without usable text —
+     * e.g. a provider refusal/content-filter, or a NON-retryable quota/billing error (which Pi does not retry and
+     * `prompt()` does not throw on). The structurer then "successfully" extracts zero findings from a placeholder,
+     * so `submitted` stays `true` and `findings` is empty — the caller MUST treat this as a failed pass, never a
+     * clean review (else a quota cap silently posts "no issues found"). Absent/false on a normal pass.
+     */
+    analysisFailed?: boolean;
     /** billable tokens per pass — for the eval's immediate (lag-free) local spend guard */
     analysisTokens?: { input: number; output: number };
     structTokens?: { input: number; output: number };
