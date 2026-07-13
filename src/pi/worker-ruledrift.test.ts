@@ -15,6 +15,19 @@ const base = {
   title: "issue",
 };
 
+test("submittedToFinding drops junk/empty suggestions (no stray ```suggestion null``` block)", () => {
+  for (const junk of ["null", "None", "  n/a ", "", "  ", "undefined", "-"]) {
+    expect(
+      submittedToFinding({ ...base, suggestion: junk }, "p").suggestion
+    ).toBeUndefined();
+  }
+  // a real suggestion is kept (trimmed)
+  expect(
+    submittedToFinding({ ...base, suggestion: "  const x = 1;  " }, "p")
+      .suggestion
+  ).toBe("const x = 1;");
+});
+
 test("submittedToFinding carries proposedRule through when present", () => {
   const f = submittedToFinding(
     { ...base, proposedRule: "```md\n# rule\n```" },

@@ -265,6 +265,23 @@ export function buildAnalysisSystem(request: WorkerRequest): string {
  * `additionalProperties:false` and Pi calls tools non-strict, so a model could still freelance the key — this
  * strip makes "no rule-drift when off" a real guarantee, not a soft one.
  */
+// Junk placeholders a structurer sometimes emits for an optional field it has no real value for. Rendering these
+// as a GitHub ```suggestion``` block would post a literal "null" — so drop them (seen with PR-level AC findings,
+// which have no line-level fix). Case-insensitive; also drops empty/whitespace.
+const SUGGESTION_JUNK = new Set([
+  "null",
+  "none",
+  "n/a",
+  "na",
+  "-",
+  "undefined",
+]);
+
+function cleanSuggestion(s: string | undefined): string | undefined {
+  const t = s?.trim();
+  return t && !SUGGESTION_JUNK.has(t.toLowerCase()) ? t : undefined;
+}
+
 export function submittedToFinding(
   f: SubmittedFinding,
   persona: string,
@@ -282,7 +299,7 @@ export function submittedToFinding(
     rule: persona,
     severity: f.severity,
     source: persona,
-    suggestion: f.suggestion,
+    suggestion: cleanSuggestion(f.suggestion),
   };
 }
 
