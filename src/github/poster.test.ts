@@ -229,6 +229,84 @@ describe("createGhPoster.upsertSticky", () => {
       "-",
     ]);
   });
+
+  test("with selfLogin, a THIRD-PARTY's forged-marker comment is NOT hijacked (issue #157)", async () => {
+    // a decoy comment starting with our marker but authored by someone else must not be PATCHed — we POST fresh.
+    const existing = JSON.stringify([
+      { body: `${STICKY} decoy`, id: 999, user: { login: "attacker" } },
+    ]);
+    const { run, calls } = fakeRunner((args) =>
+      isWrite(args) ? { stdout: "{}" } : { stdout: existing }
+    );
+
+    await createGhPoster(run, {
+      selfLogin: "github-actions[bot]",
+    }).upsertSticky(TARGET, STICKY);
+
+    // POST a new comment, NOT a PATCH of the attacker's id 999
+    expect(calls[1]?.args).toEqual([
+      "api",
+      "repos/o/r/issues/7/comments",
+      "--method",
+      "POST",
+      "--input",
+      "-",
+    ]);
+  });
+
+  test("with selfLogin, OUR OWN prior sticky (matching author, case-insensitive) is updated in place", async () => {
+    const existing = JSON.stringify([
+      { body: `${STICKY} decoy`, id: 999, user: { login: "attacker" } },
+      {
+        body: `${STICKY} ours`,
+        id: 200,
+        user: { login: "GitHub-Actions[bot]" },
+      },
+    ]);
+    const { run, calls } = fakeRunner((args) =>
+      isWrite(args) ? { stdout: "{}" } : { stdout: existing }
+    );
+
+    await createGhPoster(run, {
+      selfLogin: "github-actions[bot]",
+    }).upsertSticky(TARGET, STICKY);
+
+    expect(calls[1]?.args).toEqual([
+      "api",
+      "repos/o/r/issues/comments/200",
+      "--method",
+      "PATCH",
+      "--input",
+      "-",
+    ]);
+  });
+});
+
+describe("createGhPoster author filter (issue #157)", () => {
+  test("with selfLogin, postReview deletes only OUR inline comments, never a third-party's", async () => {
+    const prior = JSON.stringify([
+      { body: marked("ours"), id: 10, user: { login: "github-actions[bot]" } },
+      { body: marked("decoy"), id: 11, user: { login: "attacker" } },
+    ]);
+    const { run, calls } = fakeRunner((args) =>
+      isWrite(args) ? { stdout: "{}" } : { stdout: prior }
+    );
+
+    // empty new set → we delete our prior inline comments; the attacker's (id 11) must be untouched
+    await createGhPoster(run, { selfLogin: "github-actions[bot]" }).postReview(
+      TARGET,
+      []
+    );
+
+    const deletes = calls.filter((c) => c.args.includes("DELETE"));
+    expect(deletes.map((c) => c.args[1])).toEqual([
+      "repos/o/r/pulls/comments/10",
+    ]);
+    // the third-party comment (id 11) is never deleted
+    expect(
+      deletes.some((c) => c.args[1] === "repos/o/r/pulls/comments/11")
+    ).toBe(false);
+  });
 });
 
 describe("spawnRunner (real subprocess contract)", () => {
