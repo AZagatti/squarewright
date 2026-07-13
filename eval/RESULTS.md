@@ -1056,3 +1056,20 @@ collapse). The remaining ~3/9 cross-file cases are the `learn`→`.review-rules`
 Vaultwarden (maintainer added the safe check to one function and not its sibling 24 lines below *in the same
 commit*) is the thesis in one case: even a human reviewing both side-by-side missed it. Corpus seed = these 9
 cases + a minable ManySStuBs4J slice.
+
+## Scaffold recall impact — now measured NEUTRAL at N=3 (2026-07-13, resolves the open caveat)
+
+The CoT-scaffold entry above shipped with "recall impact NOT established" — that's why the scaffold graduated to
+the `.squarewright.yml` flag OFF by default. Resolved now: baseline vs `--cot-scaffold`, glm-5.2, golden, N=3 each
+(baselines reused from the divergence run's baseline arms + one fresh):
+
+| Arm | Clean FP (3 reps) | mean | Locus recall /11 (3 reps) | mean |
+|---|---|---|---|---|
+| Baseline | 15 / 14 / 13 | ~14.0 | 7 / 5 / 4 | ~5.3 |
+| `--cot-scaffold` | 3 / 10 / 7 | ~6.7 | 5 / 6 / 4 | ~5.0 |
+
+**Scaffold cuts raw clean-case false positives ~52% with recall flat** (5.3→5.0, inside the noisy 4–7 band — no
+detectable recall cost). This confirms the scaffold is a precision win at ~zero recall cost on the default model,
+upgrading the earlier "not established" to **recall-neutral (N=3, glm-5.2, loci-level + raw cleanFP)**. Not a
+proof of exactly zero, but no measurable cost. **Makes scaffold-default-ON a strong candidate — a product call
+for the maintainer** (it changes every review's behavior; not flipped autonomously).
