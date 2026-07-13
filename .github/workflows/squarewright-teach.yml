@@ -65,6 +65,10 @@ jobs:
           TEACH_ACTOR: ${{ github.event.comment.user.login }}
           TEACH_ASSOCIATION: ${{ github.event.comment.author_association }}
           TEACH_IN_REPLY_TO_ID: ${{ github.event.comment.in_reply_to_id }}
+          TEACH_COMMENT_ID: ${{ github.event.comment.id }}
+          # Bot identity so the dedup check author-scopes to OUR OWN prior comment (issue #157 mechanism): a third
+          # party cannot forge the teach marker to suppress a real suggestion. Mirrors the review workflow.
+          SQUAREWRIGHT_BOT_LOGIN: "github-actions[bot]"
         run: |
           # Authoritative gate inputs, resolved against the trusted repo (env-quoted, not run-block interpolation):
           # the actor's real permission level, and the PR author (excluded from teaching their own PR).

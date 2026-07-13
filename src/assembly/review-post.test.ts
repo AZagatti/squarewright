@@ -279,6 +279,8 @@ function harness(overrides: {
 }): { deps: Parameters<typeof runReviewCommand>[1]; seen: Seen } {
   const seen: Seen = { order: [], reviewCalls: 0 };
   const poster: Poster = {
+    hasOwnComment: () => Promise.resolve(false),
+    postComment: () => Promise.resolve(),
     postReview: (target) => {
       seen.order.push("postReview");
       seen.postReviewTarget = target;

@@ -22,6 +22,15 @@ export type GhRunner = (
 /** Every GitHub write goes through here; the location is always a trust-checked `VerifiedTarget`. */
 export interface Poster {
   /**
+   * Idempotency check for teach-by-reply (#159): has this bot already posted a comment carrying `marker` on the
+   * PR? A workflow re-run/redelivery re-fires the whole teach flow for the same reply, so without this a stable
+   * per-reply marker would be double-posted. Author-scoped (`selfLogin`) like the sticky/inline matchers.
+   */
+  hasOwnComment: (
+    target: Pick<VerifiedTarget, "prNumber" | "repo">,
+    marker: string
+  ) => Promise<boolean>;
+  /**
    * Post a standalone PR comment (teach-by-reply rule suggestion, ADR-0005 §3). Unlike `upsertSticky` this does
    * NOT replace a prior comment — each accepted teach reply earns its own suggestion (the workflow fires once per
    * comment, so there's no natural duplication). Takes only `repo`+`prNumber` (a `VerifiedTarget` satisfies it):
@@ -161,6 +170,12 @@ export function createGhPoster(
 ): Poster {
   const { selfLogin } = opts;
   return {
+    hasOwnComment: async (target, marker) => {
+      const endpoint = `repos/${target.repo}/issues/${target.prNumber}/comments`;
+      const stdout = await ghApi(run, [endpoint, "--paginate"]);
+      const comments = parseJson<GhComment[]>(stdout, endpoint);
+      return comments.some((c) => isOurComment(c, marker, selfLogin));
+    },
     postComment: async (target, body) => {
       const payload = JSON.stringify({ body });
       await ghApi(

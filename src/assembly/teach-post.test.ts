@@ -30,6 +30,10 @@ function stubPoster(): Poster & {
   const comments: { body: string; prNumber: number; repo: string }[] = [];
   return {
     comments,
+    // Mirrors the real poster's marker match (startsWith) against what THIS stub has already recorded, so reusing
+    // one stub across two runTeachCommand calls faithfully simulates a workflow re-run seeing its prior post.
+    hasOwnComment: (_target, marker) =>
+      Promise.resolve(comments.some((c) => c.body.startsWith(marker))),
     postComment: (target, body) => {
       comments.push({ body, prNumber: target.prNumber, repo: target.repo });
       return Promise.resolve();
@@ -52,6 +56,69 @@ describe("runTeachCommand", () => {
     expect(poster.comments).toHaveLength(1);
     expect(poster.comments[0]?.body).toContain("Validate req.body");
     expect(poster.comments[0]?.prNumber).toBe(7);
+  });
+
+  test("embeds the per-reply dedupe marker when TEACH_COMMENT_ID is set (#159)", async () => {
+    const poster = stubPoster();
+    await runTeachCommand({
+      env: { ...authedEnv(), TEACH_COMMENT_ID: "424242" },
+      interpreter: stubInterpreter(RULE),
+      poster,
+    });
+    expect(poster.comments).toHaveLength(1);
+    expect(poster.comments[0]?.body).toStartWith(
+      "<!-- squarewright:teach:424242 -->"
+    );
+    expect(poster.comments[0]?.body).toContain("Validate req.body");
+  });
+
+  test("a workflow re-run for the same comment id posts only once (idempotent, #159)", async () => {
+    const poster = stubPoster();
+    const env = { ...authedEnv(), TEACH_COMMENT_ID: "555" };
+    const first = await runTeachCommand({
+      env,
+      interpreter: stubInterpreter(RULE),
+      poster,
+    });
+    const second = await runTeachCommand({
+      env,
+      interpreter: stubInterpreter(RULE),
+      poster,
+    });
+    expect(first.outcome.kind).toBe("post");
+    expect(second.outcome).toEqual({ kind: "skip", reason: "already-posted" });
+    expect(second.posted).toBeUndefined();
+    expect(poster.comments).toHaveLength(1); // the re-run did NOT double-post
+  });
+
+  test("without TEACH_COMMENT_ID it always posts (no marker, fail-safe)", async () => {
+    const poster = stubPoster();
+    const env = authedEnv(); // no TEACH_COMMENT_ID
+    await runTeachCommand({
+      env,
+      interpreter: stubInterpreter(RULE),
+      poster,
+    });
+    await runTeachCommand({
+      env,
+      interpreter: stubInterpreter(RULE),
+      poster,
+    });
+    // no idempotency key → today's behavior: both runs post, and no invisible marker is prepended
+    expect(poster.comments).toHaveLength(2);
+    expect(poster.comments[0]?.body).not.toContain("squarewright:teach:");
+  });
+
+  test("a non-numeric TEACH_COMMENT_ID emits no marker (fail-safe, no corrupted framing) (#159)", async () => {
+    const poster = stubPoster();
+    await runTeachCommand({
+      env: { ...authedEnv(), TEACH_COMMENT_ID: "not-a-number --> injected" },
+      interpreter: stubInterpreter(RULE),
+      poster,
+    });
+    expect(poster.comments).toHaveLength(1);
+    // no teach dedupe marker was prepended (the rendered body has its own inline marker; the teach one is absent)
+    expect(poster.comments[0]?.body).not.toContain("squarewright:teach:");
   });
 
   test("an unauthorized actor never posts and never calls the model", async () => {

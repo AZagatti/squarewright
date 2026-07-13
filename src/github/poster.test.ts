@@ -398,3 +398,35 @@ describe("createGhPoster.postComment", () => {
     );
   });
 });
+
+describe("createGhPoster.hasOwnComment (teach idempotency, #159)", () => {
+  const MARK = "<!-- squarewright:teach:555 -->";
+
+  test("true when OUR OWN comment already carries the marker", async () => {
+    const existing = JSON.stringify([
+      { body: `${MARK}\n\na suggestion`, id: 1, user: { login: "someone" } },
+    ]);
+    const { run } = fakeRunner(() => ({ stdout: existing }));
+    const has = await createGhPoster(run).hasOwnComment(TARGET, MARK);
+    expect(has).toBe(true);
+  });
+
+  test("false when no comment carries the marker", async () => {
+    const existing = JSON.stringify([
+      { body: "unrelated chatter", id: 1, user: { login: "someone" } },
+    ]);
+    const { run } = fakeRunner(() => ({ stdout: existing }));
+    expect(await createGhPoster(run).hasOwnComment(TARGET, MARK)).toBe(false);
+  });
+
+  test("with selfLogin, a THIRD-PARTY's forged-marker comment does NOT count as ours", async () => {
+    const existing = JSON.stringify([
+      { body: `${MARK} forged`, id: 9, user: { login: "attacker" } },
+    ]);
+    const { run } = fakeRunner(() => ({ stdout: existing }));
+    const has = await createGhPoster(run, {
+      selfLogin: "github-actions[bot]",
+    }).hasOwnComment(TARGET, MARK);
+    expect(has).toBe(false); // author mismatch → not a re-run of OUR post
+  });
+});
