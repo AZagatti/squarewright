@@ -1,4 +1,7 @@
 {
   // Ultracite v7 preset (AI-ready Biome config). See docs/adr/0004 and AGENTS.md.
-  "extends": ["ultracite/biome/core"]
+  "extends": ["ultracite/biome/core"],
+  // The marketing/docs site (site/) is a separate Astro project with its own toolchain — the root Biome/tsc
+  // config does not lint or typecheck it. (The preset already provides the `**` catch-all include.)
+  "files": { "includes": ["!**/site"] }
 }
