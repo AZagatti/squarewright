@@ -1284,3 +1284,33 @@ improved): that is analysis variance, not a clean structurer signal. **Settling 
 structurer A/B** — cache one pass-1 output per case, re-run only pass-2 across structurers on the frozen prose.
 That build is the clean next experiment (deserves fresh context, not the tail of a loop). If it confirms the
 structurer as a cheap recall lever, it may be the campaign's first real recall win (most recall levers have been null).
+
+## Fixed-analysis structurer A/B: the structurer MODEL is NOT the recall lever (2026-07-13, #40)
+
+Settled the structurer-drop lead above with `scripts/structurer-ab.ts` — caches K=3 analysis samples per golden
+has-issue case and runs BOTH structurers on the SAME frozen prose (via the production `worker.structureAnalysis`),
+so any recall gap is the structurer alone, with pass-1 non-determinism held out.
+
+**Result — an exact tie:**
+
+| structurer (on identical frozen prose) | locus recall | empty extractions |
+|---|---|---|
+| zai/glm-5-turbo (production default) | 13/33 (39%) | 11/24 |
+| zai/glm-5.2 (stronger, same family)  | 13/33 (39%) | 11/24 |
+
+- **A stronger structurer recovers ZERO.** Upgrading the structurer model is not a recall lever — glm-5.2 extracts
+  the same 13/33 as glm-5-turbo, case-for-case. When the analysis asserts a defect, glm-5-turbo already extracts it;
+  when it doesn't (11/24 samples had `raw=0` — the analysis concluded clean on that run), no structurer can recover it.
+- **The bottleneck is pass-1 (analysis) CONSISTENCY, not pass-2.** The recall swings are per-analysis-sample:
+  config-swup 1/1, 1/1, 0/1 · ts-vite 1/2, 0/2, 0/2 · go-cli 1/1, 1/1, 0/1. Same case, same structurers — the
+  analysis just reaches the defect only intermittently. This is the "low-consistency reachability" miss-class
+  (miss-map, #45), now isolated to pass-1.
+- **This CORRECTS the earlier "structurer drop ~6" lead** (analysis-recall section above): that number was mostly
+  (a) file-level clean-mention false signals and (b) single-run analysis variance, NOT real structurer drops. The
+  true structurer drop is ≈0 — which vindicates shipping `drop` as an explicit UPPER BOUND (#121).
+- **Lever implication:** the recall lever is on pass-1 — self-consistency sampling (union across analysis samples
+  ≈6/11 here vs single-sample ~4/11) or a stronger/more-consistent analysis MODEL — not the structurer. Consistent
+  with the standing memory (recall is model-liftable *analysis* reachability) and the `--samples` recall direction.
+- Honest edge: both structurers are glm-family; a cross-family extractor is untested. But the 11/24 empty-analysis
+  samples cap ANY structurer's ceiling (nothing to extract), so the "structurer model isn't the primary lever"
+  conclusion is robust to that.
