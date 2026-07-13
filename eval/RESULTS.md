@@ -992,3 +992,67 @@ opt-in/off) — inherited from the individual levers, this test just confirms st
 †sonnet-5 ran via `scripts/eval-cli.ts` (`claude -p`), whose reports are gitignored and not in `runs.jsonl` — its
 numbers live only here + in local reports, so it is the least auditable leg (a follow-up should log eval-cli runs to
 `runs.jsonl`). glm-5.2 and minimax-m3 are durably logged.
+
+## Consistency/divergence lens — settling experiment + real-world grounding (2026-07-13, council)
+
+A 4-councilor deliberation split on whether a "flag departures from the repo's own security/correctness
+patterns" lens is a real defect class or a false-positive factory. Settled with a cheap **eval-only** lever
+(`--divergence`, `DIVERGENCE_NOTE` in `worker.ts`; never wired into production `review.ts`), narrowed on both
+axes the council demanded: security/correctness invariants only (not cosmetic style), and a **forced citation**
+to the sibling in the diff. Diff-scoped — no repo reads, so it never turns on the grounding that already
+collapsed precision here.
+
+**Measured (glm-5.2, free default, reasoning-off; N=2 golden + N=1 dogfood):**
+
+| Corpus | Metric | Baseline | `--divergence` |
+|---|---|---|---|
+| Dogfood (5 clean) | false positives | 9 | 0 |
+| Golden (10 clean) | false positives | 15 / 14 | 5 / 6 |
+| Golden (8 has-issue) | locus recall /11 | 7 / 5 | 5 / 4 |
+
+**Verdict — NOT an FP factory, but NOT a free win either.** The note cuts false positives hard and repeatably
+(~60% on golden, 9→0 on dogfood) — the skeptic's "FP factory" fear is disconfirmed. But it also costs a little
+recall (divergence sits at/below the baseline's noisy low end both reps), so unlike the CoT scaffold (precision
+at zero recall cost) it is a **blunt conservatism instruction**, not a precise divergence detector. As a general
+default note it is dominated by the scaffold. **Do NOT ship the diff-scoped note.** Kept as an eval-only lever.
+
+**Why blunt — prior art (25-year defect class, empirically noisy).** "Bugs as deviant behavior" (Engler SOSP'01)
+→ PR-Miner/CP-Miner → Amazon CodeGuru's inconsistency detector. But two clone-fault studies (ICSE'09 "Do Code
+Clones Matter?"; arXiv:1611.08005) put the naive true-fault rate of inconsistent clones at **~15–20% (i.e. ~80%
+noise)** — because most divergence is *intentional*. Precision recovers (~50%) only when filtered to
+**unintentional** divergence, which is a **semantic/intent judgment**, not a statistical one, and needs **N≥3–5
+corroborating siblings** to establish the convention (a pattern from 1–2 in-diff siblings isn't meaningful).
+Full-repo context *dump* also hurts (dilution, arXiv:2502.02757). The evidence-backed design is
+**targeted sibling retrieval + intent reasoning** — which is CodeGuru's architecture; CodeRabbit instead uses a
+*told*-conventions "learnings" DB (= our `learn`→`.review-rules` path) precisely because inference is too noisy.
+No drop-in labeled dataset exists; **ManySStuBs4J** (153k real single-statement Java fixes) is the best minable
+source.
+
+**9 verified real-world cases (falsifiability: PASSED).** Live-checked, CVE/segfault/ICE/deadlock-backed cases
+where a change diverged from an established sibling pattern and the fix message literally says "same check/fix as
+the sibling":
+- Correctness: Go `copy()` vs `append()` nil-check (compiler ICE); Pulumi `Close()` early-return skips `Unlock()`
+  (deadlock); Turborepo SWC `import_attributes` missing in one crate; zsh `scangroup()` missing `getgroup()`'s
+  `PM_UNSET` guard (segfault).
+- Security: Gitea missing `reqRepoReader` on 3 routes (CVE-2026-27783); Gitea fork missing `CanCreateOrgRepo`
+  (CVE-2026-22555); goshs CSRF added to POST not sibling PUT (CVE-2026-42091); Vaultwarden org-collections weaker
+  than its sibling *in the same commit* (CVE-2026-33420); Immich API-key `update()` missing `create()`'s
+  permission guard (CVE-2026-23896).
+
+**Design signal from the 9 cases — where the establishing sibling lives:**
+
+| Sibling location | Cases | Reachable by |
+|---|---|---|
+| Same diff/hunk | ~4/9 | diff-only (our experiment's scope) |
+| Same **file**, untouched by the PR | ~2/9 | **file-aware** (read the full changed file) |
+| Different file / repo-wide | ~3/9 | targeted repo retrieval |
+
+**Conclusion / recommended next (gated on maintainer go/no-go + a labeled corpus):** the real, evidence-backed
+version is a **file-aware sibling-consistency check** for security/correctness invariants — read the full text of
+the *changed files* (bounded context, not the precision-collapsing whole-repo grounding), flag a changed hunk that
+breaks a safe pattern its untouched siblings uphold, cite the sibling, and judge intent. That reaches ~6/9 real
+cases vs the diff-only ~4/9, using only the changed files (so it avoids the "go hunt the whole repo" precision
+collapse). The remaining ~3/9 cross-file cases are the `learn`→`.review-rules` (told-conventions) path's job.
+Vaultwarden (maintainer added the safe check to one function and not its sibling 24 lines below *in the same
+commit*) is the thesis in one case: even a human reviewing both side-by-side missed it. Corpus seed = these 9
+cases + a minable ManySStuBs4J slice.
