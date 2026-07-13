@@ -174,6 +174,21 @@ test("renderSticky: cap-dropped lenses are disclosed as capped coverage", () => 
   expect(out).toContain("1 matched lens");
 });
 
+test("renderSticky: incomplete AND capped disclosures coexist as one well-formed block", () => {
+  const out = renderSticky({
+    droppedLenses: [{ id: "marshal", label: "CI" }],
+    findings: [],
+    incompleteLenses: [{ id: "sentinel", label: "Correctness" }],
+    lenses: [{ id: "sentinel", label: "Correctness" }],
+    summary: "",
+  });
+  // both warnings render (they share the leading `> ` blockquote), neither suppresses the other
+  expect(out).toContain("Incomplete review");
+  expect(out).toContain("Coverage capped");
+  expect(out).toContain("Correctness");
+  expect(out).toContain("CI");
+});
+
 test("renderSticky: full coverage renders no disclosure block (normal review unchanged)", () => {
   const out = renderSticky({
     findings: [],
