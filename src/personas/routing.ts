@@ -103,16 +103,28 @@ function isAlways(p: Persona): boolean {
   return !p.when || p.when.length === 0 || p.when.includes("always");
 }
 
-/** Select the personas that should run for this change-set. */
-export function selectPersonas(
+/** The outcome of routing: which personas run, and which MATCHED the change-set but were cut by the cap. */
+export interface PersonaSelection {
+  /** personas that matched but were dropped by the cap — surfaced for honest coverage disclosure (never silent) */
+  dropped: Persona[];
+  /** personas that will run */
+  selected: Persona[];
+}
+
+/**
+ * Select the personas that should run for this change-set, and report which matched but were dropped by the cap.
+ * The drop set is not cosmetic: `runReview` discloses it in the sticky so a capped review never *claims* to have
+ * covered a lens it silently cut (e.g. the CI-security lens on a deps+Docker+CI PR).
+ */
+export function selectPersonasWithDrops(
   personas: Persona[],
   files: ChangedFile[],
   opts: { cap?: number } = {}
-): Persona[] {
+): PersonaSelection {
   const paths = files.map((f) => f.path);
   const hasCode = paths.some((p) => CODE_EXTS.has(ext(p)));
 
-  const selected = personas.filter((p) => {
+  const matched = personas.filter((p) => {
     if (p.needsCode && !hasCode) {
       return false;
     }
@@ -122,12 +134,12 @@ export function selectPersonas(
     return (p.when ?? []).some((g) => paths.some((path) => matchGlob(g, path)));
   });
 
-  if (opts.cap && selected.length > opts.cap) {
+  if (opts.cap && matched.length > opts.cap) {
     const { cap } = opts;
     // priority order: always-on personas first, then the most-specific (scoped) matches
     const ordered = [
-      ...selected.filter(isAlways),
-      ...selected.filter((p) => !isAlways(p)),
+      ...matched.filter(isAlways),
+      ...matched.filter((p) => !isAlways(p)),
     ];
     // Group-aware truncation: personas sharing an explicit `pass` are ONE indivisible unit — the cap must
     // never keep one member of a declared group while dropping its partner (that would silently run a
@@ -149,7 +161,19 @@ export function selectPersonas(
         kept.push(...unit);
       }
     }
-    return kept;
+    const keptIds = new Set(kept.map((p) => p.id));
+    // Preserve the original persona order in the drop list (readable disclosure), not the priority-sorted order.
+    const dropped = matched.filter((p) => !keptIds.has(p.id));
+    return { dropped, selected: kept };
   }
-  return selected;
+  return { dropped: [], selected: matched };
+}
+
+/** Select the personas that should run for this change-set. Thin wrapper over `selectPersonasWithDrops`. */
+export function selectPersonas(
+  personas: Persona[],
+  files: ChangedFile[],
+  opts: { cap?: number } = {}
+): Persona[] {
+  return selectPersonasWithDrops(personas, files, opts).selected;
 }

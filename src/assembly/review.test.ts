@@ -330,6 +330,57 @@ describe("runReview", () => {
     expect(received?.proposeRuleDrift).toBe(false);
   });
 
+  test("a pass that never submitted (usage.submitted=false) is disclosed as incomplete, not clean", async () => {
+    // The exact shape worker.run returns when the structurer never calls submit_findings and the nudge loop
+    // exhausts: empty findings + submitted:false. This must NOT ship as an indistinguishable clean review.
+    const worker = stubWorker({
+      findings: [],
+      usage: { submitted: false, toolCalls: 1 },
+    });
+    const out = await runReview(CONTEXT, CONFIG, worker);
+
+    expect(out.findings).toHaveLength(0);
+    expect(out.sticky).toContain("Incomplete review");
+    // the failing lens is named (falls back to its id, here "gen")
+    expect(out.sticky).toContain("gen");
+  });
+
+  test("a normal clean pass (submitted=true) carries no incomplete disclosure", async () => {
+    const worker = stubWorker({
+      findings: [],
+      usage: { submitted: true, toolCalls: 1 },
+    });
+    const out = await runReview(CONTEXT, CONFIG, worker);
+    expect(out.sticky).not.toContain("Incomplete review");
+  });
+
+  test("personas dropped by the MAX_PERSONAS cap are disclosed in the sticky", async () => {
+    // 6 always-on personas on one lane; the cap (4) keeps the first four and drops the last two — which must be
+    // named in the sticky, not silently omitted while the footer implies full coverage.
+    const many: AssemblyConfig = {
+      grounders: [],
+      lanes: [{ id: "cheap", model: "glm-5-turbo", provider: "zai" }],
+      personas: ["a", "b", "c", "d", "e", "f"].map((id) => ({
+        id,
+        label: `L-${id}`,
+        lane: "cheap",
+        prompt: id,
+        when: ["always"],
+      })),
+    };
+    const worker = stubWorker({
+      findings: [],
+      usage: { submitted: true, toolCalls: 1 },
+    });
+    const out = await runReview(CONTEXT, many, worker);
+
+    expect(out.sticky).toContain("Coverage capped");
+    expect(out.sticky).toContain("L-e");
+    expect(out.sticky).toContain("L-f");
+    // kept lenses are not falsely listed as dropped
+    expect(out.sticky).toContain("2 matched lens");
+  });
+
   test("docs-only PR selects no personas and never calls the worker", async () => {
     let calls = 0;
     const worker: PiWorker = {

@@ -16,7 +16,7 @@ import {
 } from "../output/aggregate.js";
 import { renderSticky } from "../output/render.js";
 import { buildPasses, type ReviewPass } from "../personas/defaults.js";
-import { selectPersonas } from "../personas/routing.js";
+import { selectPersonasWithDrops } from "../personas/routing.js";
 import type { PiWorker, RepoReader } from "../pi/session.js";
 import { loadContextDocs, renderContextDocs } from "../rules/context-docs.js";
 import {
@@ -95,9 +95,15 @@ export async function runReview(
   opts: { repoReader?: RepoReader } = {}
 ): Promise<ReviewOutput> {
   const { personas } = config;
-  const selected = selectPersonas(personas, context.files, {
-    cap: MAX_PERSONAS,
-  });
+  // `dropped` = personas that matched the change-set but were cut by the cap. Surfaced in the sticky (never
+  // silent) so a capped review doesn't imply coverage it skipped — see the honesty note on `renderSticky`.
+  const { selected, dropped } = selectPersonasWithDrops(
+    personas,
+    context.files,
+    {
+      cap: MAX_PERSONAS,
+    }
+  );
   const passes = buildPasses(selected);
 
   // Load project context to prepend to every pass, only when something will run (a docs-only PR selects no
@@ -132,6 +138,9 @@ export async function runReview(
   const all: Finding[] = [];
   const summaries: string[] = [];
   const modelsUsed = new Set<string>();
+  // Passes whose structurer never called submit_findings (`usage.submitted === false`): they ran but FAILED,
+  // so empty findings from them is a failure, not a clean verdict — disclosed in the sticky (claim B honesty fix).
+  const incompletePassIds = new Set<string>();
   for (const pass of passes) {
     const lane: ModelLane = {
       ...laneForPass(pass, personas, config),
@@ -155,6 +164,11 @@ export async function runReview(
       systemPrompt: preamble + pass.prompt,
     });
     all.push(...result.findings);
+    // A defined-and-false `submitted` means the structurer never submitted for this pass (undefined = no signal,
+    // e.g. a stub without usage — don't warn on that). Never treat a failed submission as a clean pass.
+    if (result.usage && result.usage.submitted === false) {
+      incompletePassIds.add(pass.id);
+    }
     if (result.usage?.summary?.trim()) {
       summaries.push(result.usage.summary.trim());
     }
@@ -165,7 +179,11 @@ export async function runReview(
     labelFor,
   });
   const sticky = renderSticky({
+    // matched-but-capped personas: disclose so a truncated review doesn't imply full coverage.
+    droppedLenses: dropped.map((p) => ({ id: p.id, label: p.label ?? p.id })),
     findings,
+    // passes whose structurer failed to submit: disclose so a failed lens doesn't read as "nothing found".
+    incompleteLenses: lenses.filter((l) => incompletePassIds.has(l.id)),
     lenses,
     model: modelsUsed.size > 0 ? [...modelsUsed].join(", ") : undefined,
     summary: summaries.join("\n\n"),

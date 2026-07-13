@@ -58,7 +58,18 @@ export interface Lens {
 }
 
 export interface StickyInput {
+  /**
+   * Lenses that MATCHED the change-set but were cut by the persona cap (see `selectPersonasWithDrops`). Disclosed
+   * so a capped review never implies it covered a lens it silently dropped. Absent/empty = full coverage.
+   */
+  droppedLenses?: Lens[];
   findings: AggregatedFinding[];
+  /**
+   * Lenses whose analysis never produced structured findings (the structurer never called submit_findings —
+   * `WorkerResult.usage.submitted === false`). These ran but FAILED; their absence of findings is NOT a clean
+   * verdict. Disclosed so a failed pass never masquerades as "nothing found". Absent/empty = every lens submitted.
+   */
+  incompleteLenses?: Lens[];
   /** the lenses (personas) that ran — for per-finding attribution and the honesty footer roster */
   lenses?: Lens[];
   /** model(s)/lane label for the honesty footer, e.g. "glm-5-turbo" */
@@ -85,6 +96,34 @@ function provenance(
   return f.consensus > 1 ? ` _(×${f.consensus}: ${who})_` : ` _[${who}]_`;
 }
 
+/**
+ * Coverage disclosure — the honesty guard for the production ship-path (mirrors the eval-side `ungradedWarning`).
+ * A failed structurer (`incompleteLenses`) or a cap-dropped lens (`droppedLenses`) must never hide behind a
+ * "nothing found" verdict, so this renders a prominent block ABOVE the body in both the clean and has-findings
+ * paths. Returns [] when coverage was complete, so a normal review is unchanged.
+ */
+function coverageWarnings(
+  droppedLenses: Lens[],
+  incompleteLenses: Lens[]
+): string[] {
+  const lines: string[] = [];
+  if (incompleteLenses.length > 0) {
+    const who = mdSafe(incompleteLenses.map((l) => l.label).join(", "));
+    lines.push(
+      `> ⚠️ **Incomplete review** — ${who} did not return structured findings (the analysis was not submitted). ` +
+        "That part of the change was **not** reviewed; the absence of findings from it is a failure, not a clean bill."
+    );
+  }
+  if (droppedLenses.length > 0) {
+    const who = mdSafe(droppedLenses.map((l) => l.label).join(", "));
+    lines.push(
+      `> ⚠️ **Coverage capped** — ${droppedLenses.length} matched lens(es) were not run to stay within the review ` +
+        `cap: ${who}. Code they target may be unreviewed.`
+    );
+  }
+  return lines.length > 0 ? [...lines, ""] : [];
+}
+
 /** The honesty footer: which lenses ran, on which model, and that a clean/short result reflects only those. */
 function honestyFooter(lenses: Lens[], model?: string): string[] {
   if (lenses.length === 0 && !model) {
@@ -103,13 +142,24 @@ function honestyFooter(lenses: Lens[], model?: string): string[] {
 
 /** Render the sticky summary comment (markdown). Safe to post as-is. */
 export function renderSticky(input: StickyInput): string {
-  const { summary, findings, lenses = [], model } = input;
+  const {
+    summary,
+    findings,
+    lenses = [],
+    model,
+    droppedLenses = [],
+    incompleteLenses = [],
+  } = input;
   const labelFor = labelResolver(lenses);
   const lines: string[] = [STICKY_MARKER, "", "## Squarewright review", ""];
 
   if (summary.trim()) {
     lines.push(mdSafe(summary.trim()), "");
   }
+
+  // Disclose incomplete/capped coverage prominently, before the verdict body — so it qualifies a "nothing found"
+  // clean message and a findings list alike (a review that couldn't cover everything must say so).
+  lines.push(...coverageWarnings(droppedLenses, incompleteLenses));
 
   if (findings.length === 0) {
     const roster =
