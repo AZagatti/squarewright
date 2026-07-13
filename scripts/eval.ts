@@ -595,12 +595,20 @@ async function main() {
         if (verifier) {
           confirmed = 0;
           for (const f of findings) {
+            // stop verifying once the circuit breaker trips — the verifier makes real (paid) model calls, so its
+            // spend MUST feed the same guard as the worker passes; otherwise a runaway verify loop bills unbounded.
+            if (aborted) {
+              break;
+            }
             // biome-ignore lint/performance/noAwaitInLoops: sequential by design — respects the model provider's concurrency limits when verifying one case's findings
             const v = await verifier.verify(f, context, lane);
-            verifyCost += v.usage?.costUsd ?? 0;
+            const vCost = v.usage?.costUsd ?? 0;
+            verifyCost += vCost;
+            localSpend += vCost;
             if (v.verdict === "confirmed") {
               confirmed += 1;
             }
+            spendGuard();
           }
         }
         const ms = Date.now() - t0;

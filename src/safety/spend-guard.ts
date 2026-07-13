@@ -47,16 +47,26 @@ function orModels(): Array<{
 /**
  * Per-token price for an OpenRouter model. Returns `{in:0,out:0}` for a model not found or on any error — a
  * price lookup failure must not block a run, so it fails open on price (the cap still applies once real prices
- * are known; a genuinely-free model is $0 anyway).
+ * are known; a genuinely-free model is $0 anyway). Fail-open is deliberate but NOT silent: a fetch failure or an
+ * unknown model means the token-based spend guard is effectively BLIND (every pass estimates $0, so the circuit
+ * breaker can never trip), so we `console.warn` to stderr — the operator must see the guard has no teeth this run.
  */
 export function openrouterPrice(model: string): TokenPrice {
   try {
     const m = orModels().find((x) => x.id === model);
+    if (!m) {
+      console.warn(
+        `⚠️  OpenRouter model "${model}" not in catalog — price defaulting to $0; the spend guard is BLIND for this model (its token cost estimates as $0, so --max-spend can't trip).`
+      );
+    }
     return {
       in: Number(m?.pricing?.prompt) || 0,
       out: Number(m?.pricing?.completion) || 0,
     };
-  } catch {
+  } catch (e) {
+    console.warn(
+      `⚠️  OpenRouter price lookup for "${model}" failed (${e instanceof Error ? e.message : String(e)}) — price defaulting to $0; the spend guard is BLIND this run (token costs estimate as $0, so --max-spend can't trip). Watch the OpenRouter credits readout instead.`
+    );
     return { in: 0, out: 0 };
   }
 }
@@ -106,10 +116,18 @@ export function openrouterReasoningRisk(model: string): {
   try {
     const m = orModels().find((x) => x.id === model);
     if (!m) {
+      // fail-open, but LOUD: a model absent from the catalog skips the reasoning-trap classifier, so a
+      // mandatory-reasoning model could slip past the preflight and bill unbounded (the ~$5 trap this guards).
+      console.warn(
+        `⚠️  OpenRouter model "${model}" not in catalog — reasoning-trap preflight SKIPPED for it (proceeding unguarded; rely on --max-spend + the credits readout).`
+      );
       return { block: false, detail: "model not found in OpenRouter catalog" };
     }
     return classifyReasoningRisk(m.reasoning as ReasoningMeta);
-  } catch {
+  } catch (e) {
+    console.warn(
+      `⚠️  OpenRouter reasoning-trap preflight failed (${e instanceof Error ? e.message : String(e)}) — proceeding WITHOUT the trap check; rely on --max-spend + the credits readout.`
+    );
     return { block: false, detail: "reasoning-risk check failed (proceeding)" };
   }
 }
