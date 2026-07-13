@@ -93,7 +93,9 @@ function provenance(
     return "";
   }
   const who = mdSafe(labels.join(", "));
-  return f.consensus > 1 ? ` _(×${f.consensus}: ${who})_` : ` _[${who}]_`;
+  // Count DISTINCT lenses, not the raw merge count: "×N" means N personas independently agreed, so a finding
+  // merged twice from one source must not read as "×2 personas" (which `f.consensus` would wrongly show).
+  return labels.length > 1 ? ` _(×${labels.length}: ${who})_` : ` _[${who}]_`;
 }
 
 /**

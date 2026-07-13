@@ -86,18 +86,44 @@ test("renderSticky: attributes findings to their lens(es) and names the agreeing
       path: "src/a.ts",
       rule: "warden",
       severity: "error",
-      sources: ["baseline"],
+      // two DISTINCT lenses independently raised it → a real ×2 agreement
+      sources: ["correctness", "security"],
     },
   ];
   const out = renderSticky({
     findings,
-    lenses: [{ id: "baseline", label: "Correctness, Security" }],
+    lenses: [
+      { id: "correctness", label: "Correctness" },
+      { id: "security", label: "Security" },
+    ],
     summary: "1 issue.",
   });
   expect(out).toContain("`src/a.ts:12`");
   expect(out).toContain("🔴");
-  // consensus count + which lens(es) flagged it, resolved to the friendly label
+  // the "×N" reflects DISTINCT lenses that agreed, resolved to friendly labels
   expect(out).toContain("×2: Correctness, Security");
+});
+
+test("renderSticky: a finding merged twice from ONE lens is NOT shown as ×2 (no false agreement)", () => {
+  const findings: AggregatedFinding[] = [
+    {
+      // consensus (raw merge count) is 2, but only ONE distinct source raised it — must NOT read as "×2 personas"
+      consensus: 2,
+      line: 12,
+      message: "duplicate-ish finding folded within one pass",
+      path: "src/a.ts",
+      rule: "correctness",
+      severity: "warning",
+      sources: ["correctness"],
+    },
+  ];
+  const out = renderSticky({
+    findings,
+    lenses: [{ id: "correctness", label: "Correctness" }],
+    summary: "1 issue.",
+  });
+  expect(out).toContain("_[Correctness]_");
+  expect(out).not.toContain("×2");
 });
 
 test("renderSticky: resolves + de-dupes labels across two distinct sources", () => {

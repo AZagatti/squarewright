@@ -38,9 +38,28 @@ function overlap(a: Set<string>, b: Set<string>): number {
   return inter / (a.size + b.size - inter);
 }
 
-/** Same issue if same file, within 3 lines, and titles/messages meaningfully overlap. */
-function isSame(a: AggregatedFinding, b: Finding): boolean {
+/**
+ * Same issue if same file, within 3 lines, and messages meaningfully overlap. When `crossSourceOnly`, a finding is
+ * NEVER folded into one that already carries its source: within a single persona pass the model has already
+ * de-duplicated its own output, so two same-source findings at nearby lines are the model's DISTINCT findings —
+ * merging them silently drops one (a recall leak). Production passes `crossSourceOnly` so only genuine
+ * cross-persona agreement collapses; the eval's `--samples` path leaves it off so re-sampled duplicates of one
+ * persona still union (that's the whole point of self-consistency).
+ */
+function isSame(
+  a: AggregatedFinding,
+  b: Finding,
+  crossSourceOnly: boolean
+): boolean {
   if (a.path !== b.path) {
+    return false;
+  }
+  if (crossSourceOnly && a.sources.includes(b.source ?? b.rule)) {
+    return false;
+  }
+  // Line-less findings (PR-level, e.g. AC-conformance) have no meaningful proximity; `Math.abs(NaN) > 3` is
+  // `false`, which would silently let them merge on text alone. A missing line is never a proximity match.
+  if (!(Number.isFinite(a.line) && Number.isFinite(b.line))) {
     return false;
   }
   if (Math.abs(a.line - b.line) > 3) {
@@ -74,10 +93,14 @@ function mergeInto(existing: AggregatedFinding, f: Finding): void {
   }
 }
 
-export function aggregateFindings(findings: Finding[]): AggregatedFinding[] {
+export function aggregateFindings(
+  findings: Finding[],
+  opts: { crossSourceOnly?: boolean } = {}
+): AggregatedFinding[] {
+  const crossSourceOnly = opts.crossSourceOnly ?? false;
   const out: AggregatedFinding[] = [];
   for (const f of findings) {
-    const existing = out.find((e) => isSame(e, f));
+    const existing = out.find((e) => isSame(e, f, crossSourceOnly));
     if (existing) {
       mergeInto(existing, f);
     } else {
