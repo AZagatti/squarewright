@@ -109,6 +109,18 @@ describe("runTeachCommand", () => {
     expect(poster.comments[0]?.body).not.toContain("squarewright:teach:");
   });
 
+  test("a non-numeric TEACH_COMMENT_ID emits no marker (fail-safe, no corrupted framing) (#159)", async () => {
+    const poster = stubPoster();
+    await runTeachCommand({
+      env: { ...authedEnv(), TEACH_COMMENT_ID: "not-a-number --> injected" },
+      interpreter: stubInterpreter(RULE),
+      poster,
+    });
+    expect(poster.comments).toHaveLength(1);
+    // no teach dedupe marker was prepended (the rendered body has its own inline marker; the teach one is absent)
+    expect(poster.comments[0]?.body).not.toContain("squarewright:teach:");
+  });
+
   test("an unauthorized actor never posts and never calls the model", async () => {
     const poster = stubPoster();
     let interpreterCalls = 0;

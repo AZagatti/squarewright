@@ -43,9 +43,17 @@ export interface TeachCommandResult {
  * dedup). The HTML-comment form renders invisibly on GitHub and sits at position 0 so `isOurComment`'s
  * `startsWith` match finds it.
  */
+/** A GitHub comment id is all digits; anything else is a hand-rolled/stray value we refuse to embed. */
+const NUMERIC_ID = /^\d+$/;
+
 function teachDedupeMarker(commentId: string | undefined): string | undefined {
   const id = commentId?.trim();
-  return id ? `<!-- squarewright:teach:${id} -->` : undefined;
+  // Require an ALL-DIGITS id: a real `github.event.comment.id` always is, and this refuses to interpolate a stray
+  // value (e.g. one containing `-->`) that would break the HTML-comment framing or the `startsWith` match. A
+  // non-numeric id degrades to no-marker → always-post (fail-safe), never a corrupted marker.
+  return id && NUMERIC_ID.test(id)
+    ? `<!-- squarewright:teach:${id} -->`
+    : undefined;
 }
 
 /** Fail closed: a required trusted signal is missing, so refuse rather than guess a target. */

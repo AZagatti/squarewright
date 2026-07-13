@@ -55,6 +55,9 @@ jobs:
           TEACH_ASSOCIATION: ${{ github.event.comment.author_association }}
           TEACH_IN_REPLY_TO_ID: ${{ github.event.comment.in_reply_to_id }}
           TEACH_COMMENT_ID: ${{ github.event.comment.id }}
+          # Bot identity so the dedup check author-scopes to OUR OWN prior comment (issue #157 mechanism): a third
+          # party cannot forge the teach marker to suppress a real suggestion. Mirrors the review workflow.
+          SQUAREWRIGHT_BOT_LOGIN: "github-actions[bot]"
         run: |
           TEACH_PERMISSION="$(gh api "repos/$TEACH_REPO/collaborators/$TEACH_ACTOR/permission" --jq '.permission' 2>/dev/null || echo none)"
           TEACH_PR_AUTHOR="$(gh api "repos/$TEACH_REPO/pulls/$TEACH_ISSUE" --jq '.user.login' 2>/dev/null || echo '')"
