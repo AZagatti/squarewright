@@ -79,6 +79,12 @@ Concrete, tracked items the model-rank/reasoning/cost session surfaced (full con
   re-scores, a different-family judge** (issue #49, AC4) — before it's chosen. The re-measure **harness shipped** this
   session (judge repeats + cross-family judge + `--reports` matrix); the cheapest next step is running it on the
   current default glm-5.2 for an honest committed interval before treating any dogfood finding as representative.
+  **AC4 RAN 2026-07-14 (eval/RESULTS.md):** current default glm-5.2-off DEFECT recall = **5–5–6/12** over 3 analysis
+  repeats, judged cross-family — but **NOISY, not reproducible**: 5/12 loci (42%) flip hit/miss between identical runs,
+  so a single dogfood run is NOT representative (report an interval; expect per-locus movement). The mechanical
+  `deepseek-v3.2` judge was unreliable thinking-off (81/81 tool-drop, $0); the documented cross-family subagent judge
+  was used instead. The per-locus flip re-motivates self-consistency (`--samples`): union of the 3 runs ≈ 8/12.
+  Choosing the eventual *paid* release default, and investing in a more reliable mechanical judge, remain maintainer calls.
 - **Harden the OR spend guard against retry re-billing** — the token estimate counts only the final attempt's usage, so
   throttle-driven retries (which re-send context and re-bill) undercount real spend. (It does NOT miscount reasoning tokens
   — Pi's `usage.output` already includes them.) Until then, bound OR reasoning cost with `max_tokens` at the source and
