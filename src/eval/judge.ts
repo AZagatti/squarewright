@@ -44,10 +44,11 @@ export interface JudgeResult {
 }
 
 /**
- * A warning when a judge silently failed to call submit_grades on some calls. Those calls fall back to
- * all-miss grades, so a recall of "0" can mean "the judge is broken," not "nothing matched" — the exact
- * honesty trap in AGENTS.md §5. Free OpenRouter models notably fail this thinking-off (qwen/llama returned
- * 0-across-the-board where glm-5.2 judged 6). Returns null when every call was genuinely graded.
+ * A call-level diagnostic when a judge silently failed to call submit_grades on some calls (it produced no
+ * grades — a broken/unreliable judge, not "nothing matched"). Any pass containing such a call is now EXCLUDED
+ * from the recall interval (see `incompletePasses` in scripts/judge.ts), so this warning explains the CAUSE; it
+ * no longer claims those calls scored 0. Free OpenRouter models notably fail this thinking-off (qwen/llama
+ * returned 0-across-the-board where glm-5.2 judged 6). Returns null when every call was genuinely graded.
  */
 export function ungradedWarning(
   ungraded: number,
@@ -56,7 +57,7 @@ export function ungradedWarning(
   if (ungraded <= 0) {
     return null;
   }
-  return `⚠️  judge did not call submit_grades on ${ungraded}/${calls} calls (those counted as 0 matches). This judge is unreliable thinking-off — treat its recall as suspect. Free OpenRouter models fail this; use zai:glm-5.2 or a paid non-GLM (e.g. deepseek/deepseek-v3.2).`;
+  return `⚠️  judge did not call submit_grades on ${ungraded}/${calls} calls (their passes are excluded as incomplete — see above). This judge is unreliable thinking-off — treat its recall as suspect. Free OpenRouter models fail this; use zai:glm-5.2 or a paid non-GLM (e.g. deepseek/deepseek-v3.2).`;
 }
 
 /**
