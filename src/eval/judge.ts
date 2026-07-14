@@ -118,6 +118,58 @@ export function harshJudgeWarning(suspect: number, evaluated: number): string {
 }
 
 /**
+ * Coarse model-family key from a `provider:model`-style id, used only to catch same-family judging. Matches the
+ * lab/series behind a model (a Claude judging a Claude, a GLM judging a GLM) because same-family judges
+ * systematically INFLATE their own family's scores (documented in project runs). Substring match on the model id
+ * (provider is unreliable — OpenRouter fronts every lab). Unknown ids fall back to the trimmed lowercase id, so two
+ * genuinely-unknown-but-identical models still register as same-family, while two different unknowns don't.
+ */
+export function modelFamily(modelId: string): string {
+  const m = modelId.toLowerCase();
+  const families: [string, string[]][] = [
+    ["anthropic", ["claude", "sonnet", "opus", "haiku", "fable"]],
+    ["zhipu", ["glm"]],
+    ["deepseek", ["deepseek"]],
+    ["minimax", ["minimax"]],
+    ["moonshot", ["kimi", "moonshot"]],
+    ["qwen", ["qwen"]],
+    ["openai", ["gpt", "o1", "o3", "o4", "openai"]],
+    ["google", ["gemini", "gemma"]],
+    ["meta", ["llama"]],
+    ["mistral", ["mistral", "mixtral"]],
+    ["amazon", ["nova"]],
+    ["xai", ["grok"]],
+  ];
+  for (const [family, needles] of families) {
+    if (needles.some((n) => m.includes(n))) {
+      return family;
+    }
+  }
+  return m.trim();
+}
+
+/**
+ * Warn when the judge shares a model family with the analysis model whose report it is scoring. Same-family
+ * judging inflates scores (a Claude grades a Claude generously; glm-5.2 judging glm-5.2 likewise), so any recall
+ * number produced this way is optimistically biased — the eval standardizes on a cross-family judge for recorded
+ * numbers. Returns null when the families differ (the healthy case) or the analysis model is unknown. Pure so it's
+ * unit-testable; `analysisModel` comes from the report's `config.model`, `judgeModel` from the judge lane.
+ */
+export function sameFamilyJudgeWarning(
+  analysisModel: string | undefined,
+  judgeModel: string
+): string | null {
+  if (!analysisModel) {
+    return null;
+  }
+  const analysisFamily = modelFamily(analysisModel);
+  if (analysisFamily !== modelFamily(judgeModel)) {
+    return null;
+  }
+  return `⚠️  SAME-FAMILY JUDGE: the judge (${judgeModel}) and the analysis model (${analysisModel}) are both "${analysisFamily}" — a model's own family grades its output generously, so this recall number is optimistically biased. Re-judge with a cross-family model (e.g. openrouter:deepseek/deepseek-v3.2, or zai:glm-5.2 for non-GLM analysis) before recording it.`;
+}
+
+/**
  * Sum billable tokens across a session's messages for the spend guard — mirrors `sumTokens` in
  * src/pi/worker.ts, including its `totalTokens - input` fallback for messages that report only a total. Feeds
  * a money-safety cap, so it stays byte-compatible with the worker's accounting.
