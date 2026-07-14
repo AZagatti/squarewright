@@ -4,16 +4,26 @@ Squarewright measures itself honestly on real PRs ([`NORTH_STAR.md`](../../NORTH
 judge** decides, per known ground-truth defect, whether any of a reviewer's findings identifies the *same root
 cause and location* — not merely the same file. There are two judge paths; they are complementary.
 
-## The two judges
+## The three judges
 
 | path | model | speed | cost | family | use for |
 |---|---|---|---|---|---|
-| `scripts/judge.ts` | z.ai `glm-5.2` (default), or a cheap paid non-GLM (`deepseek-v3.2`) | ~30–40s/call; ~40 min per 3-report set | free (z.ai) / ~$0.01 (deepseek) | GLM (same-family) / DeepSeek (cross) | programmatic, CI/cron, offline re-scoring, the `--reports` matrix, `--judge-repeats` |
-| **Claude Code subagent** | Claude (this session) | ~1–4 min per report | free in-session | cross-family vs GLM/deepseek reviewers | **interactive** measurement while an agent is driving |
+| `scripts/judge.ts` | z.ai `glm-5.2` (default) | ~30–40s/call; ~40 min per 3-report set | free (z.ai) | GLM (same-family) | programmatic, CI/cron, offline re-scoring, the `--reports` matrix, `--judge-repeats` — but SAME-family, so it inflates GLM analysis |
+| **`scripts/judge-cli.ts`** | multi-vendor: `--vendor claude\|codex\|grok\|agy` (CLI, JSON grades in the reply — no custom tool) or `glm\|opencode\|openrouter` (routed to the API tool path) | ~1–2 min per report | free (subscription CLIs) | **cross-family** vs GLM/DeepSeek | the headless CROSS-FAMILY path — one `--vendor` flag, per-vendor default model, `--model`/`--effort`/`--repeats`. Default `claude`, effort `low` |
+| **Claude Code subagent** | Claude (this session) | ~1–4 min per report | free in-session | cross-family vs GLM/deepseek reviewers | **interactive** measurement while an agent is driving; can read files for a deeper grade |
 
-The subagent judge is dramatically faster, free, **doesn't contend with the dogfood reviewer's shared z.ai
-quota**, and is genuinely **cross-family** (no GLM self-preference — the risk that gates #49 AC2). It cannot run
-headless (CI/cron have no Claude session), so `scripts/judge.ts` stays the programmatic path.
+Both Claude-driven judges are free, **don't contend with the dogfood reviewer's shared z.ai quota**, and are
+genuinely **cross-family** (no GLM self-preference — the risk that gates #49 AC2).
+
+**Why a CLI/subagent judge and not a paid API judge (2026-07-14):** the cross-family API judges proved UNRELIABLE
+at calling the `submit_grades` custom tool thinking-off — free OpenRouter `deepseek-v3.2` dropped it 81/81, and the
+flat-fee opencode Go-tier models (`kimi-k2.6` at thinking off AND low, `deepseek-v4-pro`) drop it 9/9 too (an
+opencode-endpoint custom-tool issue, not a reasoning one). `judge.ts` gained a `--judge-thinking` override to test
+that — it did NOT fix the opencode drop. So the reliable cross-family judges are the two Claude-driven ones above,
+which never need a custom tool (they emit grades as text/JSON). `judge.ts` with `zai:glm-5.2` stays the headless
+path only when a same-family (inflated) number is acceptable. **Judge numbers are noisy** — they swing ±2–4 by judge
+choice AND run-to-run for the same judge (e.g. AC4's report A: subagent 5, `claude -p` 2–3) — so report ranges over
+≥3 reports and cross-check with a second judge before recording any absolute recall number.
 
 ## The protocol (what to hand a judge subagent)
 
