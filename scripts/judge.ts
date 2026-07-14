@@ -187,6 +187,7 @@ async function runPasses(
 ): Promise<{
   calls: number;
   hallucinatedPasses: number;
+  incompletePasses: number;
   perCase: Map<string, number[]>;
   perPassRecall: number[];
   suspectHarshPasses: number;
@@ -197,17 +198,27 @@ async function runPasses(
   let ungraded = 0;
   let calls = 0;
   let hallucinatedPasses = 0;
+  let incompletePasses = 0;
   let suspectHarshPasses = 0;
   for (let k = 0; k < ctx.repeats; k += 1) {
     // biome-ignore lint/performance/noAwaitInLoops: sequential by design — the shared spend guard must see each pass's cost before the next fires
     const pass = await judgeOnePass(judge, lane, scored, ctx);
     calls += pass.calls;
     ungraded += pass.ungraded;
-    for (const { id, defect } of pass.passCases) {
-      perCase.set(id, [...(perCase.get(id) ?? []), defect]);
-    }
+    // A spend-cap abort or ANY ungraded case makes the pass INCOMPLETE — we don't have a full set of grades, so it
+    // is not a valid recall data point. Exclude it entirely (per-case tally AND interval), never counting a missing
+    // grade as a real 0. Ungraded = the judge failed to call submit_grades (observed as 100%-ungraded + $0 usage =
+    // an API/tool-call failure, e.g. OpenRouter transport under rapid fire); counting those 0s spuriously tanks the
+    // recall median. Only a COMPLETE pass reaches the per-case map below.
     if (pass.aborted) {
       break;
+    }
+    if (pass.ungraded > 0) {
+      incompletePasses += 1;
+      console.log(
+        `  ⚠️  INCOMPLETE JUDGE PASS: ${pass.ungraded}/${pass.calls} case(s) ungraded (no submit_grades — API/tool-call failure, $0 usage) — pass ${k + 1} excluded (missing data, NOT 0 recall).`
+      );
+      continue;
     }
     // STRUCTURAL INVARIANT: defect matches ⊆ file hits. A case scoring defect > file means the judge claimed a
     // root-cause match on a locus whose file was never flagged — impossible, i.e. the judge HALLUCINATED (a
@@ -222,6 +233,10 @@ async function runPasses(
         );
       }
       continue;
+    }
+    // A complete, non-hallucinated pass is the only one that counts — record its per-case defects + interval.
+    for (const { id, defect } of pass.passCases) {
+      perCase.set(id, [...(perCase.get(id) ?? []), defect]);
     }
     // MIRROR guard: a pass that graded 0 matches while findings landed on ≥2 loci's files is an under-permissive
     // (suspect-harsh) judge — flag it (do NOT exclude; unlike hallucination, a genuine 0 is possible), so a harsh
@@ -239,6 +254,7 @@ async function runPasses(
   return {
     calls,
     hallucinatedPasses,
+    incompletePasses,
     perCase,
     perPassRecall,
     suspectHarshPasses,
@@ -330,6 +346,7 @@ async function runSingle(reportPath: string, ctx: JudgeCtx): Promise<number> {
     ungraded,
     calls,
     hallucinatedPasses,
+    incompletePasses,
     suspectHarshPasses,
   } = await runPasses(ctx.judge, ctx.lane, scored, {
     guard: ctx.guard,
@@ -342,6 +359,11 @@ async function runSingle(reportPath: string, ctx: JudgeCtx): Promise<number> {
     repeats: ctx.repeats,
     total,
   });
+  if (incompletePasses > 0) {
+    console.log(
+      `\n⚠️  ${incompletePasses}/${ctx.repeats} pass(es) EXCLUDED as incomplete (judge failed to grade ≥1 case — API/tool-call failure, not a real 0). The recall interval is over the ${perPassRecall.length} complete pass(es) only. If too few survived, raise --judge-repeats or use a more reliable judge.`
+    );
+  }
   const warn = ungradedWarning(ungraded, calls);
   if (warn) {
     console.log(`\n${warn}`);
@@ -378,6 +400,7 @@ function band(s: { max: number; median: number; min: number }): string {
  * from judge variance (spread within a fixed report) — so recall is a range, not a point (#49 AC3). One shared
  * spend guard caps the whole matrix.
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: a linear per-report aggregation loop + guard/summary blocks — sequential, not deeply nested branching
 async function runMatrix(
   reportPaths: string[],
   ctx: JudgeCtx
@@ -397,6 +420,7 @@ async function runMatrix(
   let ungraded = 0;
   let calls = 0;
   let hallucinatedPasses = 0;
+  let incompletePasses = 0;
   let suspectHarshPasses = 0;
   let evaluatedPasses = 0;
   for (const p of reportPaths) {
@@ -424,6 +448,7 @@ async function runMatrix(
     ungraded += pass.ungraded;
     calls += pass.calls;
     hallucinatedPasses += pass.hallucinatedPasses;
+    incompletePasses += pass.incompletePasses;
     suspectHarshPasses += pass.suspectHarshPasses;
     // Passes that ran to completion and were invariant-checked (recorded + excluded), across all reports — the
     // honest denominator for the hallucination banner, unlike the per-report ctx.repeats.
@@ -460,6 +485,11 @@ async function runMatrix(
   }
   // Print the tool-call-failure warning BEFORE the early return, so an all-empty matrix caused by a broken
   // judge (not just cost) still says why.
+  if (incompletePasses > 0) {
+    console.log(
+      `\n⚠️  ${incompletePasses} pass(es) across all reports EXCLUDED as incomplete (judge failed to grade ≥1 case — API/tool-call failure, not a real 0). Raise --judge-repeats or use a more reliable judge if too few complete passes survived.`
+    );
+  }
   const warn = ungradedWarning(ungraded, calls);
   if (warn) {
     console.log(`\n${warn}`);
