@@ -1,0 +1,58 @@
+# AC-conformance eval manifest — the 8 hand-verified cases from eval/ac/cases.md.
+# Drives scripts/eval-ac.ts: for each case it composes the PRODUCTION AC-conformance prompt
+# (buildAnalysisSystem + renderAnalysisPrompt with acCheck=true), runs a strong model N times, structures
+# via glm-5.2, and scores flag-rate vs the expected outcome. See eval/ac/cases.md for the full verification.
+#
+# expect:
+#   flag  = the gold silent-miss — the AC pass SHOULD raise ≥1 finding (true positive when it does)
+#   quiet = clean match OR transparently-disclosed gap — the AC pass should stay silent (any finding = false positive)
+# kind: control | disclosed-gap | gold  (documents WHY a case is expected quiet/flag; not used for scoring)
+cases:
+  - id: ac-sw-70
+    issue: 70
+    pr: 80
+    expect: flag
+    kind: gold
+    note: silently-unmet ship-gate (paired fixture, ≥3-run precision range) on a bug-free, well-reviewed PR
+  - id: ac-sw-39
+    issue: 39
+    pr: 44
+    expect: quiet
+    kind: disclosed-gap
+    note: AC4 (default pairing) reversed but TRANSPARENTLY — eval/RESULTS.md documents the reasoned deviation
+  - id: ac-sw-71
+    issue: 71
+    pr: 84
+    expect: quiet
+    kind: disclosed-gap
+    note: live-validation gap the PR body itself flags ("Needs live validation")
+  - id: ac-sw-37
+    issue: 37
+    pr: 41
+    expect: quiet
+    kind: control
+    note: clean full match — 6 ATDD ACs all met
+  - id: ac-sw-26
+    issue: 26
+    pr: 27
+    expect: quiet
+    kind: control
+    note: clean full match — squarewright doctor, 4 ACs met
+  - id: ac-sw-52
+    issue: 52
+    pr: 58
+    expect: quiet
+    kind: control
+    note: clean full match — max-spend parsing hardening, 3 ACs met
+  - id: ac-sw-61
+    issue: 61
+    pr: 62
+    expect: quiet
+    kind: control
+    note: clean full match, docs-only — cross-family judge doc, 3 ACs met
+  - id: ac-sw-40
+    issue: 40
+    pr: 43
+    expect: quiet
+    kind: control
+    note: met via its own documented fallback clause (AC3 advisory-wiring escape hatch)
