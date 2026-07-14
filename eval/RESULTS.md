@@ -1435,3 +1435,40 @@ analysis → glm-5.2 structurer → judge; the codex analog of `eval-cli.ts`); g
   reasoning "off" (floor is `minimal`); `grok-composer-2.5-fast` is the non-reasoning analog (weak — dismisses subtle
   defects). Product implication: offer a strong-lane opt-in (gpt-5.6-sol @ low the front-runner), keep free-glm the
   default, and pin review effort at LOW.
+
+## Multi-vendor model rank — file-level, all @ low, through the real harness (2026-07-14, #45)
+
+For internal + user guidance ("which model to point squarewright at"). Ran every CLI-accessible model through the
+SAME pipeline (its analysis → glm-5.2 structurer → sameFile scoring) via eval-codex.ts (GPT), eval-grok.ts (xAI),
+eval-agy.ts (Antigravity: Gemini/Claude/GPT-OSS), eval-cli.ts (claude). These CLIs are subscription/no-API-key =
+TEST INSTRUMENTS ONLY; production would need the same model via an API-keyed models.json provider (per-token cost).
+
+| model @ low | file-recall /12 | clean FP | errors | read |
+|---|---|---|---|---|
+| grok-4.5              | 11 | 16 | 4 | highest recall, but noisy + flaky (4 CLI errors) |
+| gpt-5.6-sol           | 10 |  6 | 0 | strong recall, clean |
+| gpt-5.4               | 10 |  6 | 0 | ties sol — a cheaper GPT that keeps up |
+| **gpt-5.6-terra**     |  9 |  **1** | 0 | **best signal-to-noise by far** (9 real, 1 false) |
+| opus-4-8 (claude -p)  |  9 | 20 | 0 | good recall, very noisy |
+| Gemini 3.5 Flash      |  9 |  9 | 1 | solid all-round; beats 3.1 Pro |
+| Gemini 3.1 Pro        |  8 | 22 | 0 | noisiest lane — Pro name ≠ better; 3.5 > 3.1 |
+| gpt-5.6-luna          |  7 |  7 | 0 | mid |
+| gpt-5.4-mini          |  7 |  9 | 0 | cheapest GPT, mid recall |
+| gpt-5.5               |  5 |  8 | 1 | outlier-weak on this corpus |
+| free glm-5.2 (default)| ~6 (53%) | (baseline) | 0 | the zero-cost default |
+
+**Guidance:** best all-round = **gpt-5.6-terra @ low** (9/12 at only 1 FP) or **gpt-5.6-sol / gpt-5.4 @ low**
+(10/12, 6 FP) for a bit more recall; **Gemini 3.5 Flash @ low** is a strong cross-vendor option (9/12, 9 FP) and
+clearly beats Gemini 3.1 Pro (8/12, 22 FP — "Pro" is tier, not quality; 3.5 is the newer generation). grok-4.5 has
+the highest raw recall but pairs it with high noise + a real CLI error rate. All roughly ≥ free-glm; a strong lane
+is an opt-in recall/precision upgrade over the free default.
+
+**Caveats (do not over-read):** (1) FILE-LEVEL only — the defect-level judge is BLOCKED on strong-model reports
+(both deepseek-v3.2 and glm-5.2 repeatedly hallucinated defect>file, so terra/grok have no usable defect number; the
+few clean ones: sol ~6-7, opus 5, mini 5, luna 2-3). A trustworthy defect-level rank needs a more reliable judge.
+(2) Hard-case effort spot-checks (go-cli, rails) were N=1-3 raw prose and proved NOISE — e.g. "Gemini 3.5 Flash@high
+cracks go-cli" held at N=1 but was 1/3 at N=3. go-cli is a stochastic near-ceiling (catchable ~1/3 by a strong
+model at best, not reliably); the "goldilocks low-is-best effort" is real but noisy and MODEL-DEPENDENT (grok/sol
+overthink at high → want low; Gemini reasons more productively at higher effort) — don't rank on single hard-case
+shots. (3) effort=low is a sane default (reliable, near-peak recall); very high effort risks overthink-dismissal AND
+CLI errors/timeouts (grok errored 11/19 at high). Harnesses: eval-{codex,grok,agy}.ts (PRs #175/#176).
