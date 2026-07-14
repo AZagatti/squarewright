@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename } from "node:path";
 import { parse as parseYaml } from "yaml";
-import type { ModelLane } from "../src/core/types.js";
+import type { ModelLane, ThinkingLevel } from "../src/core/types.js";
 import {
   createJudge,
   type DefectLocus,
@@ -75,13 +75,18 @@ interface ScoredCase {
 type Judge = ReturnType<typeof createJudge>;
 
 /** Parse `provider:model` (default free z.ai glm-5.2), splitting on the first colon so OpenRouter's
- *  `provider:vendor/name:free` ids survive intact. thinking-off so the judge never drops the tool call. */
-function buildLane(judgeArg: string): ModelLane {
+ *  `provider:vendor/name:free` ids survive intact. thinking defaults off (glm calls the tool reliably that way),
+ *  but `--judge-thinking <level>` overrides it: several cross-family models (kimi, deepseek) DROP the single
+ *  submit_grades tool call thinking-off and need a little reasoning to call it — measured, not assumed. */
+function buildLane(
+  judgeArg: string,
+  thinking: ThinkingLevel = "off"
+): ModelLane {
   return {
     id: "judge",
     model: judgeArg.slice(judgeArg.indexOf(":") + 1),
     provider: judgeArg.slice(0, judgeArg.indexOf(":")),
-    thinking: "off",
+    thinking,
   };
 }
 
@@ -538,7 +543,10 @@ async function main() {
       cases: Case[];
     }
   ).cases;
-  const lane = buildLane(arg("model") ?? "zai:glm-5.2");
+  const lane = buildLane(
+    arg("model") ?? "zai:glm-5.2",
+    (arg("judge-thinking") ?? "off") as ThinkingLevel
+  );
   // GLM judges via z.ai are free (price {0,0} → guard never trips). Only a paid cross-family judge
   // (openrouter) accumulates real spend against --max-spend (default $0.25).
   const price =
