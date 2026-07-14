@@ -1532,3 +1532,30 @@ the AC pass has NOT yet had. So the catchable value is proven, but the feature i
 pass (a CoT scaffold on the AC lens, or an `AC_CHECK_NOTE` revision that weighs in-PR/eval justification and discounts
 property-presence pedantry) is the prerequisite, and measuring THAT is the next AC round. The gold recall says the
 feature is worth that work; the FP rate says it can't ship default-on before it.
+
+### Addendum — the CoT scaffold does NOT fix the AC precision problem (2026-07-14)
+
+Tested the cheapest existing precision lever on the AC pass: the production CoT scaffold (`cotScaffold:true`, which cut
+DEFECT-persona false positives 47–81% — see scaffold-precision-win), via `scripts/eval-ac.ts --cot-scaffold`. Same
+faithful path (the real `buildAnalysisSystem` honors the flag). gpt-5.6-terra @ low, N=3:
+
+| metric | baseline | +cot-scaffold |
+|---|---|---|
+| GOLD recall (ac-sw-70) | 3/3 | 3/3 |
+| quiet false-positives | 10/21 runs, 4/7 cases | **10/21 runs, 4/7 cases** |
+
+**Aggregate is identical.** The scaffold only RESHUFFLES which cases trip (ac-sw-71 3/3→2/3, ac-sw-40 1/3→0/3, but
+ac-sw-37 0/3→2/3 WORSE) and does not touch the two robust FPs (ac-sw-61 clean + ac-sw-39 disclosed, both stay 3/3).
+**Why it doesn't transfer:** the defect-scaffold's "VERIFY — is this a REAL defect this PR introduces?" step kills
+*hallucinated/speculative* findings, but the AC FPs are NOT hallucinations — they are strict-literal AC readings the
+model is CONFIDENT about (verified: every scaffold FP, incl. the new ac-sw-37 honesty-footer-edge-case one, is again a
+defensible strict read). A "verify it's real" step doesn't drop a finding the model correctly judges real-by-strict-
+reading. So **precision needs a DIFFERENT lever than the generic scaffold** — a targeted AC_CHECK_NOTE / strictness-
+calibration revision that weighs in-PR + eval/RESULTS.md justification and discounts human-unreasonable pedantry
+(property-presence, aggregate-vs-per-case doc completeness). That is a production-prompt change with its own
+build+review+measure cost — i.e. a maintainer build decision (opportunity cost vs #45 recall), not a free toggle.
+
+**Dossier complete for the "AC build / drop?" fork:** (1) gold recall is reliable + on-target (3/3 × 2 models);
+(2) precision cost is real + a mechanism (strict readings, not noise); (3) the cheapest existing precision fix (CoT
+scaffold) does NOT help. So AC-conformance is proven-valuable but needs targeted precision work before default-on —
+and that work is a scoped maintainer call, now backed by evidence rather than a guess.
