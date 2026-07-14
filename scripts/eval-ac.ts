@@ -135,8 +135,13 @@ function loadFixture(c: AcCase, refresh: boolean): Fixture {
   return fx;
 }
 
-/** Compose the production AC-conformance prompt for the CLI: exact worker system turn + user turn, concatenated. */
-function composeAcPrompt(fx: Fixture): string {
+/**
+ * Compose the production AC-conformance prompt for the CLI: exact worker system turn + user turn, concatenated.
+ * `cotScaffold` sets the SAME production CoT-scaffold flag the real worker honors (via `buildAnalysisSystem`), so
+ * this measures whether the existing precision lever cuts the AC pass's strict-reading false positives — no
+ * production change, faithful to what an `acCheck` persona with `cotScaffold:true` would send.
+ */
+function composeAcPrompt(fx: Fixture, cotScaffold: boolean): string {
   const ctx: ReviewContext = {
     baseSha: "",
     body: fx.pr.body,
@@ -153,6 +158,7 @@ function composeAcPrompt(fx: Fixture): string {
   } as ReviewContext;
   const system = buildAnalysisSystem({
     acCheck: true,
+    cotScaffold,
     systemPrompt: AC_PERSONA,
   } as WorkerRequest);
   const userTurn = renderAnalysisPrompt(ctx, true);
@@ -319,6 +325,7 @@ async function main() {
   const repeats = Number(arg("repeats") ?? "3");
   const only = arg("id");
   const refresh = process.argv.includes("--refresh");
+  const cotScaffold = process.argv.includes("--cot-scaffold");
   const dumpRaw = process.env.SQW_DUMP_RAW === "1";
 
   const structLane: ModelLane = {
@@ -335,12 +342,12 @@ async function main() {
   const keys = readZaiKey();
 
   console.log(
-    `\n▸ eval-ac  analysis=codex/${model}@${effortLabel}  structurer=zai/glm-5.2  repeats=${repeats}  cases=${cases.length}\n`
+    `\n▸ eval-ac  analysis=codex/${model}@${effortLabel}${cotScaffold ? "+cot-scaffold" : ""}  structurer=zai/glm-5.2  repeats=${repeats}  cases=${cases.length}\n`
   );
   const results: CaseResult[] = [];
   for (const c of cases) {
     const fx = loadFixture(c, refresh);
-    const prompt = composeAcPrompt(fx);
+    const prompt = composeAcPrompt(fx, cotScaffold);
     const runs: CaseResult["runs"] = [];
     // Only GRADED runs (analysis ok AND structurer submitted) contribute a flag-count. An analysis failure or a
     // structurer that never submitted is INCOMPLETE — excluded from flags/catches/denominators, not scored as a
@@ -418,7 +425,7 @@ async function main() {
   const modelSlug = model.replace(/[^a-z0-9.-]/gi, "_");
   const reportPath = join(
     ROOT,
-    `eval/reports/ac-${modelSlug}-${effortLabel}-r${repeats}-${stamp}.json`
+    `eval/reports/ac-${modelSlug}-${effortLabel}${cotScaffold ? "-cotscaffold" : ""}-r${repeats}-${stamp}.json`
   );
   writeFileSync(
     reportPath,
@@ -426,6 +433,7 @@ async function main() {
       {
         config: {
           analysis: `codex-cli/${model}`,
+          cotScaffold,
           effort: effortLabel,
           repeats,
           structurer: "zai/glm-5.2",
