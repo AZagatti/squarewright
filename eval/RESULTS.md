@@ -1472,3 +1472,63 @@ model at best, not reliably); the "goldilocks low-is-best effort" is real but no
 overthink at high → want low; Gemini reasons more productively at higher effort) — don't rank on single hard-case
 shots. (3) effort=low is a sane default (reliable, near-peak recall); very high effort risks overthink-dismissal AND
 CLI errors/timeouts (grok errored 11/19 at high). Harnesses: eval-{codex,grok,agy}.ts (PRs #175/#176).
+
+## AC-conformance — full 8-case corpus, N=3, TWO models: reliable gold recall, real precision cost (2026-07-14, #45)
+
+The [gold-case END-TO-END proof](#ac-conformance--end-to-end-proof-on-the-gold-case-2026-07-13) above was N=1, one
+case, via the (expiring) Fugu lane. This is the follow-on measurement round `eval/ac/cases.md` (§"honest read",
+line ~332) named but never ran: the shipped-but-inert `acCheck` pass over ALL 8 hand-verified cases — 5 clean
+controls, 2 transparently-disclosed gaps, 1 gold silent miss (`ac-sw-70`) — at N=3, across TWO strong models, so the
+precision cost is MEASURED not guessed. Built `scripts/eval-ac.ts` + `eval/ac/manifest.yaml` (+ committed
+`eval/ac/fixtures/` for reproducibility). It composes the EXACT production AC prompt via the real exported functions
+(`buildAnalysisSystem({acCheck:true})` = persona + `ANALYSIS_NOTE` + `AC_CHECK_NOTE`; `renderAnalysisPrompt(ctx,true)`
+= PR title/body/diff + the fenced, defanged, UNTRUSTED linked issue) — no production code changed — and runs it
+through the Codex subscription CLI (zero-API-cost strong-model test instrument, like `eval-codex.ts`) → free glm-5.2
+structurer. The AC design (`src/init/default-config.ts`) requires a strong model, so free-glm is not a valid analysis
+lane here. A "flag" = the pass emitted ≥1 finding for that case; for a `quiet` case that is a false positive.
+
+**flags per case [r1,r2,r3], N=3, analysis @ low:**
+
+| case | kind | expect | gpt-5.6-terra | gpt-5.6-sol |
+|---|---|---|---|---|
+| ac-sw-70 | gold | flag | [1,2,2] **3/3** ✓ | [1,1,1] **3/3** ✓ |
+| ac-sw-37 | control | quiet | [0,0,0] ✓ | [0,1,0] FP 1/3 |
+| ac-sw-26 | control | quiet | [0,0,0] ✓ | [0,0,1] FP 1/3 |
+| ac-sw-52 | control | quiet | [0,0,0] ✓ | [0,0,0] ✓ |
+| ac-sw-40 | control | quiet | [0,0,1] FP 1/3 | [0,1,0] FP 1/3 |
+| ac-sw-61 | control | quiet | [1,2,2] FP 3/3 | [1,1,1] FP 3/3 |
+| ac-sw-39 | disclosed-gap | quiet | [1,1,1] FP 3/3 | [1,1,1] FP 3/3 |
+| ac-sw-71 | disclosed-gap | quiet | [1,1,1] FP 3/3 | [1,0,1] FP 2/3 |
+| **GOLD recall** | | | **3/3** | **3/3** |
+| **quiet false-pos** | | | **10/21 runs, 4/7 cases** | **11/21 runs, 6/7 cases** |
+
+- **GOLD recall 3/3 on BOTH models, on-target — the core value proposition is REAL and RELIABLE.** Every single run
+  flagged `ac-sw-70`'s silently-unmet ship-gate, quoting the criterion ("no paired fixture or ≥3-run precision range …
+  the #73 deferral does not acknowledge THIS gate"). This is the first N≥3, multi-model confirmation of the gold catch
+  — the one miss no defect persona or human review of PR #80 caught. Not a one-shot fluke.
+- **Precision is the problem, and it's a MECHANISM not a model quirk** — both models trip `ac-sw-61` (a *clean*
+  docs-only match) and `ac-sw-39` 3/3, terra 10/21 quiet runs, sol slightly noisier at 11/21 (consistent with sol's
+  "+recall/noisier" rank profile vs terra "best signal-to-noise").
+- **Every false positive is a STRICT-LITERAL AC reading, not a hallucination** — the key finding, because it means the
+  noise is NOT trivially prompt-suppressible without also risking the gold catch (which is itself a strict reading):
+  - `ac-sw-61` (both, 3/3): "AC1 says the protocol *returns per-case matched/total*; it only records aggregate `/11`"
+    — pedantic but defensible doc-completeness read, reproduced identically across models.
+  - `ac-sw-40` (both, 1/3): "AC2 says absent budget → request *unchanged*; `budget: undefined` is present, differs
+    from omitting the key (`'budget' in req`)" — technically true, very pedantic.
+  - `ac-sw-39` (both, 3/3): flags a DIFFERENT criterion than the disclosed one — "AC1 `solo:true` normalizes in the
+    *schema*; the transform is runtime-only" — so "credit the disclosure better" would NOT suppress it.
+  - `ac-sw-71` (terra 3/3, sol 2/3): flags a genuine fail-open risk in the author-exclusion check — arguably a *real,
+    valuable* find leaking through the AC lens, not noise.
+  - `ac-sw-37` (sol only, 1/3): an edge-case honesty-footer read (footer omitted when zero lenses run) — defensible
+    corner case.
+
+**Read for the maintainer's "AC build / drop?" fork (now EVIDENCE, not a guess):** the feature does the one thing it
+was built for — reliably, on-target, confirmed across two strong models — but at low effort with no precision craft it
+also emits strict-reading false "unmet" flags on clean and well-disclosed PRs, exactly the risk `eval/ac/cases.md`
+predicted ("as likely to generate noisy false 'unmet' flags on good, disclosed engineering judgment as it is to catch
+a real gap"). It mirrors the defect-persona lesson already banked (scaffold-precision-win; reasoning-is-not-a-review-
+lever): raw recall is present, precision needs the prompted-CoT / disclosure-weighting craft the defect lenses got and
+the AC pass has NOT yet had. So the catchable value is proven, but the feature is NOT default-on-ready — a precision
+pass (a CoT scaffold on the AC lens, or an `AC_CHECK_NOTE` revision that weighs in-PR/eval justification and discounts
+property-presence pedantry) is the prerequisite, and measuring THAT is the next AC round. The gold recall says the
+feature is worth that work; the FP rate says it can't ship default-on before it.
