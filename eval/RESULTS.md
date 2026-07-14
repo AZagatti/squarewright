@@ -1355,3 +1355,42 @@ files he chose) vs this pilot's auto-selected siblings. So the path to alignment
 analysis model OR curated project rules (`.review-rules`/`contextDocs`, which already exist) — NOT auto-sibling
 injection on the free model. This is the third "more context, differently packaged" null on this model (after
 naive grounding and diff-scoped divergence), all converging on: the free model's limit is reasoning, not context.
+
+## Free-model UNION — a marginal lever the file-level metric OVERSTATES (2026-07-13, #45, council)
+
+The FIRST non-null recall lead — then mostly deflated by a defect-level judge. Question: do two FREE models
+(glm-5.2 + minimax-m3) miss the SAME loci (shared ceiling → ensemble dead) or DIFFERENT ones (free union = a lever)?
+
+**Overlap (431 saved reports):** misses are MOSTLY correlated (Pearson r≈0.76; the 2 hardest loci — rails
+schema_cache.rb, tailwind preflight.css — stay hard for glm-5.2, minimax-m3, AND deepseek-v4-pro alike), but 2-3
+loci show robust ≥25pp complementary gaps. So any union benefit is confined to a minority of complementary loci.
+
+**Full-corpus file-level (all matched vanilla glm×m3 report pairs; 8/9 has-issue covered, ci-spotipy has 0 m3 reports):**
+
+| condition | recall (has-issue) | clean-case FPs |
+|---|---|---|
+| glm-5.2 solo | 154/288 (53.5%) | 347 (1.50/case-pair) |
+| minimax-m3 solo | 171/288 (59.4%) | 559 (2.42) |
+| **UNION** | **222/288 (77.1%)** | **906 (3.92) — ~2.6× glm** |
+
+**Defect-level judge (cross-family `openrouter:deepseek/deepseek-v3.2`, ~$0.023 total), 4 loci:**
+
+| case | glm solo | m3 solo | UNION | reads as |
+|---|---|---|---|---|
+| css-tailwindcss-17247 | 0/3 | 1/3 | **3/3** | real synergy |
+| config-swup-1052 | 1/3 | 3/3 | 3/3 | tie — m3 alone = union |
+| go-cli-10547 | 2/5 | 0/5 | 2/5 | no gain — m3's file edge was clean-verdict noise |
+| docker-grafana-124812 | 0/5 | 0/5 | 0/5 | file lift ILLUSORY (union 20/26 file, 0/15 defect) |
+
+- **The +18pp file-level recall gain LARGELY EVAPORATES under a real judge** — only 1 of 4 spot-checked loci shows
+  genuine defect-level synergy; 2 were illusory file-level noise. This re-confirms the "fix the ruler" theme: the
+  file-level metric inflates the union's apparent benefit (see also the ts-vite-21019 relabel, PR #173).
+- **Real ~2.6× false-positive tax** (union = concat, no dedup). `--scaffold`'s 47-81% FP cut applied pre-union
+  would plausibly claw it back toward glm-solo levels (906 × ~0.4 ≈ 360 ≈ glm's 347) — but union+scaffold is UNTESTED.
+
+**Verdict: marginal, mixed — NOT a strong lever, NOT productionizable off this data.** The model-ceiling finding
+STANDS; the free union nibbles the complementary-loci edge (~1 real synergy locus) at a real FP cost. Recorded as a
+null-ish result. IF chased further: an eval-only `--union` mode + a FULL defect-level judge over all 9 has-issue
+cases + the union+scaffold combo would settle it — but don't ship a 2× model-call lever for ~1 synergy locus. Bonus:
+opencode-go deepseek-v4-pro HALLUCINATED the defect⊆file invariant here → validated the same-family/judge-hygiene
+guard (PR #172) that flags exactly this.
