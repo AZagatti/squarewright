@@ -1634,3 +1634,43 @@ Which specific defect gets caught is a per-run coin-flip for half the corpus:
    chosen (that judge-investment is a separate maintainer call). The per-locus flip ALSO re-motivates self-consistency
    (`--samples`, ROADMAP M7): the UNION of the 3 runs ≈ 8/12, well above any single run's 5–6 — unioning recovers the
    reachable-but-rare loci, at a precision cost still to be measured on the production path.
+
+## Multi-vendor model rank — DEFECT-level, two cross-family judges (2026-07-14, #45, judge-cli)
+
+Upgrades the [file-level rank](#multi-vendor-model-rank--file-level-all--low-through-the-real-harness-2026-07-14-45)
+above from file-level to DEFECT-level, now that a reliable cross-family judge exists (`scripts/judge-cli.ts`, PR #184
+— the API judges drop the `submit_grades` tool). Each model's canonical `@low` golden report re-judged by TWO
+cross-family CLI vendors (`claude` + `grok-4.5`); the two numbers bracket the ±2–4 judge-noise.
+
+| model @low | file /12 | defect (claude \| grok) | defect band /12 |
+|---|---|---|---|
+| **grok-4.5** | 11 | 9 \| 8 | **8–9** (top, both judges) |
+| gpt-5.6-sol | 10 | 7 \| 6 | 6–7 |
+| **gpt-5.4-mini** (cheapest) | 7 | 6 \| 7 | 6–7 (efficiency win — near-zero file→defect drop) |
+| gpt-5.4 | 10 | 6 \| 6 | 6 |
+| claude-opus-4-8 | 9 | 6 \| 4 | 4–6 |
+| gpt-5.6-terra | 9 | 5 \| 4 | 4–5 |
+| Gemini 3.1 Pro | 8 | 4 \| 4 | 4 |
+| Gemini 3.5 Flash | 9 | 3 \| 4 | 3–4 |
+| gpt-5.5 | 5 | 3 \| 2 | 2–3 |
+| gpt-5.6-luna | 7 | 3 \| 2 | 2–3 |
+
+**Reads (defect-level changes the file-level story in three places):**
+- **grok-4.5 is the clear defect-recall leader (8–9/12)** — not just top file-level (11); both judges agree. It was
+  "noisy/flaky" file-level, but the noise is FALSE POSITIVES on clean cases (precision), not phantom has-issue
+  catches — its has-issue findings are largely real.
+- **gpt-5.4-mini (the CHEAPEST codex model) is the efficiency standout** — file 7 but defect 6–7, i.e. almost no
+  file→defect drop: what it flags is on-target. Punches far above its file-level rank (was mid-pack file-level).
+- **gpt-5.6-terra's file-level "best signal-to-noise" (9 file, 1 FP) came partly from CONSERVATISM** — at defect
+  recall it's only 4–5, so its low FP count reflects fewer catches overall, not purely cleaner ones.
+- **File-level massively over-counts defect** for some models: Gemini 3.5 Flash 9 file → 3–4 defect (drop 5–6),
+  gpt-5.5 5 → 2–3. The two Geminis are ~tied at defect level (~4), low. Confirms the file-level metric is an
+  UPPER bound, not the real number (cf. #49 AC4, the union evaporation).
+
+**Caveats (do not over-read):** (1) **N=1 analysis per model** — one golden run each, so analysis variance (±~2
+loci per the AC4 reproducibility result) is UNMEASURED here and stacks on top of the judge noise; treat the bands
+as a LEAD, not a settled ranking, especially for the tightly-bunched 4–7 middle. (2) Judge noise is real — grok-judge
+runs ~1 stricter than claude-judge (medians 4 vs 6); the two-vendor bracket is the honest read, a single judge's
+absolute number is soft. (3) all cross-family vs a GLM reviewer, but these are SUBSCRIPTION test instruments — the
+rank is guidance for a user who points `models.json` at a paid API provider, not a production default (free glm-5.2
+stays the zero-config default). A firmer rank would need N≥3 analysis reports per model + the two-judge bracket.
