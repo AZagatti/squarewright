@@ -3,11 +3,40 @@ import {
   defectFileViolations,
   hallucinationWarning,
   harshJudgeSuspect,
+  modelFamily,
+  sameFamilyJudgeWarning,
   summarize,
   summarizeMatrix,
   sumUsage,
   ungradedWarning,
 } from "./judge.js";
+
+test("modelFamily: maps lab series regardless of provider prefix", () => {
+  expect(modelFamily("glm-5.2")).toBe("zhipu");
+  expect(modelFamily("claude-opus-4-8")).toBe("anthropic");
+  expect(modelFamily("sonnet-5")).toBe("anthropic");
+  expect(modelFamily("deepseek/deepseek-v3.2")).toBe("deepseek");
+  expect(modelFamily("minimax-m3")).toBe("minimax");
+  // unknown id falls back to its trimmed lowercase self (so identical unknowns still match, distinct ones don't)
+  expect(modelFamily("Some-New-Model")).toBe("some-new-model");
+});
+
+test("sameFamilyJudgeWarning: warns when judge and analysis share a family (score inflation)", () => {
+  const w = sameFamilyJudgeWarning("glm-5.2", "glm-5-turbo");
+  expect(w).toContain("SAME-FAMILY JUDGE");
+  expect(w).toContain("zhipu");
+  // Claude judging Claude is the canonical inflating case
+  expect(
+    sameFamilyJudgeWarning("claude-opus-4-8", "claude-sonnet-5")
+  ).toContain("anthropic");
+});
+
+test("sameFamilyJudgeWarning: null for a healthy cross-family judge, or unknown analysis model", () => {
+  expect(
+    sameFamilyJudgeWarning("glm-5.2", "deepseek/deepseek-v3.2")
+  ).toBeNull();
+  expect(sameFamilyJudgeWarning(undefined, "glm-5.2")).toBeNull();
+});
 
 test("ungradedWarning: null when every call was graded", () => {
   expect(ungradedWarning(0, 8)).toBeNull();

@@ -24,6 +24,7 @@ import {
   harshJudgeSuspect,
   harshJudgeWarning,
   type JudgedFinding,
+  sameFamilyJudgeWarning,
   summarize,
   summarizeMatrix,
   ungradedWarning,
@@ -82,6 +83,22 @@ function buildLane(judgeArg: string): ModelLane {
     provider: judgeArg.slice(0, judgeArg.indexOf(":")),
     thinking: "off",
   };
+}
+
+/** Print the same-family judge warning for a report if it applies (kept out of the call sites so it adds no
+ *  branch to their complexity). `config.model` is the analysis model; `judgeModel` the judge lane. */
+function logSameFamilyWarn(
+  config: unknown,
+  judgeModel: string,
+  prefix = "  "
+): void {
+  const w = sameFamilyJudgeWarning(
+    (config as { model?: string } | undefined)?.model,
+    judgeModel
+  );
+  if (w) {
+    console.log(`${prefix}${w}`);
+  }
 }
 
 /** Positive-integer `--judge-repeats` (default 1); rejects non-numeric/zero so a typo can't silently no-op. */
@@ -302,6 +319,7 @@ async function runSingle(reportPath: string, ctx: JudgeCtx): Promise<number> {
   console.log(`\n▸ judging ${reportPath}`);
   console.log(`  config: ${JSON.stringify(report.config ?? "(none)")}`);
   console.log(`  judge:  ${ctx.lane.provider}/${ctx.lane.model}`);
+  logSameFamilyWarn(report.config, ctx.lane.model);
   console.log(
     `  passes: ${ctx.repeats}${ctx.paid ? `  (PAID judge — spend cap $${ctx.maxSpend})` : ""}\n`
   );
@@ -392,6 +410,7 @@ async function runMatrix(
       config?: unknown;
     };
     configs.add(JSON.stringify(report.config ?? null));
+    logSameFamilyWarn(report.config, ctx.lane.model, `  ${p}: `);
     const scored = selectScored(report.results, ctx.byId);
     const total = scored.reduce((n, { c }) => n + c.expect_loci.length, 0);
     // biome-ignore lint/performance/noAwaitInLoops: sequential by design — the shared spend guard must see each report's cost before the next report's passes fire
