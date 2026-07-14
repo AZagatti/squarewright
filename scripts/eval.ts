@@ -478,6 +478,10 @@ async function main() {
   // --divergence: consistency/divergence note (EVAL-ONLY settling experiment, 2026-07-13 council) — diff-scoped,
   // security/correctness-only, citation-forced. Measures whether flagging pattern-divergence FP-floods on the free model.
   const doDivergence = flag("divergence");
+  // --injection-guard: MEASURE-FIRST main-path prompt-injection guard (task #42) — frames the PR body/diff as the
+  // untrusted SUBJECT whose reviewer-addressed instructions are material under review, not commands. Measures whether
+  // adding it costs the DEFAULT reviewer recall/precision on the golden set (with/without, N≥3) before any default-on.
+  const doInjectionGuard = flag("injection-guard");
   // --analysis-recall: ALSO score loci against the raw pass-1 analysis prose (bypassing the structurer), so the
   // report separates the analysis model's reachability from the structurer's extraction drop (the #78 confound).
   // `analysisRecall − structuredRecall` = loci a capable analysis surfaced but the structurer dropped.
@@ -509,7 +513,7 @@ async function main() {
     ? `${structurerLane.provider}/${structurerLane.model}`
     : "zai/glm-5-turbo";
   console.log(
-    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}${doPersonas ? ` batching=${batching}` : ""}${samples > 1 ? ` samples=${samples}${consensus > 1 ? `/consensus≥${consensus}` : ""}` : ""}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cot-scaffold=${doScaffold}  divergence=${doDivergence}  analysis-recall=${doAnalysisRecall}  similar-files=${doSimilar}  cases=${cases.length}  conc=${concurrency}`
+    `\n▸ eval  model=${provider}/${model}  structurer=${structDesc}  personas=${doPersonas}${doPersonas ? ` batching=${batching}` : ""}${samples > 1 ? ` samples=${samples}${consensus > 1 ? `/consensus≥${consensus}` : ""}` : ""}  thinking=${thinkingSet ? thinking : "per-persona"}  ground=${doGround}  verify=${doVerify}  cot-scaffold=${doScaffold}  divergence=${doDivergence}  injection-guard=${doInjectionGuard}  analysis-recall=${doAnalysisRecall}  similar-files=${doSimilar}  cases=${cases.length}  conc=${concurrency}`
   );
 
   // One full pass over the corpus. Repeated N times (--repeat) through the SHARED spend guard, so the cap holds
@@ -583,6 +587,7 @@ async function main() {
                 context,
                 cotScaffold: doScaffold,
                 divergence: doDivergence,
+                injectionGuard: doInjectionGuard,
                 lane: passLane,
                 persona: pass.id,
                 proposeRuleDrift,
@@ -622,6 +627,7 @@ async function main() {
             context,
             cotScaffold: doScaffold,
             divergence: doDivergence,
+            injectionGuard: doInjectionGuard,
             lane,
             persona: "persona:general",
             proposeRuleDrift,
@@ -785,6 +791,9 @@ async function main() {
       // from the durable log (eval-only settling experiment, 2026-07-13 council).
       divergence: doDivergence,
       ground: doGround,
+      // injection-guard note persisted alongside the other analysis-prose levers so its on/off arms are auditable
+      // from the durable log (measure-first main-path prompt-injection guard, task #42).
+      injectionGuard: doInjectionGuard,
       model,
       personas: doPersonas,
       provider,

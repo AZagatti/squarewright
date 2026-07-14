@@ -50,6 +50,14 @@ export interface WorkerRequest {
    * it clears the scaffold's no-precision-cost bar. Distinct from `surveyor` (same-diff same-root-cause enumeration).
    */
   divergence?: boolean;
+  /**
+   * Enable the prompt-injection guard note (MEASURE-FIRST, task #42): frames the PR title/body/diff as the
+   * untrusted SUBJECT whose embedded "instructions to the reviewer" are material under review, not commands —
+   * a hardening against a hostile PR description trying to suppress the review. Scoped to distrust reviewer-
+   * addressed instructions, NOT the code (which would cost recall). Off by default; opt-in via `--injection-guard`
+   * so its recall/precision cost is measured on the golden set before any default-on decision (like `cotScaffold`).
+   */
+  injectionGuard?: boolean;
   lane: ModelLane;
   /** persona id, stamped onto findings for provenance/feedback */
   persona?: string;
