@@ -38,8 +38,8 @@ cases:
     note: "Replaces custom recursive copyDir with Node fs.cpSync. Looks like a clean simplification but fs.cpSync mishandles non-ASCII paths on Windows, and the PR omits dereference:true, changing symlink-copy semantics."
     evidence: "Reverted ~10 days later by vitejs/vite#21081: 'fs.cpSync has a bug that affects Windows non-ascii paths (nodejs/node#58768) ... also a bug for dereference:true (nodejs/node#59168), which we should have set'."
     expect_loci:
-      - path: packages/vite/src/node/utils.ts
-        about: "Drops custom copyDir for fs.cpSync without handling the known Windows non-ASCII-path bug."
+      - path: packages/vite/src/node/plugins/prepareOutDir.ts
+        about: "The real regression site: fs.cpSync replaces the old copyDir but lacks its `srcFile === destDir` self-copy guard and omits dereference:true (Windows non-ASCII + symlink bugs). The utils.ts hunk only DELETES the now-dead helper — no reachable defect there."
       - path: packages/create-vite/src/index.ts
         about: "Switches template copy to fs.cpSync but omits dereference:true, changing symlink handling."
   - id: ts-svelte-18453
