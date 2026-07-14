@@ -1365,13 +1365,18 @@ The FIRST non-null recall lead — then mostly deflated by a defect-level judge.
 schema_cache.rb, tailwind preflight.css — stay hard for glm-5.2, minimax-m3, AND deepseek-v4-pro alike), but 2-3
 loci show robust ≥25pp complementary gaps. So any union benefit is confined to a minority of complementary loci.
 
-**Full-corpus file-level (all matched vanilla glm×m3 report pairs; 8/9 has-issue covered, ci-spotipy has 0 m3 reports):**
+**Full-corpus file-level (all matched vanilla glm×m3 report pairs; 8/9 has-issue covered, ci-spotipy has 0 m3 reports).
+Re-run 2026-07-14 on the CURRENT manifest (post-#173 ts-vite relabel + ci-spotipy add) — the finding HOLDS; recall
+shifted up slightly with the relabel, the ~2.6× FP tax is unchanged:**
 
 | condition | recall (has-issue) | clean-case FPs |
 |---|---|---|
-| glm-5.2 solo | 154/288 (53.5%) | 347 (1.50/case-pair) |
-| minimax-m3 solo | 171/288 (59.4%) | 559 (2.42) |
-| **UNION** | **222/288 (77.1%)** | **906 (3.92) — ~2.6× glm** |
+| glm-5.2 solo | 173/288 (60.1%) | 347 (1.50/case-pair) |
+| minimax-m3 solo | 177/288 (61.5%) | 559 (2.42) |
+| **UNION** | **232/288 (80.6%)** | **906 (3.92) — ~2.6× glm** |
+
+(Superseded numbers, pre-#173 manifest: glm 154/288 53.5%, m3 171/288 59.4%, union 222/288 77.1% — same FP totals.
+The manifest relabel raised the ts-vite locus's hit rate; the verdict below is unchanged.)
 
 **Defect-level judge (cross-family `openrouter:deepseek/deepseek-v3.2`, ~$0.023 total), 4 loci:**
 
