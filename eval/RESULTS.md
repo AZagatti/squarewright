@@ -1590,3 +1590,42 @@ measured upside. Kept as a documented OPT-IN (`injectionGuard` flag) for a high-
 injection-resistance over the ~2-loci recall cost; NOT wired into the default `review.ts` path. Mirrors the
 scaffold/divergence pattern: measured, opt-in, not forced on the zero-config default. Same meta-lesson as
 [[reasoning-not-a-review-lever]] — a plausible prompt addition is not free; measure before shipping.
+
+## #49 AC4 — current free default (glm-5.2 off) recall is NOISY per-locus, not reproducible (2026-07-14)
+
+ROADMAP M7's last open item: an honest reproducibility re-measure of the *current provisional default* reviewer (free
+z.ai glm-5.2 reasoning-off, single generic persona) BEFORE treating any dogfood recall number as representative —
+"≥3 analysis repeats × judge re-scores, a different-family judge" (issue #49 AC4). The 3 analysis repeats already
+existed (the injection-guard baseline arm = glm-5.2 golden N=3, `injectionGuard:false`). Cross-family judge:
+**the mechanical `openrouter:deepseek/deepseek-v3.2` judge FAILED — 81/81 calls dropped the `submit_grades` tool
+(thinking-off, $0 usage), so the #178 incomplete-pass guard correctly reported "nothing to report" instead of fake
+zeros.** Fell back to the documented zero-cost cross-family **subagent judge** (docs/reference/subagent-judge.md),
+graded strictly (same root cause + location, not same-file), independently per report.
+
+**N = 12 has-issue loci / 9 cases. Per-report DEFECT recall:**
+
+| analysis run | recall /12 |
+|---|---|
+| A (…15-27) | 5 |
+| B (…15-31) | 6 |
+| C (…15-35) | 5 |
+
+**Interval 5–5–6 / 12 (42–50%). Verdict: NOISY, NOT reproducible.** The aggregate band looks tight but that's
+canceling totals — **5 of the 12 loci (42%) FLIP hit/miss between IDENTICAL runs** (same model, config, corpus).
+Which specific defect gets caught is a per-run coin-flip for half the corpus:
+- **Always hit (3):** `rust-tokio/pool.rs`, `css-tailwind/utilities.ts`, `ci-spotipy-pwnrequest`.
+- **Never hit (4):** `vite`(2nd locus), `ruby-rails/schema_cache.rb`, `docker-grafana/Dockerfile`, `config-swup/tsconfig.json` (a real model-ceiling / reachability tail, cf. [[recall-is-model-liftable-reachability]]).
+- **Flip run-to-run (5):** `tokio/sharded_queue.rs`, `vite/prepareOutDir.ts`, `tailwind/preflight.css`, `go-cli/create.go`, `requests/adapters.py`.
+
+**Two findings for the honest-measurement pillar:**
+1. **A single dogfood run is NOT representative** — report defect recall as an interval over ≥3 runs, never a point,
+   and expect the *per-locus* result to move even when the total looks stable. This is what the ROADMAP wanted
+   established before any dogfood claim; it now is.
+2. **In-harness `hitLoci`/`issueHits` (sameFile) over-counts vs a strict root-cause judge** — the reports self-score
+   ~7–9/12 file-level where strict defect-level is 5–6/12 (same-file findings that describe a *different* problem).
+   Confirms file-level over-credits defect (already banked) — trust an independent cross-family judge, not the
+   in-harness counters. And per this run: the standard `deepseek-v3.2` mechanical judge is unreliable thinking-off
+   (81/81 tool-drop) — the subagent judge is the working cross-family path until a more reliable mechanical judge is
+   chosen (that judge-investment is a separate maintainer call). The per-locus flip ALSO re-motivates self-consistency
+   (`--samples`, ROADMAP M7): the UNION of the 3 runs ≈ 8/12, well above any single run's 5–6 — unioning recovers the
+   reachable-but-rare loci, at a precision cost still to be measured on the production path.
