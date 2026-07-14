@@ -1394,3 +1394,44 @@ null-ish result. IF chased further: an eval-only `--union` mode + a FULL defect-
 cases + the union+scaffold combo would settle it — but don't ship a 2× model-call lever for ~1 synergy locus. Bonus:
 opencode-go deepseek-v4-pro HALLUCINATED the defect⊆file invariant here → validated the same-family/judge-hygiene
 guard (PR #172) that flags exactly this.
+
+## Non-Fugu strong-model rank — recall IS model-liftable ~2×, at LOW effort (2026-07-14, #45 AC2)
+
+The maintainer opened up GPT (Codex CLI) + grok (xAI CLI) + Anthropic opus/fable, to answer #45 AC2 ("which model
+lifts recall, how much") WITHOUT depending on Fugu (sub expires 2026-07-29). Built `scripts/eval-codex.ts` (Codex
+analysis → glm-5.2 structurer → judge; the codex analog of `eval-cli.ts`); grok via the grok-headless skill.
+
+**Full golden corpus, analysis @ LOW effort, glm-5.2 structurer, cross-family judge (deepseek + glm-5.2, N=3):**
+
+| model (analysis @low) | file-level recall | DEFECT-level (judge) | clean-case FP | notes |
+|---|---|---|---|---|
+| **codex gpt-5.6-sol** | **10/12** | **~6–7/12** | **6** | best on recall AND precision |
+| codex gpt-5.4-mini (cheapest) | 7/12 | 5/12 [5,5,7] | 9 | the CHEAPEST GPT still ~2× free-glm |
+| claude opus-4-8 (via eval-cli) | 9/12 | 4–5/12 | 20 | strong recall, weaker precision |
+| free glm-5.2 (baseline) | ~53% | ~2–3/12 | — | the current default |
+
+- **Recall is model-liftable — every readily-available strong model roughly DOUBLES free-glm's defect recall**
+  (~2–3 → 5–7/12), and it does NOT need Fugu: gpt-5.6-sol @ low leads on BOTH recall and precision. Even the
+  cheapest GPT (gpt-5.4-mini @ low) hits 5/12 defect. This settles #45 AC2: a strong-lane opt-in (e.g. sol@low)
+  ~2×'s recall; free-glm stays the zero-cost default.
+
+- **LOW is the goldilocks reasoning effort — an inverted-U, not a monotone lever.** The cleanest demo (grok-4.5 on
+  the rails enumeration-order defect): `minimal` ✗ (too shallow — dismisses it as "intended") → **`low` ✓ (catches
+  it)** → `high`/default ✗ (OVERTHINKS — explicitly rationalizes the real defect away as "not a regression"). Same
+  overthink pattern seen at high across sol/luna/grok. So run review models at LOW, not high, not off. Confirms the
+  "reasoning isn't a monotone review lever" line — a *little* helps, a *lot* hurts (models reason their way out of
+  flagging borderline-but-real defects).
+
+- **go-cli-10547 (multi-flag control-flow) is a genuine ceiling** — NO model at ANY effort caught it defect-level
+  (sol/opus/mini/grok/luna, none→high). Some cases are stochastic-hard for everyone; a stronger model doesn't fix
+  them. (rails, by contrast, IS liftable — sol@low & grok@low catch it.)
+
+- **Caveats:** (1) file-level over-credits defect-level by ~3–9 loci every run — trust the judge, not file hits.
+  (2) Judges are SHAKY on strong-model reports: both deepseek-v3.2 (dropped submit_grades 17/27 thinking-off) and
+  glm-5.2 (hallucinated defect>file once) failed passes — the #22 defect⊆file guard + #172 same-family/ungraded
+  warnings caught them and excluded the bad passes, so the numbers survived; but they have real error bars.
+  (3) hard-case effort spot-checks were raw `codex`/`grok` prose (no persona/structurer), N=1–2, stochastic —
+  directional, not rigorous; the rank table above IS the harness (persona+structurer+judge). (4) grok has no
+  reasoning "off" (floor is `minimal`); `grok-composer-2.5-fast` is the non-reasoning analog (weak — dismisses subtle
+  defects). Product implication: offer a strong-lane opt-in (gpt-5.6-sol @ low the front-runner), keep free-glm the
+  default, and pin review effort at LOW.
