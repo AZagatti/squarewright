@@ -210,12 +210,17 @@ function codexAnalysis(
   }
 }
 
-/** Pass-2 structurer — replicates src/pi/worker.ts Pass 2 (fixed extractor, no reasoning, submit_findings). */
+/**
+ * Pass-2 structurer — replicates src/pi/worker.ts Pass 2 (fixed extractor, no reasoning, submit_findings). Returns
+ * `submitted:false` when the model never called submit_findings even after the nudges, so the caller can tell a
+ * genuine "0 findings" apart from a structurer failure (which must NOT be scored as a clean pass — same honest-
+ * measurement discipline as the judge's incomplete-pass exclusion, #178).
+ */
 async function structure(
   analysisText: string,
   keys: Record<string, string>,
   lane: ModelLane
-): Promise<Finding[]> {
+): Promise<{ findings: Finding[]; submitted: boolean }> {
   const authStorage = AuthStorage.create();
   for (const [p, k] of Object.entries(keys)) {
     authStorage.setRuntimeApiKey(p, k);
@@ -274,27 +279,39 @@ async function structure(
     );
   }
   session.dispose();
+  const didSubmit = captured !== undefined;
   // biome-ignore lint/suspicious/noUnnecessaryConditions: the nudge loop can exit with captured still undefined
   const submitted = captured?.findings ?? [];
-  return capRuleDrift(
-    submitted.map((f) => submittedToFinding(f, "persona:auditor", false))
-  );
+  return {
+    findings: capRuleDrift(
+      submitted.map((f) => submittedToFinding(f, "persona:auditor", false))
+    ),
+    submitted: didSubmit,
+  };
 }
 
 interface CaseResult {
   catches: number;
   expect: string;
+  /** flag-counts for GRADED runs only (an incomplete run contributes no entry, not a 0) */
   flags: number[];
+  /** runs that produced a usable verdict (analysis ok AND structurer submitted) — scoring denominator for this case */
+  graded: number;
   id: string;
+  incomplete: number;
   kind: string;
   runs: {
     findings: { line?: number; message: string; path: string }[];
+    /** true when the analysis failed or the structurer never submitted — excluded from flags/catches/denominators */
+    incomplete: boolean;
     n: number;
     rawAnalysis?: string;
     status: string;
+    submitted: boolean;
   }[];
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: a linear case × repeat measurement loop with inline incomplete-run exclusion + aggregation, not real branching complexity
 async function main() {
   const model = arg("model") ?? "gpt-5.6-terra";
   const effort = arg("effort");
@@ -325,57 +342,77 @@ async function main() {
     const fx = loadFixture(c, refresh);
     const prompt = composeAcPrompt(fx);
     const runs: CaseResult["runs"] = [];
+    // Only GRADED runs (analysis ok AND structurer submitted) contribute a flag-count. An analysis failure or a
+    // structurer that never submitted is INCOMPLETE — excluded from flags/catches/denominators, not scored as a
+    // clean 0 (same discipline as the judge's incomplete-pass exclusion, #178).
     const flags: number[] = [];
     for (let r = 0; r < repeats; r += 1) {
       const { text: analysis, status } = codexAnalysis(model, effort, prompt);
       let findings: Finding[] = [];
+      let submitted = false;
       if (analysis) {
-        // biome-ignore lint/performance/noAwaitInLoops: sequential structurer call per run
-        findings = await structure(analysis, keys, structLane);
+        // biome-ignore lint/performance/noAwaitInLoops: sequential structurer call per run — one at a time by design
+        ({ findings, submitted } = await structure(analysis, keys, structLane));
       }
-      flags.push(findings.length);
+      const incomplete = status !== "ok" || !submitted;
+      if (!incomplete) {
+        flags.push(findings.length);
+      }
       runs.push({
         findings: findings.map((f) => ({
           line: f.line,
           message: f.message,
           path: f.path,
         })),
+        incomplete,
         n: r + 1,
         status,
+        submitted,
         ...(dumpRaw ? { rawAnalysis: analysis } : {}),
       });
     }
-    // "catch" = emitted ≥1 finding. For expect=flag that's a true positive; for expect=quiet it's a false positive.
+    // "catch" = a GRADED run emitted ≥1 finding. For expect=flag that's a true positive; for expect=quiet a false pos.
     const catches = flags.filter((f) => f > 0).length;
+    const graded = flags.length;
+    const incomplete = repeats - graded;
     const verdict =
       c.expect === "flag"
-        ? `caught ${catches}/${repeats}`
-        : `FALSE-POS ${catches}/${repeats}`;
+        ? `caught ${catches}/${graded}`
+        : `FALSE-POS ${catches}/${graded}`;
     console.log(
-      `  [${c.expect.padEnd(5)} ${c.kind.padEnd(13)}] ${c.id.padEnd(10)} flags=[${flags.join(",")}]  ${verdict}`
+      `  [${c.expect.padEnd(5)} ${c.kind.padEnd(13)}] ${c.id.padEnd(10)} flags=[${flags.join(",")}]  ${verdict}${incomplete > 0 ? `  ⚠ ${incomplete} incomplete (excluded)` : ""}`
     );
     results.push({
       catches,
       expect: c.expect,
       flags,
+      graded,
       id: c.id,
+      incomplete,
       kind: c.kind,
       runs,
     });
   }
 
-  // Aggregate: gold recall + clean/disclosed false-positive rate.
+  // Aggregate over GRADED runs only — denominators are per-case graded counts, not raw repeats.
   const gold = results.filter((r) => r.expect === "flag");
   const quiet = results.filter((r) => r.expect === "quiet");
   const goldCatch = gold.reduce((s, r) => s + r.catches, 0);
-  const goldTotal = gold.length * repeats;
+  const goldTotal = gold.reduce((s, r) => s + r.graded, 0);
   const fpRuns = quiet.reduce((s, r) => s + r.catches, 0);
-  const fpTotal = quiet.length * repeats;
+  const fpTotal = quiet.reduce((s, r) => s + r.graded, 0);
   const fpCases = quiet.filter((r) => r.catches > 0).length;
+  const incompleteRuns = results.reduce((s, r) => s + r.incomplete, 0);
   console.log(
-    `\n  GOLD recall: ${goldCatch}/${goldTotal} runs caught the silent miss` +
-      `\n  QUIET false-positives: ${fpRuns}/${fpTotal} runs flagged a clean/disclosed case (${fpCases}/${quiet.length} cases ever tripped)\n`
+    `\n  GOLD recall: ${goldCatch}/${goldTotal} graded runs caught the silent miss` +
+      `\n  QUIET false-positives: ${fpRuns}/${fpTotal} graded runs flagged a clean/disclosed case (${fpCases}/${quiet.length} cases ever tripped)`
   );
+  if (incompleteRuns > 0) {
+    console.log(
+      `  ⚠ ${incompleteRuns} run(s) EXCLUDED as incomplete (analysis error/timeout or structurer non-submit) — NOT scored as clean`
+    );
+  }
+  console.log("");
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const modelSlug = model.replace(/[^a-z0-9.-]/gi, "_");
@@ -394,7 +431,14 @@ async function main() {
           structurer: "zai/glm-5.2",
         },
         results,
-        summary: { fpCases, fpRuns, fpTotal, goldCatch, goldTotal },
+        summary: {
+          fpCases,
+          fpRuns,
+          fpTotal,
+          goldCatch,
+          goldTotal,
+          incompleteRuns,
+        },
       },
       null,
       2
