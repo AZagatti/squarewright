@@ -81,7 +81,7 @@ export function assertNoReasoningTrap(
       throw new Error(
         `Refusing to review: OpenRouter model "${model}" is a reasoning cost-trap — ${risk.detail}. It would ` +
           "silently bill expensive reasoning tokens even at thinking=off. Point this lane at a model whose " +
-          "reasoning disables cleanly, or use a free z.ai lane."
+          "reasoning disables cleanly, or use a z.ai lane."
       );
     }
   }

@@ -209,7 +209,7 @@ describe("runReviewPost rules loading", () => {
 });
 
 describe("requiredProviders", () => {
-  test("the default structurer is free z.ai — a z.ai-only config forces no other provider", () => {
+  test("the default structurer is z.ai — a z.ai-only config forces no other provider", () => {
     // CONFIG's only lane is zai, and the default structurer is now zai too (no forced openrouter)
     expect([...requiredProviders(CONFIG)]).toEqual(["zai"]);
   });

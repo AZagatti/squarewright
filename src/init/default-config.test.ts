@@ -15,7 +15,7 @@ test("renderDefaultConfig round-trips the full DEFAULT_PERSONAS (every field, no
   );
 });
 
-test("renderDefaultConfig defaults to free z.ai lanes + structurer (only zai required)", () => {
+test("renderDefaultConfig defaults to z.ai lanes + structurer (only zai required)", () => {
   const config = parseAssemblyConfig(renderDefaultConfig());
 
   expect(config.lanes.every((l) => l.provider === "zai")).toBe(true);

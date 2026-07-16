@@ -14,7 +14,7 @@ function tmp(): string {
 }
 
 const REF_LINE = /SQUAREWRIGHT_REF: "([^"]+)"/;
-const CONCRETE_REF = /^([0-9a-f]{40}|main)$/;
+const CONCRETE_REF = /^([0-9a-f]{40}|main|v[\w.-]+)$/;
 
 test("scaffold writes a valid generated config + the workflow files", async () => {
   const dir = tmp();
@@ -78,27 +78,41 @@ test("scaffolded review + teach workflows install a runnable pinned harness, not
   expect(teach).toContain('bun "$RUNNER_TEMP/squarewright/src/cli.ts" teach');
 });
 
-test("resolveSquarewrightRef pins HEAD only when root is its own git top-level (#193)", () => {
+test("resolveSquarewrightRef prefers a release tag, else HEAD, else main (#193)", () => {
   const root = "/some/squarewright";
   const sha = "a".repeat(40);
+  // dispatch a fake `git` by subcommand: toplevel / `tag --points-at` / `rev-parse HEAD`
+  const fake =
+    (top: string, tag: string, head: string): GitRunner =>
+    (args) => {
+      if (args[1] === "--show-toplevel") {
+        return top;
+      }
+      if (args[0] === "tag") {
+        return tag;
+      }
+      return head;
+    };
 
-  // source/dogfood: root IS the git top-level → pin the full HEAD sha
-  const own: GitRunner = (args) => (args[1] === "--show-toplevel" ? root : sha);
-  expect(resolveSquarewrightRef(root, own)).toBe(sha);
-
-  // nested under the user's repo (node_modules install): top-level differs → fall back to main
-  const nested: GitRunner = (args) =>
-    args[1] === "--show-toplevel" ? "/user/repo" : sha;
-  expect(resolveSquarewrightRef(root, nested)).toBe("main");
-
+  // own git top-level, no tag → pin the full HEAD sha
+  expect(resolveSquarewrightRef(root, fake(root, "", sha))).toBe(sha);
+  // own git top-level, HEAD is tagged → prefer the tag over the sha
+  expect(resolveSquarewrightRef(root, fake(root, "v0.1.0-pre", sha))).toBe(
+    "v0.1.0-pre"
+  );
+  // multiple tags on HEAD → first line
+  expect(
+    resolveSquarewrightRef(root, fake(root, "v0.1.0-pre\nv0.1.0", sha))
+  ).toBe("v0.1.0-pre");
+  // nested under the user's repo (node_modules install) → fall back to main
+  expect(resolveSquarewrightRef(root, fake("/user/repo", "v9", sha))).toBe(
+    "main"
+  );
   // git absent / not a repo → main
   const broken: GitRunner = () => {
     throw new Error("not a git repository");
   };
   expect(resolveSquarewrightRef(root, broken)).toBe("main");
-
-  // detached/empty HEAD → main (never an empty ref)
-  const emptyHead: GitRunner = (args) =>
-    args[1] === "--show-toplevel" ? root : "";
-  expect(resolveSquarewrightRef(root, emptyHead)).toBe("main");
+  // detached/empty HEAD, no tag → main (never an empty ref)
+  expect(resolveSquarewrightRef(root, fake(root, "", ""))).toBe("main");
 });

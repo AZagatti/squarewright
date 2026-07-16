@@ -81,6 +81,6 @@ jobs:
           EVENT_REPO: ${{ github.event.workflow_run.repository.full_name }}
           # The bot's own comment author, so re-reviews only touch OUR comments (issue #157).
           SQUAREWRIGHT_BOT_LOGIN: "github-actions[bot]"
-          # Provider key lives ONLY in this trusted phase. Default lanes are z.ai's free glm-5-turbo.
+          # Provider key lives ONLY in this trusted phase. Default lanes are z.ai (glm-5.2 review, glm-5-turbo structurer).
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
         run: bun run src/cli.ts review --phase post --post --input artifacts

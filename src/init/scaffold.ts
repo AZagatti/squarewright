@@ -45,7 +45,9 @@ export function resolveSquarewrightRef(
     if (resolve(git(["rev-parse", "--show-toplevel"])) !== resolve(root)) {
       return "main";
     }
-    return git(["rev-parse", "HEAD"]) || "main";
+    // Prefer an exact release tag on HEAD (human-readable and always reachable once pushed) over the raw SHA.
+    const tag = git(["tag", "--points-at", "HEAD"]).split("\n")[0]?.trim();
+    return tag || git(["rev-parse", "HEAD"]) || "main";
   } catch {
     return "main";
   }
@@ -130,8 +132,9 @@ export async function scaffold(repoRoot: string): Promise<void> {
 
   console.log(`
 Next steps:
-  1. Add a provider API key as a repo secret. The default lanes use z.ai, so add ZAI_API_KEY (free tier works).
-     Settings → Secrets and variables → Actions → New repository secret.
+  1. Add a provider API key as a repo secret. The default lanes use z.ai, so add ZAI_API_KEY — a z.ai API key
+     (a paid Coding Plan or pay-as-you-go; there is no permanent free tier for glm-5.2). The reviewer is
+     model-agnostic — retarget lanes at any of Pi's providers. Settings → Secrets and variables → Actions.
   2. (Optional) Retarget lanes in .squarewright.yml — point "strong" at a frontier model, or swap the provider.
   3. (Optional) Pin the harness — the workflows clone squarewright@${ref}. Change SQUAREWRIGHT_REF in them to a
      release tag for a fixed version, or "main" to track latest.

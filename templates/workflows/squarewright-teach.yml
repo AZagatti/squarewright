@@ -54,7 +54,7 @@ jobs:
       - name: Interpret the reply and post a suggestion (authorized + confident only)
         env:
           GH_TOKEN: ${{ github.token }}
-          # Provider key lives ONLY in this trusted phase; the interpreter defaults to z.ai's free glm-5.2.
+          # Provider key lives ONLY in this trusted phase; the interpreter defaults to z.ai's glm-5.2 (a z.ai key).
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           # Comment-derived strings pass via env, NEVER interpolated into the shell (injection guard).
           TEACH_REPO: ${{ github.repository }}
