@@ -1674,3 +1674,74 @@ runs ~1 stricter than claude-judge (medians 4 vs 6); the two-vendor bracket is t
 absolute number is soft. (3) all cross-family vs a GLM reviewer, but these are SUBSCRIPTION test instruments — the
 rank is guidance for a user who points `models.json` at a paid API provider, not a production default (free glm-5.2
 stays the zero-config default). A firmer rank would need N≥3 analysis reports per model + the two-judge bracket.
+
+## Blind bulk `learn` (auto-generated `.review-rules`, ≤5) — no value zone in two probes, not rescued by stronger generators (2026-07-15/16, #189)
+
+Tested ONE shape of the `learn` idea from the peak-reviewer map (#186/#189/#190): **blind, bulk, base-tree
+generation of ≤5 glob-scoped rules**, measured ON vs OFF through the real product review path (glm-5.2 reviewer,
+`cli.ts review --phase post`). This does NOT test rule-drift, HITL teach-by-reply, changed-file-scoped generation,
+larger rule budgets, or feedback-mined learnings — separate shapes, untested here. Two probes, both null; a strong
+LEAD scoped to this design, not a general proof.
+
+**Method.** Generator reads a repo's BASE tree, BLIND to the diff, fixed contract (≤5 concrete glob-scoped rules
+grounded in code). Generators, each at its tool DEFAULT effort (NOT effort-matched — a disclosed confound): free
+z.ai `glm-5.2` (temp 0.3, no reasoning param), `gpt-5.6-sol` (codex), `grok-4.5` (always reasons) — the latter two
+are the two top recall vendors on the multi-vendor rank (see the #45 rank sections above). **"Caught?" here = reading
+the actual finding TEXT, not the committed cross-family defect-judge protocol** used for the golden-rule-probe
+control — a weaker proxy, stated up front. Control (pre-established, `golden-rule-probe`, RESULTS.md:379): a HAND
+rule lifts recall 1/3→3/3 — injection works; this isolates GENERATION.
+
+**Probe 1 — buried convention** (`ts-vite-21019`: `copyDir`→`fs.cpSync` dropping `dereference: true`). Input = base
+`packages/vite/src/node/` (utils.ts, 1689 lines, ~40 exports incl. `copyDir`).
+
+| Generator | Samples | Surfaced the `copyDir` rule |
+|---|---|---|
+| glm-5.2 (free) | 4 | 0 |
+| gpt-5.6-sol (codex) | 3 | 0 |
+| grok-4.5 | 1 | 0 |
+
+**0/8 on this target.** All wrote good, repo-specific rules and converged on the same OTHER salient conventions
+(`normalizePath`, URL/query helpers, `createDebugger`, directory-containment, `node:` imports); each strong model
+even emitted a same-SHAPE "prefer-the-helper" rule for a DIFFERENT helper (`safeRealpathSync`, `withTrailingSlash`)
+— so the models CAN write this rule shape, they just don't rank `copyDir` into a ≤5 budget. The miss held across
+free + the two stronger generators → **not rescued by a stronger generator in this setup.** (Candidate causes — the
+≤5 cap, the ~40-export input width, prompt ranking — this probe can't separate them, so a fully "structural" reading
+stays a HYPOTHESIS, not a proven fact.) Suppression side-check: 5 orthogonal glm rules ON vs OFF, 2 valid reps/arm →
+no observed perturbation (thin, proxy).
+
+**Probe 2 — salient convention** (SYNTHETIC, value-zone test). A defect violating a convention generation DOES
+produce: directory-containment (grok's rule-4: "flag bare `startsWith(dir)` without a trailing slash"). Synthetic
+diff (same posture as `eval/rules-fixture`): `normalizePath(file).startsWith(normalizePath(dir))`.
+
+- Generation makes the rule? **YES** (grok rule-4 bullseye).
+- Baseline (glm-5.2, no rules) catches it? **YES, 3/3 valid runs** — finding text: *"isPathInside uses bare
+  startsWith — prefix confusion bypass (CWE-22)"*, exact `/foo/bar` vs `/foo/barbaz` example, unprompted; baseline
+  also caught 4 more real bugs (`..` traversal, URL-vs-fs mismatch, `fs.allow` undefined crash, re-implements
+  existing enforcement).
+- ON (generated rules): **same catch on the 1 valid ON run** (2 of 3 runs failed empty) → no added value on that run.
+
+**Probe 2 is the EASY pole, by construction.** The defect is a TEXTBOOK CWE-22 (`startsWith` prefix confusion) that
+security-trained models already know — the *easiest* baseline win, NOT a repo-specific salient convention that
+generation hits and baseline misses. So probe 2 shows "baseline already catches a textbook security bug," which is
+weaker than "baseline enforces every salient convention." The true goldilocks band — salient enough to generate AND
+subtle enough that baseline misses — is NOT tested here. **Post-selection disclosure:** probe 2's defect was
+constructed AFTER seeing grok generate the directory-containment rule, so it is a post-hoc mechanism/control check
+(does injecting a rule we already know was generated help?), NOT an independent, prospective test of `learn`'s best
+case — no salient-but-subtle convention was chosen in advance.
+
+**Verdict (scoped).** For **blind bulk base-tree `learn` (≤5)**: no value zone found in these two probes — absent
+where it'd help (probe 1: generation misses the rule), redundant on the easy pole (probe 2: baseline already
+catches). The "salient-enough-to-generate ⟺ base-already-enforces" tension is a HYPOTHESIS consistent with both
+probes, NOT proven. This is **preliminary negative evidence — not enough to justify investing in this `learn` shape**
+as a free general recall lever; it does NOT prove no Goldilocks convention exists, and does NOT close other learn
+shapes (rule-drift, changed-file-scoped, larger budgets, feedback-mined). This probe gives **no evidence that this
+`learn` shape improves recall**; the demonstrated recall lever remains a stronger REVIEW model (the #45 rank sections
+above) — a maintainer spend decision this probe does not itself re-establish.
+
+**Caveats (do not over-read):** (1) **N=2 hand-picked poles** — a buried real defect (where hand rules help) + a
+textbook security synthetic (where baseline is strong); the null is partly a property of the pole selection.
+(2) Probe-2 defect is synthetic-controlled (labeled), not a golden corpus case. (3) Thin N: probe-2 ON = 1 valid/3,
+suppression = 2/arm; "caught" = finding-text reading, not the cross-family defect-judge. (4) Generation effort not
+matched across vendors (disclosed confound). (5) Only ONE `learn` design tested (≤5, diff-blind, whole-module).
+(6) Bonus, against our own tool's modesty: free glm-5.2 BASELINE gave an excellent security review of probe 2
+(CWE-22 + traversal + units-mismatch + crash + redundancy) — a strong-baseline data point.
