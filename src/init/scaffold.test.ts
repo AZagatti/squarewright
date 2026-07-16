@@ -3,7 +3,11 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseAssemblyConfig } from "../assembly/config.js";
-import { scaffold } from "./scaffold.js";
+import {
+  type GitRunner,
+  resolveSquarewrightRef,
+  scaffold,
+} from "./scaffold.js";
 
 function tmp(): string {
   return mkdtempSync(join(tmpdir(), "sqw-scaffold-"));
@@ -72,4 +76,29 @@ test("scaffolded review + teach workflows install a runnable pinned harness, not
   );
   expect(teach).not.toContain("__SQW_REF__");
   expect(teach).toContain('bun "$RUNNER_TEMP/squarewright/src/cli.ts" teach');
+});
+
+test("resolveSquarewrightRef pins HEAD only when root is its own git top-level (#193)", () => {
+  const root = "/some/squarewright";
+  const sha = "a".repeat(40);
+
+  // source/dogfood: root IS the git top-level → pin the full HEAD sha
+  const own: GitRunner = (args) => (args[1] === "--show-toplevel" ? root : sha);
+  expect(resolveSquarewrightRef(root, own)).toBe(sha);
+
+  // nested under the user's repo (node_modules install): top-level differs → fall back to main
+  const nested: GitRunner = (args) =>
+    args[1] === "--show-toplevel" ? "/user/repo" : sha;
+  expect(resolveSquarewrightRef(root, nested)).toBe("main");
+
+  // git absent / not a repo → main
+  const broken: GitRunner = () => {
+    throw new Error("not a git repository");
+  };
+  expect(resolveSquarewrightRef(root, broken)).toBe("main");
+
+  // detached/empty HEAD → main (never an empty ref)
+  const emptyHead: GitRunner = (args) =>
+    args[1] === "--show-toplevel" ? root : "";
+  expect(resolveSquarewrightRef(root, emptyHead)).toBe("main");
 });

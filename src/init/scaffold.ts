@@ -17,25 +17,32 @@ const SQUAREWRIGHT_ROOT = join(TEMPLATES_DIR, "..");
 /** Placeholder the templated workflows carry; replaced with {@link resolveSquarewrightRef}. */
 const REF_PLACEHOLDER = "__SQW_REF__";
 
+/** Runs a `git` subcommand and returns trimmed stdout; injected so ref resolution is testable without a repo. */
+export type GitRunner = (args: string[]) => string;
+
+const gitAt =
+  (root: string): GitRunner =>
+  (args) =>
+    execFileSync("git", args, {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+
 /**
  * The git ref the scaffolded workflows clone. Pins to the squarewright revision running `init` — but ONLY when
  * squarewright is its own git checkout (the source/dogfood case); when it runs as a package nested in the user's
  * repo (`node_modules/squarewright`), `git` would resolve the *user's* HEAD, which is not a squarewright ref, so
- * we fall back to `main`. Users can retarget the ref (to a tag) in the generated workflow.
+ * we fall back to `main`. Users can retarget the ref (to a tag) in the generated workflow. `root`/`git` are
+ * injectable for testing both branches (production uses squarewright's own root + real git).
  */
-function resolveSquarewrightRef(): string {
-  const git = (args: string[]): string =>
-    execFileSync("git", args, {
-      cwd: SQUAREWRIGHT_ROOT,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
+export function resolveSquarewrightRef(
+  root: string = SQUAREWRIGHT_ROOT,
+  git: GitRunner = gitAt(root)
+): string {
   try {
-    // Only trust HEAD when SQUAREWRIGHT_ROOT is itself the git top-level (not nested inside the user's repo).
-    if (
-      resolve(git(["rev-parse", "--show-toplevel"])) !==
-      resolve(SQUAREWRIGHT_ROOT)
-    ) {
+    // Only trust HEAD when `root` is itself the git top-level (not nested inside the user's repo).
+    if (resolve(git(["rev-parse", "--show-toplevel"])) !== resolve(root)) {
       return "main";
     }
     return git(["rev-parse", "HEAD"]) || "main";

@@ -31,6 +31,7 @@ jobs:
   review:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # bound a stuck model call / agent loop — this step now runs a real, keyed model (AGENTS.md money rule); GHA's default is 6h
     steps:
       - name: Checkout base repo (trusted; never PR head)
         uses: actions/checkout@v4
