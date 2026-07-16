@@ -102,6 +102,22 @@ describe("runDoctor", () => {
     expect(doctorProblems(report)).toBe(0);
     expect(renderDoctor(report)).toContain(warning);
   });
+
+  test("scopes catalog warnings to the -C target repo, not process cwd (#197)", async () => {
+    let seenCwd = "";
+    await runDoctor("/target/repo", {
+      catalogWarnings: (cwd) => {
+        seenCwd = cwd;
+        return [];
+      },
+      hasGh: () => Promise.resolve(true),
+      loadConfig: () => CONFIG,
+      resolveKeys: () =>
+        Promise.resolve({ apiKeys: { zai: "z" }, missing: [] }),
+    });
+
+    expect(seenCwd).toBe("/target/repo");
+  });
 });
 
 describe("renderDoctor", () => {

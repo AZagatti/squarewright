@@ -136,9 +136,10 @@ export function missingCostWarning(
  * SET-but-absent `SQW_MODELS_JSON`, a project catalog superseding a global one, and custom models missing a
  * `cost` block. Empty when the catalog is clean or absent. Shared by `createModelRegistry` (which logs them at
  * review time) and `doctor` (which surfaces them at preflight, before any spend), so the set of guards lives in
- * one place. Reads env + fs via the same resolvers the registry uses.
+ * one place. Reads env + fs via the same resolvers the registry uses. `cwd` scopes the *project* `models.json`
+ * lookup — pass a repo root so `doctor -C <dir>` inspects that repo's catalog, not the process's cwd (#197).
  */
-export function catalogWarnings(): string[] {
+export function catalogWarnings(cwd: string = process.cwd()): string[] {
   const warnings: string[] = [];
   // A SET-but-absent SQW_MODELS_JSON silently loses its intended cost caps — check before resolving (which
   // can't tell that case apart from "unset", both collapsing to undefined).
@@ -146,7 +147,7 @@ export function catalogWarnings(): string[] {
   if (missingOverride) {
     warnings.push(missingOverride);
   }
-  const path = resolveModelsJsonPath();
+  const path = resolveModelsJsonPath(process.env, cwd);
   const globalPath = globalModelsJsonPath();
   const superseded = supersessionWarning(
     path,

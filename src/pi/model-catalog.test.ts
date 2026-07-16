@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import {
+  catalogWarnings,
   MODELS_JSON_ENV,
   missingCostWarning,
   missingOverrideWarning,
@@ -43,6 +44,27 @@ test("resolveModelsJsonPath: falls back to <cwd>/models.json when it exists", ()
 
 test("resolveModelsJsonPath: undefined when no override and no repo-root models.json", () => {
   expect(resolveModelsJsonPath({}, tmp())).toBeUndefined();
+});
+
+test("catalogWarnings: scopes the project models.json lookup to the given cwd (#197)", () => {
+  // With no SQW_MODELS_JSON override, catalogWarnings must read <cwd>/models.json — so `doctor -C <dir>` inspects
+  // the target repo's catalog, not the process's cwd. Isolate the cwd-dependent missing-cost warning.
+  const prev = process.env[MODELS_JSON_ENV];
+  delete process.env[MODELS_JSON_ENV];
+  const COST = "no `cost` block";
+  try {
+    const withBad = tmp();
+    writeFileSync(
+      join(withBad, "models.json"),
+      JSON.stringify({ providers: { acme: { models: [{ id: "x" }] } } })
+    );
+    expect(catalogWarnings(withBad).some((w) => w.includes(COST))).toBe(true);
+    expect(catalogWarnings(tmp()).some((w) => w.includes(COST))).toBe(false);
+  } finally {
+    if (prev !== undefined) {
+      process.env[MODELS_JSON_ENV] = prev;
+    }
+  }
 });
 
 // ── supersessionWarning (money-safety guard) ────────────────────────────────
