@@ -132,13 +132,6 @@ export function missingCostWarning(
 }
 
 /**
- * Create a `ModelRegistry` for the project's catalog: resolves the `models.json` path and hands it to Pi, which
- * merges that file's models over the built-ins (custom wins). The caller keeps `authStorage` (it's reused for
- * the agent session). Two honesty guards (AGENTS.md §4/§5): a project catalog that supersedes a global one warns
- * loudly, and a malformed catalog warns and falls back to built-ins rather than masquerading as "no custom
- * models".
- */
-/**
  * All money/honesty warnings for the resolved `models.json` catalog (AGENTS.md §4/§5), in a stable order: a
  * SET-but-absent `SQW_MODELS_JSON`, a project catalog superseding a global one, and custom models missing a
  * `cost` block. Empty when the catalog is clean or absent. Shared by `createModelRegistry` (which logs them at
@@ -170,6 +163,12 @@ export function catalogWarnings(): string[] {
   return warnings;
 }
 
+/**
+ * Create a `ModelRegistry` for the project's catalog: resolves the `models.json` path and hands it to Pi, which
+ * merges that file's models over the built-ins (custom wins). The caller keeps `authStorage` (it's reused for
+ * the agent session). Logs the `catalogWarnings()` money/honesty guards at review time, and (a further guard)
+ * warns when a malformed catalog falls back to built-ins rather than masquerading as "no custom models".
+ */
 export function createModelRegistry(authStorage: AuthStorage): ModelRegistry {
   for (const warning of catalogWarnings()) {
     console.warn(warning);
