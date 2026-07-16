@@ -151,9 +151,29 @@ export const assemblyConfigSchema = z
 
 export type AssemblyConfig = z.infer<typeof assemblyConfigSchema>;
 
+/**
+ * Turn a `ZodError` into a short, human-readable list — one `path: message` line per issue — instead of the raw
+ * JSON dump `.parse()` throws. `.squarewright.yml` invites hand-editing (ADR-0001 "customize" height), so a typo
+ * must land as `lanes: Array must contain at least 1 element(s)`, not a stack-trace-shaped blob (issue #195).
+ */
+function formatZodError(error: z.ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path.length > 0 ? issue.path.join(".") : "(root)";
+      return `  ${path}: ${issue.message}`;
+    })
+    .join("\n");
+}
+
 export function parseAssemblyConfig(text: string): AssemblyConfig {
   const raw = parseYaml(text);
-  return assemblyConfigSchema.parse(raw);
+  const result = assemblyConfigSchema.safeParse(raw);
+  if (!result.success) {
+    throw new Error(
+      `Invalid .squarewright.yml:\n${formatZodError(result.error)}`
+    );
+  }
+  return result.data;
 }
 
 /** Load and validate `.squarewright.yml` from a repo root. */

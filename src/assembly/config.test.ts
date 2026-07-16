@@ -150,3 +150,39 @@ personas:
     expect(() => loadAssemblyConfig(configDir(personaTypo))).toThrow();
   });
 });
+
+describe("schema error formatting (#195)", () => {
+  test("a schema violation throws a readable path: message, not a raw ZodError JSON dump", () => {
+    // a typo'd top-level key trips strict mode — the message must read like prose, not JSON issue objects
+    const typo = `${MINIMAL}cotScafold: true\n`;
+    let message = "";
+    try {
+      loadAssemblyConfig(configDir(typo));
+    } catch (e) {
+      message = e instanceof Error ? e.message : String(e);
+    }
+    expect(message).toStartWith("Invalid .squarewright.yml:");
+    expect(message).toContain("Unrecognized key");
+    // none of the raw Zod JSON shape leaks through
+    expect(message).not.toContain('"code"');
+    expect(message).not.toContain("[{");
+  });
+
+  test("an empty lanes array reports the min-length rule in words, keyed by path", () => {
+    const emptyLanes = `
+lanes: []
+personas:
+  - id: gen
+    lane: cheap
+    prompt: review it
+`;
+    let message = "";
+    try {
+      loadAssemblyConfig(configDir(emptyLanes));
+    } catch (e) {
+      message = e instanceof Error ? e.message : String(e);
+    }
+    expect(message).toContain("lanes");
+    expect(message.toLowerCase()).toContain("at least 1");
+  });
+});

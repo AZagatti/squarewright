@@ -23,6 +23,7 @@ import {
 import { scaffold } from "./init/scaffold.js";
 import { fsRepoReader } from "./pi/fs-reader.js";
 import { resolveProviderKeys } from "./pi/keys.js";
+import { catalogWarnings } from "./pi/model-catalog.js";
 import { createReplyInterpreter } from "./pi/reply-interpreter.js";
 import { createPiWorker } from "./pi/worker.js";
 import { openrouterReasoningRisk } from "./safety/spend-guard.js";
@@ -190,6 +191,7 @@ program
   .action(async (opts: { cwd: string }) => {
     try {
       const report = await runDoctor(opts.cwd, {
+        catalogWarnings,
         hasGh: () =>
           spawnRunner("gh")(["--version"])
             .then((r) => r.code === 0)
