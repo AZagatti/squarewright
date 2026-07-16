@@ -102,8 +102,10 @@ Concrete, tracked items the model-rank/reasoning/cost session surfaced (full con
 Every **zero-spend, agent-liftable** recall/precision lever has been pulled or dropped with measured evidence
 (union, self-consistency, agentic grounding, similar-files, stronger structurer, divergence, calibration
 anchors, blind bulk `learn`) — see `eval/RESULTS.md`. The free-key default (`glm-5.2`, reasoning-off) sits at a
-noisy ~5/12 defect recall. The one proven ~2–4× lever is a **stronger analysis model** (grok-4.5 8–9/12; even
-the cheapest gpt-5.4-mini roughly doubles free-glm).
+noisy ~5/12 defect recall. The one proven lever is a **stronger analysis model** — same-session cross-vendor
+rank: grok-4.5 8–9/12 and even the cheapest gpt-5.4-mini 6–7/12 against that ~5/12 baseline (≈1.5–1.8×; an
+earlier session against a weaker ~2–3/12 free baseline read closer to 2×). Directional, judge-noisy — the point
+is the sign, not the exact multiple.
 
 **What changed:** a stronger model is **not** locked behind per-token paid API spend. Strong models are
 reachable **at flat-fee via subscription headless-CLI agents** — `codex-exec` (GPT-5.6…), `grok-headless`
@@ -119,6 +121,15 @@ the model rank was measured with them. So strategy is **not** limited to `glm-5.
    driving an external agent that itself runs a shell) — it must be grilled and proposed as an ADR, not built
    blind. See the "provider-lane" thread. The product's **zero-config default stays free `glm-5.2`** (North
    Star: works with a free key, no setup); this lane would be opt-in.
+
+   **Portability caveat (the reason track 2 is not a free win):** the subscription CLIs — like the maintainer's
+   z.ai / OpenRouter / opencode keys — are the **maintainer's own local setup**. A downstream user configures
+   **one** provider; a CI/CD runner has **none** of these subscriptions and can't log into them. So the fleet is
+   a **maintainer-side dogfood/measurement capability**, not something a user or CI inherits — a subscription-CLI
+   lane mostly lifts *our* dogfood recall, and its *user/CI portability* is itself an open question the ADR must
+   answer. A separate strand: whether a review can run **keyless in CI at all** (a dry-run, or a free no-auth
+   provider such as opencode `-free` — OSS-only, trains on data, time-boxed) — the honest North-Star line stays
+   "bring a model."
 
 **Money discipline is unchanged** (AGENTS.md Hard Rule #4): per-token **paid API** providers (OpenRouter) still
 require an explicit cap + go-ahead. The subscription CLIs are the flat-fee path; OpenRouter is not.
