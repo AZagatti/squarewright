@@ -3,11 +3,18 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseAssemblyConfig } from "../assembly/config.js";
-import { scaffold } from "./scaffold.js";
+import {
+  type GitRunner,
+  resolveSquarewrightRef,
+  scaffold,
+} from "./scaffold.js";
 
 function tmp(): string {
   return mkdtempSync(join(tmpdir(), "sqw-scaffold-"));
 }
+
+const REF_LINE = /SQUAREWRIGHT_REF: "([^"]+)"/;
+const CONCRETE_REF = /^([0-9a-f]{40}|main)$/;
 
 test("scaffold writes a valid generated config + the workflow files", async () => {
   const dir = tmp();
@@ -37,4 +44,61 @@ test("scaffold is idempotent — a second run does not overwrite an edited confi
   await scaffold(dir);
 
   expect(readFileSync(configPath, "utf8")).toBe(edited);
+});
+
+test("scaffolded review + teach workflows install a runnable pinned harness, not a dead placeholder (#193)", async () => {
+  const dir = tmp();
+
+  await scaffold(dir);
+
+  const review = readFileSync(
+    join(dir, ".github/workflows/squarewright-review.yml"),
+    "utf8"
+  );
+  // the old dead-echo / unpublished-binary placeholder is gone
+  expect(review).not.toContain('echo "Install the squarewright CLI here');
+  expect(review).not.toContain("pending v0.1 publish");
+  // a real, runnable install: clone the public harness at a ref, run it from source with bun
+  expect(review).toContain("git clone");
+  expect(review).toContain("github.com/AZagatti/squarewright");
+  expect(review).toContain(
+    'bun "$RUNNER_TEMP/squarewright/src/cli.ts" review --phase post --post'
+  );
+  // the ref placeholder is substituted with a concrete ref (a SHA or `main`), never left literal
+  expect(review).not.toContain("__SQW_REF__");
+  const ref = review.match(REF_LINE)?.[1];
+  expect(ref).toBeDefined();
+  expect(ref as string).toMatch(CONCRETE_REF);
+
+  const teach = readFileSync(
+    join(dir, ".github/workflows/squarewright-teach.yml"),
+    "utf8"
+  );
+  expect(teach).not.toContain("__SQW_REF__");
+  expect(teach).toContain('bun "$RUNNER_TEMP/squarewright/src/cli.ts" teach');
+});
+
+test("resolveSquarewrightRef pins HEAD only when root is its own git top-level (#193)", () => {
+  const root = "/some/squarewright";
+  const sha = "a".repeat(40);
+
+  // source/dogfood: root IS the git top-level → pin the full HEAD sha
+  const own: GitRunner = (args) => (args[1] === "--show-toplevel" ? root : sha);
+  expect(resolveSquarewrightRef(root, own)).toBe(sha);
+
+  // nested under the user's repo (node_modules install): top-level differs → fall back to main
+  const nested: GitRunner = (args) =>
+    args[1] === "--show-toplevel" ? "/user/repo" : sha;
+  expect(resolveSquarewrightRef(root, nested)).toBe("main");
+
+  // git absent / not a repo → main
+  const broken: GitRunner = () => {
+    throw new Error("not a git repository");
+  };
+  expect(resolveSquarewrightRef(root, broken)).toBe("main");
+
+  // detached/empty HEAD → main (never an empty ref)
+  const emptyHead: GitRunner = (args) =>
+    args[1] === "--show-toplevel" ? root : "";
+  expect(resolveSquarewrightRef(root, emptyHead)).toBe("main");
 });
