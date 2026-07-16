@@ -1,9 +1,10 @@
 /**
  * The default `.squarewright.yml` that `squarewright init` writes. Generated from `DEFAULT_PERSONAS` (the single
  * source of truth), so the scaffolded config carries the full review-persona set and can't drift from the code.
- * Review lanes run on z.ai's free `glm-5.2` (reasoning-off) — a provisional pre-v0.1 pick pending #49's
- * reproducible re-measure. The structurer runs on free `glm-5-turbo` (a mechanical pass-2 extractor). Point
- * "strong" at a frontier model for deeper reviews, or swap the provider entirely (Pi supports ~30).
+ * Review lanes run on z.ai's `glm-5.2` (reasoning-off) — a provisional pre-v0.1 pick pending #49's reproducible
+ * re-measure; it needs a z.ai key (no permanent free tier for this model). The structurer runs on `glm-5-turbo`
+ * (a mechanical pass-2 extractor). Point "strong" at a frontier model for deeper reviews, or swap the provider
+ * entirely (Pi supports ~30).
  */
 import { stringify } from "yaml";
 import type { ModelLane } from "../core/types.js";
@@ -11,9 +12,10 @@ import { DEFAULT_PERSONAS } from "../personas/defaults.js";
 
 const HEADER = `# Squarewright — reviewer assembly config, written by \`squarewright init\`.
 # Edit freely: trim personas, retarget lanes (provider/model), tune budgets. The reviewer is model-agnostic.
-# Review lanes use z.ai's free glm-5.2 (reasoning-off); the structurer uses free glm-5-turbo. Set the
-# ZAI_API_KEY secret and you have a working reviewer. Point "strong" at a frontier model for deeper
-# correctness/security review. See docs/adr/0001, docs/ROADMAP.md.
+# Review lanes use z.ai's glm-5.2 (reasoning-off); the structurer uses glm-5-turbo. Bring a model: set a
+# ZAI_API_KEY secret — a z.ai API key (a paid Coding Plan or pay-as-you-go; there is no permanent free tier
+# for glm-5.2) — and you have a working reviewer. The reviewer is model-agnostic: point "strong" at a frontier
+# model, or retarget any lane at another of Pi's ~30 providers. See docs/adr/0001, docs/ROADMAP.md.
 #
 # OPT-IN: AC-conformance. To also check a PR against the acceptance criteria of the issue it Closes (flags a
 # criterion silently left unmet), add an auditor persona and point it at a genuinely strong model — a free/small
