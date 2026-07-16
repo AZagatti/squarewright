@@ -71,7 +71,7 @@ export function renderReplyPrompt(
   );
 }
 
-/** Free z.ai default — interpreting a reply is a light extraction task, not worth a paid lane. */
+/** z.ai default — interpreting a reply is a light extraction task, kept on the default lane, not a stronger paid one. */
 const DEFAULT_LANE: ModelLane = {
   id: "reply-interpreter",
   model: "glm-5.2",
@@ -116,7 +116,7 @@ const ruleSchema = Type.Object({
 export interface ReplyInterpreterOptions {
   /** provider -> api key, injected at runtime (never persisted) */
   apiKeys: Record<string, string>;
-  /** which model interprets the reply; defaults to free z.ai glm-5.2 */
+  /** which model interprets the reply; defaults to z.ai glm-5.2 */
   lane?: ModelLane;
 }
 

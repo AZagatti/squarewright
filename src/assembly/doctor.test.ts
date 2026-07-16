@@ -14,7 +14,7 @@ describe("runDoctor", () => {
       catalogWarnings: () => [],
       hasGh: () => Promise.resolve(true),
       loadConfig: () => CONFIG,
-      // the review needs only zai (the lane AND the default free z.ai structurer)
+      // the review needs only zai (the lane AND the default z.ai structurer)
       resolveKeys: () =>
         Promise.resolve({
           apiKeys: { zai: "z" },
