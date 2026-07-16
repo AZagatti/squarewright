@@ -9,6 +9,8 @@ import type { AssemblyConfig } from "./config.js";
 import { requiredProviders } from "./review-post.js";
 
 interface DoctorDeps {
+  /** money/honesty warnings for the resolved models.json catalog (see `catalogWarnings` in pi/model-catalog) */
+  catalogWarnings: () => string[];
   hasGh: () => Promise<boolean>;
   loadConfig: (cwd: string) => AssemblyConfig;
   resolveKeys: (providers: Iterable<string>) => Promise<ResolvedKeys>;
@@ -20,6 +22,8 @@ interface ProviderCheck {
 }
 
 export interface DoctorReport {
+  /** models.json money/honesty warnings (missing cost = hidden $0 spend, supersession, …); [] when clean */
+  catalogWarnings: string[];
   /** lanes/personas counts when the config loaded */
   config: { lanes: number; personas: number } | null;
   /** null when the config loaded; the loader's error message otherwise */
@@ -61,6 +65,7 @@ export async function runDoctor(
   const gh = await deps.hasGh();
 
   return {
+    catalogWarnings: deps.catalogWarnings(),
     config: config
       ? { lanes: config.lanes.length, personas: config.personas.length }
       : null,
@@ -96,6 +101,14 @@ export function renderDoctor(report: DoctorReport): string {
           ? `  ✓ ${p.provider} — key present`
           : `  ✗ ${p.provider} — key missing`
       );
+    }
+  }
+
+  if (report.catalogWarnings.length > 0) {
+    lines.push("", "Model catalog");
+    for (const warning of report.catalogWarnings) {
+      // each warning already carries its own ⚠️ prefix and full explanation
+      lines.push(`  ${warning}`);
     }
   }
 
