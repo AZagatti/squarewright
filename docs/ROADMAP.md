@@ -56,7 +56,7 @@ postable*, then the depth that makes it good.
 | | Milestone | Notes |
 |---|---|---|
 | **M1** | **Reachable review** — wire the working engine into `squarewright review` | the biggest single lever — exposes the proven engine (`scripts/eval.ts`) as `squarewright review --phase post`, which runs the review and prints findings. Posting them to GitHub is M2. |
-| **M2** | **Safe posting** — a `Poster` interface (behind which `gh api` is the first impl, swappable to Octokit) + the artifact **head-SHA trust check** + sticky & inline comments | the trust-boundary half; the head-SHA cross-check is **non-negotiable** and currently unimplemented |
+| **M2** | **Safe posting** — a `Poster` interface (behind which `gh api` is the first impl, swappable to Octokit) + the artifact **head-SHA trust check** + sticky & inline comments | the trust-boundary half; the head-SHA cross-check is **non-negotiable** and **shipped** (`src/safety/trust.ts`: head-SHA match, single-open-PR guard, stacked-PR head filter; unit-tested), exercised live on this repo's own PRs |
 | **M3** | **Re-review on new commit** — re-run on a new push and update the sticky comment in place (no spam) | early because a reviewer that reviews once is barely a reviewer |
 | **M4** | **Onboarding — two first-class paths** | (a) **low-friction GitHub Action + config** (drop a workflow + `.squarewright.yml` pointing at the versioned harness); (b) **CLI binary + `init`**. Plus `doctor` + config loading. `init`+binary is **not** the only path. |
 | **M5** | **Multi-persona routing / pairing / batching engine** | glob routing and solo/batched passes drive the eval and wire to `.squarewright.yml`. Correlated-pair batching is a config **primitive** (`pass` group-key), not a default: measurement showed batching is a directional single-model precision lever whose specific pairings aren't corpus-validated (no golden case co-touches two domains), so no default pairing ships — the primitive stays opt-in pending a multi-domain corpus case. Lands *after* the review → post → re-review path works. |
@@ -97,6 +97,32 @@ Concrete, tracked items the model-rank/reasoning/cost session surfaced (full con
 - **Recall is the bottleneck** (issue #45) — an informal read of the sampling runs suggested most misses are model-ceiling / reachable-but-rare (not yet persisted as an artifact — #45 AC1),
   not routing/prompt gaps; grounding tested, didn't help the reasoning-bound cases.
 
+## Recall & the model lever — the honest current picture (2026-07-16)
+
+Every **zero-spend, agent-liftable** recall/precision lever has been pulled or dropped with measured evidence
+(union, self-consistency, agentic grounding, similar-files, stronger structurer, divergence, calibration
+anchors, blind bulk `learn`) — see `eval/RESULTS.md`. The free-key default (`glm-5.2`, reasoning-off) sits at a
+noisy ~5/12 defect recall. The one proven ~2–4× lever is a **stronger analysis model** (grok-4.5 8–9/12; even
+the cheapest gpt-5.4-mini roughly doubles free-glm).
+
+**What changed:** a stronger model is **not** locked behind per-token paid API spend. Strong models are
+reachable **at flat-fee via subscription headless-CLI agents** — `codex-exec` (GPT-5.6…), `grok-headless`
+(grok-4.5), `claude-headless` (Opus/Sonnet/Haiku), `agy-headless` (Gemini / Claude / GPT-OSS via one login);
+router: `/headless-delegate`. These already serve as the eval **instruments, judges, and council** members, and
+the model rank was measured with them. So strategy is **not** limited to `glm-5.2`, and lifting recall is not a
+"wait for a money decision" — it splits into two live tracks:
+
+1. **Measurement** — freely runnable now across the fleet (many models × efforts × setups), no per-token cost.
+2. **A shipped product path — the open design fork:** should Squarewright drive a subscription headless CLI as
+   an **analysis backend / model lane**, so strong-model recall becomes a path a user can actually ship, not
+   only an eval instrument? This is **ADR-level and trust-boundary-sensitive** (the trusted `review` phase
+   driving an external agent that itself runs a shell) — it must be grilled and proposed as an ADR, not built
+   blind. See the "provider-lane" thread. The product's **zero-config default stays free `glm-5.2`** (North
+   Star: works with a free key, no setup); this lane would be opt-in.
+
+**Money discipline is unchanged** (AGENTS.md Hard Rule #4): per-token **paid API** providers (OpenRouter) still
+require an explicit cap + go-ahead. The subscription CLIs are the flat-fee path; OpenRouter is not.
+
 ## Later bets — v0.x depth
 
 - **@mention conversation** + threaded follow-ups via Pi session fork/resume.
@@ -105,6 +131,11 @@ Concrete, tracked items the model-rank/reasoning/cost session surfaced (full con
 - Repeated-dismissal → auto-proposed `.squarewright.yml` suppression diff.
 - Optional deterministic **Grounder** plugin (polyglot, via the JSON contract).
 - **Verifiers** (compile/test/grep confirmation of AI findings) — only where they earn their cost.
+- **Subscription-CLI analysis lane (the "provider-lane" fork)** — an opt-in model lane that drives a
+  subscription headless-CLI agent (Codex / Grok / Claude / Antigravity) as the analysis backend, turning the
+  proven strong-model recall lever into a shippable path at flat-fee. ADR-level + trust-boundary-sensitive
+  (review-phase driving an external agent that runs shell); grill + ADR before build. See the recall section
+  above.
 
 ## Later — opt-in aggregate (improve the shipped tool)
 
