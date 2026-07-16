@@ -9,8 +9,8 @@ import type { AssemblyConfig } from "./config.js";
 import { requiredProviders } from "./review-post.js";
 
 interface DoctorDeps {
-  /** money/honesty warnings for the resolved models.json catalog (see `catalogWarnings` in pi/model-catalog) */
-  catalogWarnings: () => string[];
+  /** money/honesty warnings for the target repo's models.json catalog (see `catalogWarnings` in pi/model-catalog) */
+  catalogWarnings: (cwd: string) => string[];
   hasGh: () => Promise<boolean>;
   loadConfig: (cwd: string) => AssemblyConfig;
   resolveKeys: (providers: Iterable<string>) => Promise<ResolvedKeys>;
@@ -65,7 +65,7 @@ export async function runDoctor(
   const gh = await deps.hasGh();
 
   return {
-    catalogWarnings: deps.catalogWarnings(),
+    catalogWarnings: deps.catalogWarnings(cwd),
     config: config
       ? { lanes: config.lanes.length, personas: config.personas.length }
       : null,
