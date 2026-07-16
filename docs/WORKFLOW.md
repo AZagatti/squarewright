@@ -17,6 +17,29 @@ The point of this loop is that the maintainer is an **orchestrator**, not a line
   to be safe, the loop failed upstream — the fix is a better subagent review or a tighter issue, not more of
   your time.
 
+## Planning pipeline — how a fork becomes Ready issues
+
+The front-end that turns a direction into on-rails work, before the implement loop below. It composes the
+engineering skills the maintainer installed (Matt Pocock's set); each stage feeds the next:
+
+1. **Grill the direction** (`/grill-with-docs` = `/grilling` + `/domain-modeling`) — stress-test a plan or fork
+   against `NORTH_STAR.md` / `docs/ROADMAP.md` / `docs/adr/`, killing weak assumptions and sharpening
+   `docs/CONTEXT.md` terms as decisions land. Run a **council** here (proponent + disagree-seeker subagents,
+   plus cross-vendor voices from the subscription CLIs) — the council resolves forks so the maintainer only
+   sees genuine North-Star / spend / trust-boundary walls.
+2. **Spec** (`/to-spec`) — synthesize the grilled conclusion into a short PRD (problem → solution → user
+   stories → implementation & testing decisions → out-of-scope), choosing the **highest single test seam**.
+3. **Tickets** (`/to-tickets`) — slice the spec into **tracer-bullet** vertical slices (each cuts a complete
+   path through the layers, is verifiable alone, fits one context window) with explicit **blocking edges**;
+   wide mechanical refactors go **expand → migrate → contract** instead.
+4. **Triage** (`/triage`) — each issue carries one category (`bug`/`enhancement`) + one state; `agent-ready`
+   (this repo's label for the canonical `ready-for-agent`) means the Ready-issue template below is filled.
+5. **Implement** (`/implement`) — work the dependency frontier one ticket at a time through the loop below,
+   TDD at the agreed seams, `/code-review` (here: `sqw-reviewer`) before merge.
+
+The **Ready-issue template** below is the contract between this pipeline and the loop: a ticket isn't handed to
+an implementing agent until every field is filled.
+
 ## The loop
 
 1. **Orient (~5 min).** Agent reads `AGENTS.md`, skims ai-memory recent + the relevant ADR, and confirms which
