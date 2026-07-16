@@ -43,12 +43,21 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
 
-      # Put the `squarewright` CLI on the runner. Publishing it (a pinned action or an npm/bun package) is the
-      # v0.1 distribution work (ROADMAP M4); until then, point this at your own build. This is the only
-      # onboarding gap — the review + safe-posting command below is the real, shipped path.
-      - name: Install Squarewright (pending v0.1 publish — see ROADMAP M4)
+      # Put the `squarewright` CLI on the runner: clone the public harness at a pinned ref and run it from source
+      # with Bun (no published package yet). `init` pins SQUAREWRIGHT_REF to the squarewright revision that
+      # scaffolded this file — change it to a release tag or `main` as you prefer, and ensure the ref is pushed
+      # to the public repo. A published action/binary is the v0.1 distribution work (ROADMAP M4).
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+      - name: Install Squarewright (pinned harness)
+        env:
+          SQUAREWRIGHT_REF: "__SQW_REF__"
         run: |
-          echo "Install the squarewright CLI here once v0.1 is published (e.g. bunx squarewright@<pinned>)."
+          git clone --filter=blob:none https://github.com/AZagatti/squarewright "$RUNNER_TEMP/squarewright"
+          git -C "$RUNNER_TEMP/squarewright" checkout "$SQUAREWRIGHT_REF"
+          (cd "$RUNNER_TEMP/squarewright" && bun install --frozen-lockfile)
 
       - name: Run Squarewright review and post (safe posting)
         env:
@@ -65,4 +74,6 @@ jobs:
           # (ZAI_API_KEY for the default z.ai lanes) plus OPENROUTER_API_KEY for the structurer pass.
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
-        run: squarewright review --phase post --post --input artifacts
+        # Runs from the user's checked-out repo (cwd = workspace) so it reads THIS repo's .squarewright.yml and
+        # .review-rules; the harness code + deps come from the pinned clone in RUNNER_TEMP.
+        run: bun "$RUNNER_TEMP/squarewright/src/cli.ts" review --phase post --post --input artifacts

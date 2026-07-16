@@ -37,10 +37,19 @@ jobs:
       - name: Checkout base repo (trusted; never PR head)
         uses: actions/checkout@v4
 
-      # Put the `squarewright` CLI on the runner (same v0.1 distribution gap as the Review workflow).
-      - name: Install Squarewright (pending v0.1 publish — see ROADMAP M4)
+      # Put the `squarewright` CLI on the runner: clone the public harness at the ref `init` pinned and run it
+      # from source with Bun (same approach as the Review workflow; no published package yet).
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+      - name: Install Squarewright (pinned harness)
+        env:
+          SQUAREWRIGHT_REF: "__SQW_REF__"
         run: |
-          echo "Install the squarewright CLI here once v0.1 is published (e.g. bunx squarewright@<pinned>)."
+          git clone --filter=blob:none https://github.com/AZagatti/squarewright "$RUNNER_TEMP/squarewright"
+          git -C "$RUNNER_TEMP/squarewright" checkout "$SQUAREWRIGHT_REF"
+          (cd "$RUNNER_TEMP/squarewright" && bun install --frozen-lockfile)
 
       - name: Interpret the reply and post a suggestion (authorized + confident only)
         env:
@@ -62,4 +71,4 @@ jobs:
           TEACH_PERMISSION="$(gh api "repos/$TEACH_REPO/collaborators/$TEACH_ACTOR/permission" --jq '.permission' 2>/dev/null || echo none)"
           TEACH_PR_AUTHOR="$(gh api "repos/$TEACH_REPO/pulls/$TEACH_ISSUE" --jq '.user.login' 2>/dev/null || echo '')"
           export TEACH_PERMISSION TEACH_PR_AUTHOR
-          squarewright teach
+          bun "$RUNNER_TEMP/squarewright/src/cli.ts" teach
